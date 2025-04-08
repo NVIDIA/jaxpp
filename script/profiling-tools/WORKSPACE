@@ -1,0 +1,23 @@
+load("//main:xla_config.bzl", "XLA_COMMIT")
+
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+git_repository(
+    name = "xla_repo",
+    remote = "https://github.com/openxla/xla.git",
+    commit = XLA_COMMIT,
+)
+
+load("@xla_repo//:workspace4.bzl", "xla_workspace4")
+xla_workspace4()
+
+load("@xla_repo//:workspace3.bzl", "xla_workspace3")
+xla_workspace3()
+
+load("@xla_repo//:workspace2.bzl", "xla_workspace2")
+xla_workspace2()
+
+load("@xla_repo//:workspace1.bzl", "xla_workspace1")
+xla_workspace1()
+
+load("@xla_repo//:workspace0.bzl", "xla_workspace0")
+xla_workspace0()

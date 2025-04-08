@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG CUDA_VERSION=12.6.1
+# Depend on `devel` for compiling TransformerEngine (`nvcc` etc.)
+ARG CUDA_TAG=${CUDA_VERSION}-devel-ubuntu22.04
+# FROM nvcr.io/nvidia/cuda:${CUDA_TAG} AS base
+FROM gitlab-master.nvidia.com:5005/dl/dgx/cuda:12.6-devel-ubuntu22.04 AS base
+ARG CUDA_VERSION
+ARG CUDA_TAG
+
+ARG USERNAME=jaxpp-dev
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Necessary to build documentation and avoid locale error
+ENV LC_ALL=C
+
+ENV USER_UID=${USER_UID}
+ENV USER_GID=${USER_UID}
+
+RUN echo ${CUDA_TAG}
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive                                           \
+        apt-get install --allow-change-held-packages -y                         \
+        sudo locales nvtop wget git g++ vim libibverbs-dev                      \
+    && apt-get clean
+
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.18.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel \
+    && chmod +x /usr/local/bin/bazel
+
+# Create the user
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    # Add sudo support.
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
+
+WORKDIR /workdir
+RUN chown -R $USER_UID:$USER_GID /workdir
+
+# Install python
+RUN apt update                                                  \
+    &&  apt install -y                                          \
+        # `cmake` Needed for TransformerEngine compilation
+        cmake                                                   \
+        python3 python3-dev python3-pip python3.10-venv         \
+    && rm -rf /var/lib/apt/lists/*                              \
+    # Remove NCCL from base image since we use the one installed through
+    #  pip (see LD_LIBRARY_PATH below)
+    && rm -rf /usr/lib/x86_64-linux-gnu/libnccl*
+
+USER $USERNAME
+SHELL ["/bin/bash", "-c"]
+
+ENV DEVENV_PATH=/home/$USERNAME/dev-env
+RUN python3 -m venv $DEVENV_PATH
+ENV PATH=$DEVENV_PATH/bin:$PATH
+
+RUN pip install -U pip wheel
+
+# cupy -> nccl from pip
+# te -> cudnn from pip
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$DEVENV_PATH/lib/python3.10/site-packages/nvidia/nccl/lib:$DEVENV_PATH/lib/python3.10/site-packages/nvidia/cudnn/lib
+
+COPY --chown=$USER_UID:$USER_GID . jaxpp
+RUN pip install --no-cache-dir -e jaxpp[dev] \
+    # JaxPP depends on Jax which depends on nvidia-cudnn-cu12
+    && CPLUS_INCLUDE_PATH="$DEVENV_PATH/lib/python3.10/site-packages/nvidia/cudnn/include" \
+       pip install transformer-engine[jax]==1.9.0 \
+    # Reinstall JaxPP to resolve issues related to JAX version updates
+    && pip install --no-cache-dir -e jaxpp
+
+# build profiling tools
+RUN cd /workdir/jaxpp/script/profiling-tools && \
+    bazel build --compilation_mode=opt //main:main && \
+    cp bazel-bin/main/main $DEVENV_PATH/bin/merge_multihost_xplanes
+
+# Disable ray deduplication of logs
+ENV RAY_DEDUP_LOGS=0
+
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["bash"]

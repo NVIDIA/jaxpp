@@ -1,0 +1,52 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+	"name": "Jaxpp Latest",
+	"image": "gitlab-master.nvidia.com:5005/cml/jaxpp_dev/jaxpp:main",
+	// "build": {
+	// 	// Sets the run context to one level up instead of the .devcontainer folder.
+	// 	"context": "..",
+	// 	// Update the 'dockerFile' property if you aren't using the standard 'Dockerfile' filename.
+	// 	"dockerfile": "../benchmarks/paxml/Dockerfile",
+	// },
+	"runArgs": [
+		"--gpus=all",
+		"--env=NVIDIA_DISABLE_REQUIRE=1", // NOTE comment out if host has correct cuda driver
+		"--shm-size=10.24gb"
+	],
+	// NOTE(shadow): devcontainer.json doesn't allow shadowing an existing folder
+	// in the container (e.g. /workdir/jaxpp).
+	// While it may seem a good idea to mount it with `-v` in `runArgs` above
+	// that doesn't work with vscode's git integration.
+	"containerUser": "jaxpp-dev",
+	"containerEnv": {"EDITOR": "code -w"},
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+	// NOTE(shadow): Since we cannot shadow /workdir/jaxpp we update the editable
+	//  version of jaxpp to the workspace one
+	"postCreateCommand": "sudo rm -rf /workdir/jaxpp && pip install -e '/workspaces/${localWorkspaceFolderBasename}[dev]' --no-deps",
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"charliermarsh.ruff",
+				"tamasfe.even-better-toml"
+			],
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "bash",
+				"terminal.integrated.profiles.linux": {
+					"zsh": {
+						"path": "/bin/bash"
+					}
+				},
+				"python.defaultInterpreterPath": "/home/jaxpp-dev/dev-env/bin/python3"
+			}
+		}
+	}
+	// Uncomment to connect as an existing user other than the container default. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "devcontainer"
+}
