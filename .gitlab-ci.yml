@@ -1,0 +1,153 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES.  All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+
+default:
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  interruptible: true
+
+stages:
+  - build_base
+  - build
+  - test
+  - deploy_base
+  - deploy
+
+variables:
+  CUDA_VERSION: "12.6.1"
+  TEST_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  LATEST_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_BRANCH"
+
+build_base_image:
+  stage: build_base
+  script:
+    - docker build --force-rm=true
+      -f script/docker/Dockerfile.base
+      --build-arg CUDA_VERSION=${CUDA_VERSION}
+      -t ${TEST_IMAGE}-base $CI_PROJECT_DIR
+    - docker push ${TEST_IMAGE}-base
+  after_script:
+    - docker rmi ${TEST_IMAGE}-base
+  rules:
+    - changes:
+      - script/docker/Dockerfile.base
+      - pyproject.toml
+      - script/profiling-tools/*
+      - script/profiling-tools/main/*
+      - .dockerignore
+      - Makefile
+
+build_image:
+  stage: build
+  script:
+    - docker build --force-rm=true
+      -f ${DOCKERFILE}
+      --build-arg BASE_IMAGE=${BASE_IMAGE}
+      --build-arg CUDA_VERSION=${CUDA_VERSION}
+      -t ${TEST_IMAGE}${TEST_IMAGE_SUFFIX} $CI_PROJECT_DIR
+    - docker push ${TEST_IMAGE}${TEST_IMAGE_SUFFIX}
+  after_script:
+    - docker rmi ${TEST_IMAGE}${TEST_IMAGE_SUFFIX}
+    - docker rmi ${BASE_IMAGE}
+  variables:
+    DOCKERFILE: "script/docker/Dockerfile"
+  rules:
+    - changes:
+      - script/docker/Dockerfile.base
+      - pyproject.toml
+      - script/profiling-tools/*
+      - script/profiling-tools/main/*
+      - .dockerignore
+      - Makefile
+      variables:
+        BASE_IMAGE: ${TEST_IMAGE}-base
+    - if: $CI_MERGE_REQUEST_IID
+      variables:
+        BASE_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}-base
+    - when: always
+      variables:
+        BASE_IMAGE: ${LATEST_IMAGE}-base
+
+linter:
+  stage: test
+  script:
+    - docker run --gpus=all --rm --workdir=/workdir/jaxpp ${TEST_IMAGE} /workdir/jaxpp/script/linter.sh
+
+  after_script:
+    - docker rmi $TEST_IMAGE
+
+unittest:
+  stage: test
+  script:
+    - docker run --gpus=all --shm-size=10.24gb --ulimit memlock=-1 --ulimit stack=67108864
+      -e RAY_ADDRESS=local -e XLA_FLAGS='--xla_gpu_graph_level=0' --rm --workdir=/workdir/jaxpp ${TEST_IMAGE}
+      "python /workdir/jaxpp/benchmarks/basic.py --dtype=float32 &&
+      python /workdir/jaxpp/benchmarks/basic.py --dtype=float16"
+
+  after_script:
+    - docker rmi $TEST_IMAGE
+
+pytest:
+  stage: test
+  script:
+    - docker run --gpus=all --shm-size=10.24gb --ulimit memlock=-1 --ulimit stack=67108864
+      -e RAY_ADDRESS=local -e XLA_PYTHON_CLIENT_ALLOCATOR=platform
+      --rm --workdir=/workdir/jaxpp ${TEST_IMAGE} "nvidia-smi && make install && pytest"
+
+  after_script:
+    - docker rmi $TEST_IMAGE
+
+build_docs:
+  stage: test
+  script:
+    - docker run --gpus=all --shm-size=1g --ulimit memlock=-1 --ulimit stack=67108864
+      --rm --workdir /workdir/jaxpp ${TEST_IMAGE}
+      "make install && make docs"
+  after_script:
+    - docker rmi $TEST_IMAGE
+
+tag_latest_base:
+  stage: deploy_base
+  interruptible: false
+  script:
+    - docker pull ${TEST_IMAGE}-base
+    - docker tag ${TEST_IMAGE}-base ${LATEST_IMAGE}-base
+    - docker push ${LATEST_IMAGE}-base
+  after_script:
+    - docker rmi ${LATEST_IMAGE}-base
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+      - script/docker/Dockerfile.base
+      - pyproject.toml
+
+tag_latest:
+  stage: deploy
+  interruptible: false
+  script:
+    - docker pull ${TEST_IMAGE}${TEST_IMAGE_SUFFIX}
+    - docker tag ${TEST_IMAGE}${TEST_IMAGE_SUFFIX} ${LATEST_IMAGE}${TEST_IMAGE_SUFFIX}
+    - docker push ${LATEST_IMAGE}${TEST_IMAGE_SUFFIX}
+  after_script:
+    - docker rmi ${LATEST_IMAGE}${TEST_IMAGE_SUFFIX}
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
