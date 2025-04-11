@@ -101,7 +101,7 @@ classifiers = [
 dependencies = [
     "jax[cuda12]==0.5.1",
     "numpy<2.0.0",
-    "ray==2.36.0",
+    "ray==2.43.0",
     "cupy-cuda12x"
 ]
 
