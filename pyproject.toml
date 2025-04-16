@@ -1,0 +1,197 @@
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.distutils.bdist_wheel]
+universal = true
+
+[tool.setuptools.package-dir]
+jaxpp = "src/jaxpp"
+
+[tool.setuptools.dynamic]
+version = {attr = "jaxpp.__version__"}
+
+[project]
+name = "jaxpp"
+dynamic = ["version"]
+description = "Enable various forms of parallelism with JAX with a focus on Pipeline Parallelism."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+keywords = ["jax", "deep learning", "parallelism", "training", "scale"]
+# Current and past authors
+authors = [
+  {name = "Anxhelo Xhebraj", email = "axhebraj@nvidia.com" },
+  {name = "Sean Lee", email = "selee@nvidia.com" },
+  {name = "Hanfeng Chen", email = "hanfengc@nvidia.com" },
+  {name = "Vinod Grover", email = "vgrover@nvidia.com" },
+  {name = "Jonathan Dekhtiar", email = "jdekhtiar@nvidia.com" },
+  {name = "Oren Leung", email = "orenl@nvidia.com" }
+]
+# Current maintainers
+maintainers = [
+  {name = "Anxhelo Xhebraj", email = "axhebraj@nvidia.com" },
+  {name = "Sean Lee", email = "selee@nvidia.com" },
+  {name = "Hanfeng Chen", email = "hanfengc@nvidia.com" },
+  {name = "Vinod Grover", email = "vgrover@nvidia.com" }
+]
+classifiers = [
+    # How mature is this project? Common values are
+    #  1 - Planning
+    #  2 - Pre-Alpha
+    #  3 - Alpha
+    #  4 - Beta
+    #  5 - Production/Stable
+    #  6 - Mature
+    #  7 - Inactive
+    "Development Status :: 2 - Pre-Alpha",
+
+    # Indicate who your project is intended for
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Information Technology",
+
+    # Indicate what your project relates to
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+
+    # Specify the Python versions you support here. In particular, ensure
+    # that you indicate whether you support Python 2, Python 3 or both.
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+
+    # Pick your license as you wish
+    "License :: OSI Approved :: Apache Software License",
+
+    # Not OS Specific
+    "Operating System :: OS Independent",
+
+    # Specify the Python versions you support here. In particular, ensure
+    # that you indicate you support Python 3. These classifiers are *not*
+    # checked by "pip install". See instead "requires-python" key in this file.
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+
+    # Additional Settings
+    "Environment :: Console",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "jax[cuda12]==0.5.1",
+    "numpy<2.0.0",
+    "ray==2.36.0",
+    "cupy-cuda12x"
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=8.1.3,<9.0.0",
+    "m2r2>=0.3,<0.4",
+    "docutils>=0.19,<0.21",
+    "nvidia-sphinx-theme==0.0.7"
+]
+dev = [
+    # Pre Commit Hooks
+    "pre-commit>=3.7.0,<3.8",
+    # Linting
+    "ruff>=0.6,<0.7"
+]
+test = [
+    # Testing
+    "parameterized>=0.9.0,<0.10",
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-cov>=5.0.0,<6.0.0",
+    "pytest-dotenv>=0.5.0,<1.0.0",
+    "pytest-env>=1.1.3,<2.0.0",
+    "pytest-forked>=1.6,<1.7",
+    "pytest-ordering>=0.6,<1.0.0",
+    "pytest-runner>=6.0.0,<7.0.0",
+    "tox>=4.21,<4.22",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/"]
+addopts = "-vvv --cov=src/jaxpp --cov-report=term-missing --forked -p no:warnings"
+
+[tool.pytest_env]
+CUDA_VISIBLE_DEVICES = 0
+NVIDIA_DISABLE_REQUIRE = 1
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "*/migrations/*.py",
+    "staticfiles/*",
+    "dlpack.py",
+]
+# Same as Django: https://github.com/cookiecutter/cookiecutter-django/issues/4792.
+line-length = 88
+indent-width = 4
+target-version = "py310"
+
+[tool.ruff.lint]
+# Read more here https://beta.ruff.rs/docs/rules/
+# By default, Ruff enables Flake8's E and F rules
+# Pyflakes - F, pycodestyle - E, W
+# flake8-builtins - A
+# Pylint - PLC, PLE, PLW
+# isort - I
+select = ['E', 'F', 'W', 'A', 'PLC', 'PLE', 'PLW', 'I']
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+# The fixes in extend-unsafe-fixes will require
+# provide the `--unsafe-fixes` flag when fixing.
+extend-unsafe-fixes = ["UP038"]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+indent-style = "space"
