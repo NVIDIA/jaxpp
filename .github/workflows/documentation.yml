@@ -30,6 +30,7 @@ jobs:
       - name: Sphinx build
         run: |
           pip install -e '.[docs]'
+          export LD_LIBRARY_PATH=$(pip show nvidia-nccl-cu12 | grep Location | sed -e 's/Location: //')/nvidia/nccl/lib:$LD_LIBRARY_PATH
           make -C docs html
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
