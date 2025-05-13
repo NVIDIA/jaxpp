@@ -74,7 +74,7 @@ COPY --chown=$USER_UID:$USER_GID . jaxpp
 RUN pip install --no-cache-dir -e jaxpp[dev] \
     # JaxPP depends on Jax which depends on nvidia-cudnn-cu12
     && CPLUS_INCLUDE_PATH="$DEVENV_PATH/lib/python3.10/site-packages/nvidia/cudnn/include" \
-       pip install transformer-engine[jax]==1.9.0 \
+       pip install transformer-engine[jax]==2.1.0 \
     # Reinstall JaxPP to resolve issues related to JAX version updates
     && pip install --no-cache-dir -e jaxpp
 

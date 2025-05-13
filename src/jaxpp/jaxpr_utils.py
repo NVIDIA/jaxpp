@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from typing import Iterable, Mapping
 
 import jax._src.core as jcore
+import jax._src.util as ju
 
 
 def check_jaxpr(jaxpr: jcore.Jaxpr):
@@ -68,10 +69,11 @@ def schedule_dependencies(
 
 
 def eqns_free_vars(
-    eqns: Iterable[jcore.JaxprEqn],
+    eqns: Iterable[jcore.JaxprEqn], ordered=False
 ) -> tuple[set[jcore.Var], set[jcore.Var]]:
-    defined = set[jcore.Var]()
-    free = set[jcore.Var]()
+    set_ctor = (ju.OrderedSet if ordered else set)[jcore.Var]
+    defined = set_ctor()
+    free = set_ctor()
     for eqn in eqns:
         free.update(invar for invar in nonlit(eqn.invars) if invar not in defined)
         defined.update(eqn.outvars)
@@ -84,8 +86,8 @@ def jaxpr_from_eqns(
     free, defined = eqns_free_vars(eqns)
     jaxpr = jcore.Jaxpr(
         constvars=(),
-        invars=sorted(free),
-        outvars=sorted(defined & outputs_needed),
+        invars=sorted(free, key=lambda v: v.count),
+        outvars=sorted(defined & outputs_needed, key=lambda v: v.count),
         eqns=eqns,
         effects=jcore.join_effects(*(eqn.effects for eqn in eqns)),
     )

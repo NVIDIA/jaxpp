@@ -67,23 +67,18 @@ class JaxPPBasicBertModel(JaxBasicBertModel):
 def jax_train_step(loss_fn, optimizer, remote_mesh=None):
     use_jaxpp = remote_mesh is not None
     jax_decorator = (
-        partial(jaxpp.pipelined, mpmd_mesh=remote_mesh) if use_jaxpp else jax.jit
+        partial(jaxpp.mpmd_jit_with_loop, mpmd_mesh=remote_mesh)
+        if use_jaxpp
+        else jax.jit
     )
 
     @jax_decorator
     def train_step(opt_state, params, batch):
-        def µbatch_grad(µbatch):
-            (loss, (preds, _)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-                params, µbatch
-            )
-            return jaxpp.LoopOutput(grads, (loss, 10, preds))
+        µbatch_grad = partial(jax.value_and_grad(loss_fn, has_aux=True), params)
 
         if use_jaxpp:
-            grad, (losses, _, preds), _, _ = jaxpp.accumulate_grads(
-                µbatch_grad,
-                batch=batch,
-                out_shardings=None,
-                schedule=jaxpp.Std1F1B(remote_mesh.mpmd_dim),
+            (losses, (preds, _)), grad = jaxpp.treduce(
+                µbatch_grad, batch, schedule=jaxpp.Std1F1B(remote_mesh.mpmd_dim)
             )
 
             # Apply the optimizer as usual
@@ -94,21 +89,21 @@ def jax_train_step(loss_fn, optimizer, remote_mesh=None):
             preds = jnp.array(preds)
 
         else:
-            acc_grads = None
+            grad = None
             losses = []
             preds = []
 
             for ubatch_idx in range(args.num_ubatches):
-                grads, (loss, _, _preds), _, _ = µbatch_grad(batch[0, ubatch_idx])
+                (loss, (_preds, _)), pgrad = µbatch_grad(batch[ubatch_idx])
                 losses.append(loss)
                 preds.append(_preds)
-                acc_grads = (
-                    jax.tree_util.tree_map(jnp.add, acc_grads, grads)
-                    if acc_grads is not None
-                    else grads
+                grad = (
+                    jax.tree_util.tree_map(jnp.add, grad, pgrad)
+                    if grad is not None
+                    else pgrad
                 )
 
-            (updates, opt_state) = optimizer.update(acc_grads, opt_state, params)
+            (updates, opt_state) = optimizer.update(grad, opt_state, params)
             new_params = optax.apply_updates(params, updates)
 
         return opt_state, new_params, jnp.asarray(losses), jnp.asarray(preds)
@@ -182,13 +177,13 @@ def main(args, process_id=None):
 
     optimizer = optax.adam(learning_rate=0.005)
 
-    shape = (1, args.num_ubatches, 16, 128, config.hidden_size)
+    shape = (args.num_ubatches, 16, 128, config.hidden_size)
 
     hidden_states = jax.random.uniform(rng, shape, dtype=args.dtype)
 
     # Model Initialization
-    params = model.init(rng, hidden_states[0, 0])
-    params_jaxpp = model_jaxpp.init(rng, hidden_states[0, 0])
+    params = model.init(rng, hidden_states[0])
+    params_jaxpp = model_jaxpp.init(rng, hidden_states[0])
 
     opt_state = optimizer.init(params)
     opt_state_jaxpp = optimizer.init(params_jaxpp)
@@ -207,15 +202,15 @@ def main(args, process_id=None):
 
     # =========================== 1st step of inference =========================== #
 
-    jax_opt_state, jax_params, jax_loss, jax_preds = jitted_train_step_fn(
-        opt_state, params, hidden_states
-    )
-    print(f"Done first step JIT, loss: {np.array(jax_loss)}")
-
     jaxpp_opt_state, jaxpp_params, jaxpp_loss, jaxpp_preds = jaxpp_train_step_fn(
         opt_state_jaxpp, params_jaxpp, hidden_states
     )
     print(f"Done first step JAXPP, loss: {np.array(jaxpp_loss)}")
+
+    jax_opt_state, jax_params, jax_loss, jax_preds = jitted_train_step_fn(
+        opt_state, params, hidden_states
+    )
+    print(f"Done first step JIT, loss: {np.array(jax_loss)}")
 
     # ============================== VALIDATION ============================== #
 
@@ -230,13 +225,13 @@ def main(args, process_id=None):
 
     with assert_context("OPT State"):
         opt_state_allclose = jax.tree_util.tree_map(
-            lambda state_a, state_b: is_close(state_a, state_b),
+            lambda state_a, state_b: is_close(state_a, state_b._value),
             jax_opt_state,
             jaxpp_opt_state,
         )
 
         success = True
-        for k, v in jax.tree_util.tree_flatten_with_path(opt_state_allclose)[0]:
+        for k, v in jax.tree_util.tree_leaves_with_path(opt_state_allclose):
             if not v:
                 if success:
                     print("")  # return to the next line
@@ -248,13 +243,13 @@ def main(args, process_id=None):
 
     with assert_context("Params"):
         new_params_allclose = jax.tree_util.tree_map(
-            lambda params_a, params_b: is_close(params_a, params_b),
+            lambda params_a, params_b: is_close(params_a, params_b._value),
             jax_params,
             jaxpp_params,
         )
 
         success = True
-        for k, v in jax.tree_util.tree_flatten_with_path(new_params_allclose)[0]:
+        for k, v in jax.tree_util.tree_leaves_with_path(new_params_allclose):
             if not v:
                 if success:
                     print("")  # return to the next line
@@ -265,10 +260,10 @@ def main(args, process_id=None):
             raise AssertionError("Params Validation Error")
 
     with assert_context("Loss"):
-        is_close(jax_loss, np.array(jaxpp_loss).squeeze(0))
+        is_close(jax_loss, jaxpp_loss._value)
 
     with assert_context("Prediction"):
-        is_close(jax_preds, np.array(jaxpp_preds).squeeze(0))
+        is_close(jax_preds, jaxpp_preds._value)
 
     # =============================== TRAINING =============================== #
 
@@ -289,14 +284,14 @@ def main(args, process_id=None):
             print(
                 f"\n[{step + 1:04}/{args.train_steps:04}]:"
                 f"\n\t- JAX Loss:   {np.array(jax_loss).sum()}"
-                f"\n\t- JAXPP Loss: {np.array(jaxpp_loss).sum()}"
+                f"\n\t- JAXPP Loss: {jaxpp_loss._value.sum()}"
             )
 
         # Adapting the tolerance is necessary due to small differences
         # building up over time and leading to a progressive drift.
         rtol = atol = 1e-4 if args.dtype == jnp.float32 else 5e-4
 
-        is_close(jax_loss, np.array(jaxpp_loss).squeeze(0))
+        is_close(jax_loss, jaxpp_loss._value)
 
     print("\nSUCCESS !")
 

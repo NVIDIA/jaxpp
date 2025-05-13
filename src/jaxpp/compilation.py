@@ -16,46 +16,22 @@
 import copy
 import itertools as it
 import warnings
-from collections.abc import Callable, Sequence
+from collections import OrderedDict
+from collections.abc import Sequence
 from functools import partial
-from typing import TYPE_CHECKING, Any, Union
+from typing import Any
 
 import jax
-import jax.core as jcore
+import jax._src.core as jcore
 import numpy as np
-from jax._src import profiler, sharding_impls
+from jax._src import profiler
 from jax._src.interpreters.pxla import _create_da_object
-from jax._src.mesh import ResourceEnv
 from jax._src.pjit import _pjit_lower
 from jax._src.sharding_impls import UNSPECIFIED, UnspecifiedValue
 from jax.interpreters import mlir, pxla
-from jax.lib import xla_client as xc
 from jaxlib.mlir.ir import Module as ir_Module
 
-from jaxpp.types import MaybeSharding, SerializeableSharding
-
-if TYPE_CHECKING:
-    from jaxpp.core import DistributedFunction
-
-
-def to_pspec(hlo_sharding: xc.OpSharding | xc.HloSharding, lmesh):
-    parsed_pspec = sharding_impls.parse_flatten_op_sharding(hlo_sharding, lmesh)[0]
-    return parsed_pspec.get_partition_spec()
-
-
-class CompileThunk:
-    def __init__(self, compile_fn: Callable[[Any], "DistributedFunction"]):
-        self._compile = compile_fn
-        self.pipelined: Union["DistributedFunction", None] = None
-
-    def compile(self, *args, **kwargs) -> "DistributedFunction":
-        assert kwargs == {}
-        if self.pipelined is None:
-            self.pipelined = self._compile(*args, **kwargs)
-        return self.pipelined
-
-    def __call__(self, *args, **kwargs):
-        return self.compile(*args, **kwargs)(*args, **kwargs)
+from jaxpp.types import UID, MaybeSharding, SerializeableSharding, fresh_scalar_uid
 
 
 # TODO: move to https://github.com/google/jax/blob/b71829f/jax/experimental/serialize_executable.py#L24-L59
@@ -71,8 +47,6 @@ class SerializeableMeshComputation:
     def __init__(
         self,
         mesh_computation: pxla.MeshComputation,
-        in_avals,
-        out_avals,
         name: str = "",
         compiler_options: dict[str, Any] | None = None,
         use_pgle=False,
@@ -172,6 +146,98 @@ class SerializeableMeshComputation:
         ).compile(compiler_options)
 
 
+def pjit_lower(
+    jaxpr: jcore.ClosedJaxpr,
+    in_shardings,
+    out_shardings,
+    in_layouts,  #: pxla.MaybeLayout,
+    out_layouts,  #: pxla.MaybeLayout,
+    donated_invars,
+    ctx_mesh,
+    name: str,
+    keep_unused: bool,
+    inline: bool,
+    compiler_options_kvs: tuple[tuple[str, Any], ...],
+    *,
+    lowering_platforms: tuple[str, ...] | None,
+    lowering_parameters: mlir.LoweringParameters,
+    pgle_profiler: profiler.PGLEProfiler | None,
+):
+    args = dict(
+        jaxpr=jaxpr,
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
+        in_layouts=in_layouts,
+        out_layouts=out_layouts,
+        donated_invars=donated_invars,
+        ctx_mesh=ctx_mesh,
+        name=name,
+        keep_unused=keep_unused,
+        inline=inline,
+        compiler_options_kvs=compiler_options_kvs,
+        lowering_platforms=lowering_platforms,
+        lowering_parameters=lowering_parameters,
+        pgle_profiler=pgle_profiler,
+    )
+    if jax.__version_info__ < (0, 5, 3):
+        from jax._src.mesh import ResourceEnv
+
+        args = dict(
+            jaxpr=jaxpr,
+            in_shardings=in_shardings,
+            out_shardings=out_shardings,
+            in_layouts=in_layouts,
+            out_layouts=out_layouts,
+            donated_invars=donated_invars,
+            resource_env=ResourceEnv(physical_mesh=ctx_mesh),
+            name=name,
+            keep_unused=keep_unused,
+            inline=inline,
+            compiler_options_kvs=compiler_options_kvs,
+            lowering_platforms=lowering_platforms,
+            lowering_parameters=lowering_parameters,
+            pgle_profiler=pgle_profiler,
+        )
+
+    return _pjit_lower(**args)
+
+
+class LoweringCache:
+    def __init__(self):
+        self._cache = dict[Any, tuple[UID, SerializeableMeshComputation]]()
+
+    def pjit_to_serializeable_mesh_computation(
+        self,
+        closed_jaxpr: jcore.ClosedJaxpr,
+        in_axis_resources: Sequence[MaybeSharding],
+        out_axis_resources: Sequence[MaybeSharding] | UnspecifiedValue = UNSPECIFIED,
+        in_layouts=None,
+        out_layouts=None,
+        name: str = "",
+        mesh: jax.sharding.Mesh | None = None,
+        donate_invars: Sequence[bool] | None = None,
+        compiler_options: Sequence[tuple[str, Any]] | None = None,
+        use_pgle=False,
+    ):
+        kwargs = OrderedDict(
+            closed_jaxpr=closed_jaxpr,
+            in_axis_resources=tuple(in_axis_resources),
+            out_axis_resources=tuple(out_axis_resources),
+            in_layouts=in_layouts,
+            out_layouts=out_layouts,
+            name=name,
+            mesh=mesh,
+            donate_invars=donate_invars,
+            compiler_options=compiler_options,
+            use_pgle=use_pgle,
+        )
+        key = tuple(kwargs.items())
+        if (res := self._cache.get(key)) is None:
+            res = (fresh_scalar_uid(), pjit_to_serializeable_mesh_computation(**kwargs))
+            self._cache[key] = res
+        return res
+
+
 def pjit_to_serializeable_mesh_computation(
     closed_jaxpr: jcore.ClosedJaxpr,
     in_axis_resources: Sequence[MaybeSharding],
@@ -181,7 +247,7 @@ def pjit_to_serializeable_mesh_computation(
     name: str = "",
     mesh: jax.sharding.Mesh | None = None,
     donate_invars: Sequence[bool] | None = None,
-    compiler_options: dict[str, Any] | None = None,
+    compiler_options: Sequence[tuple[str, Any]] | None = None,
     use_pgle=False,
 ) -> SerializeableMeshComputation:
     """
@@ -201,13 +267,13 @@ def pjit_to_serializeable_mesh_computation(
         warnings.filterwarnings(
             "ignore", message="Some donated buffers were not usable.*"
         )
-        lowering = _pjit_lower(
+        lowering = pjit_lower(
             closed_jaxpr,
+            ctx_mesh=mesh,
             in_shardings=tuple(in_axis_resources),
             out_shardings=tuple(out_axis_resources),
             in_layouts=in_layouts or (None,) * len(closed_jaxpr.in_avals),
             out_layouts=out_layouts or (None,) * len(closed_jaxpr.out_avals),
-            resource_env=ResourceEnv(physical_mesh=mesh),
             donated_invars=donate_invars or (False,) * len(closed_jaxpr.in_avals),
             name=name,
             keep_unused=True,
@@ -221,11 +287,4 @@ def pjit_to_serializeable_mesh_computation(
         )
 
     assert isinstance(lowering, pxla.MeshComputation)
-    return SerializeableMeshComputation(
-        lowering,
-        closed_jaxpr.in_avals,
-        closed_jaxpr.out_avals,
-        name,
-        compiler_options,
-        use_pgle,
-    )
+    return SerializeableMeshComputation(lowering, name, compiler_options, use_pgle)

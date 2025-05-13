@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import jaxlib.mlir.ir
 import numpy as np
 import pytest
-from jax import core as jcore
+from jax._src import core as jcore
 from jax._src import sharding_impls
 from jax._src.lib import cuda_versions
 from jax.interpreters.pxla import MeshComputation

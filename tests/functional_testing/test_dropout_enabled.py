@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from functools import partial
 
 import jax
 import jax.lib
@@ -81,31 +82,9 @@ class DropoutEnabledModel(nn.Module):
 
             return loss.mean(), logits
 
-        def compute_grads(params, data):
-            grad_fn = jax.value_and_grad(
-                loss_fn,
-                # * has_aux (bool): Optional, bool. Indicates whether fun returns a
-                #                   pair where the first element is considered the
-                #                   output of the mathematical function to be
-                #                   differentiated and the second element is
-                #                   auxiliary data.
-                #                   Default: False.
-                has_aux=True,
-                # argnums (int | Sequence[int]): Optional, integer or sequence of
-                #                                integers. Specifies which
-                #                                positional argument(s) to
-                #                                differentiate with respect to
-                #                                Default: 0.
-                argnums=0,
-            )
-            (loss, aux), grads = grad_fn(params, data)
-
-            return jaxpp.api.LoopOutput(grads, (loss, aux))
-
-        grads, (loss, _), _, _ = jaxpp.api.accumulate_grads(
-            lambda data: compute_grads(params=state.params, data=data),
-            batch=(inputs, targets),
-            out_shardings=None,
+        (loss, aux), grads = jaxpp.api.treduce(
+            partial(jax.value_and_grad(loss_fn, has_aux=True, argnums=0), state.params),
+            (inputs, targets),
             schedule=jaxpp.schedules.Eager1F1B(num_stages=1),
         )
 
@@ -123,8 +102,10 @@ class FlaxModelExecutionTest(unittest.TestCase):
             pytest.skip()
 
         self._mesh = MpmdMesh(
-            jax.sharding.Mesh(np.array(jax.devices())[:1].reshape(1,1,1), ("stage", "data", "model")),
-            "stage"
+            jax.sharding.Mesh(
+                np.array(jax.devices())[:1].reshape(1, 1, 1), ("stage", "data", "model")
+            ),
+            "stage",
         )
 
         self._root_key = jax.random.key(seed=0)
@@ -149,6 +130,9 @@ class FlaxModelExecutionTest(unittest.TestCase):
                 apply_fn=model.apply, params=params, tx=optax.adam(1e-3)
             )
 
+        train_step = jaxpp.api.mpmd_jit_with_loop(
+            model.train_step, mpmd_mesh=self._mesh
+        )
         for step_id in range(10):
             data_rng = jax.random.fold_in(key=data_key, data=step_id + 1)
             x = jax.random.uniform(key=data_rng, shape=(1, *TENSOR_SHAPE))
@@ -156,9 +140,7 @@ class FlaxModelExecutionTest(unittest.TestCase):
                 key=data_rng, shape=(1, TENSOR_SHAPE[0]), minval=1, maxval=10
             )
 
-            model_state, loss = jaxpp.api.pipelined(
-                model.train_step, mpmd_mesh=self._mesh
-            )(model_state, x, y)
+            model_state, loss = train_step(model_state, x, y)
 
             # Test API is functional - No timing test
             loss.block_until_ready()  # Forced Resync to allow accurate timing

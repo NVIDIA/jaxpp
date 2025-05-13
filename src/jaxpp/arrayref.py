@@ -29,6 +29,15 @@ class ArrayRefSharding:
     sharding: jax.sharding.NamedSharding
 
 
+def mpmd_sharding(
+    mpmd_mesh: MpmdMesh, mesh_ids: set[int], sharding: jax.sharding.NamedSharding
+):
+    jax_mesh = mpmd_mesh.as_mpmd_mesh.mpmd_submesh(sorted(mesh_ids)).jax_mesh
+    return jax.sharding.NamedSharding(
+        jax_mesh, sharding.spec, memory_kind=sharding.memory_kind
+    )
+
+
 # reference to a remote array
 class ArrayRef:
     def __init__(
@@ -73,11 +82,26 @@ class ArrayRef:
     @property
     def _value(self):
         assert not self.deleted, "Unsafe use of deleted buffer"
+        if isinstance(self.mesh, MpmdMesh):
+            if self.mesh.my_mpmd_axis_index in self.mpmd_idxs:
+                return self.mesh.get_tensor(self.mesh.my_mpmd_axis_index, self.uid)
+            else:
+                if (
+                    enable_empty_arrays := getattr(
+                        jax._src.config, "enable_empty_arrays", None
+                    )
+                ) is not None and enable_empty_arrays.value:
+                    sharding = mpmd_sharding(
+                        self.mesh, self.mpmd_idxs, self.sharding.sharding
+                    )
+                    return jax.make_array_from_single_device_arrays(
+                        self.shape, sharding, [], dtype=self.dtype
+                    )
+                else:
+                    return np.array(np.nan, dtype=np.float32)
+
         fut_res = self.mesh.get_tensor(next(iter(self.mpmd_idxs)), self.uid)
         res = self.mesh.blocking_tree([fut_res])[0]
-        # FIXME: this is for MC runtime describing abstract value
-        if res is None:
-            return np.array(None, dtype=np.float32)
         return res
 
     def __format__(self, format_spec):
@@ -89,23 +113,15 @@ class ArrayRef:
 
     @property
     def ndim(self):
-        return len(self.shape)
+        return self.aval.ndim
 
     @property
     def shape(self):
-        return self._value.shape
+        return self.aval.shape
 
     @property
     def dtype(self):
-        return self._value.dtype
-
-    @property
-    def is_replicated(self):
-        return len(self.mpmd_idxs) > 1
-
-    def __array__(self, dtype=None) -> np.ndarray:
-        # Follow the pattern numpy expects: https://numpy.org/doc/stable/reference/generated/numpy.array.html
-        return np.array(self._value).astype(dtype)
+        return self.aval.dtype
 
     def block_until_ready(self):
         # Fetch the value and does nothing. Forces the value to be ready.

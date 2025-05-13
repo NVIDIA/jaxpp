@@ -17,7 +17,6 @@ import abc
 import dataclasses
 import enum
 import itertools as it
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
@@ -139,12 +138,6 @@ class RunOp(Op):
     exec_uid: UID
     _in_uids: list[UID]
     _out_uids: list[UID]
-
-    def __post_init__(self):
-        if len(set(self.in_uids)) != len(self.in_uids):
-            raise AssertionError(
-                f"Duplicate input found {Counter(self.in_uids).most_common(10)}"
-            )
 
     @property
     def in_uids(self) -> list[UID]:

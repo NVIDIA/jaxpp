@@ -74,9 +74,11 @@ class DLDataTypeCode(ctypes.c_uint8):
     kDLOpaquePointer = 3
     kDLBfloat = 4
     kDLComplex = 5
+    kDLBool = 6
 
     def __str__(self):
         return {
+            self.kDLBool: "bool",
             self.kDLInt: "int",
             self.kDLUInt: "uint",
             self.kDLFloat: "float",
@@ -100,7 +102,7 @@ class DLDataType(ctypes.Structure):
         ("lanes", ctypes.c_uint16),
     ]
     TYPE_MAP = {
-        "bool": (DLDataTypeCode.kDLUInt, 1, 1),
+        "bool": (DLDataTypeCode.kDLBool, 8, 1),
         "int8": (DLDataTypeCode.kDLInt, 8, 1),
         "int16": (DLDataTypeCode.kDLInt, 16, 1),
         "int32": (DLDataTypeCode.kDLInt, 32, 1),
@@ -176,6 +178,7 @@ class NcclDataType(ctypes.c_uint8):
     ncclBfloat16 = 9
 
     TYPE_MAP = {
+        "bool": ncclUint8,
         "int8": ncclInt8,
         "uint8": ncclUint8,
         "int32": ncclInt32,

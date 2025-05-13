@@ -13,68 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from collections.abc import Callable
-from functools import partial
-from typing import TypeVar
+from dataclasses import dataclass
+from typing import Protocol, TypeVar
 
 import jax
+import jax._src.core as jcore
 import jax.api_util as jau
-import jax.core as jcore
 import jax.extend.linear_util as lu
 import jax.numpy as jnp
-from jax._src.lax.control_flow.common import _initial_style_jaxpr
+import numpy as np
+from jax._src import dtypes
 from jax.interpreters import ad
 from jax.interpreters import partial_eval as pe
 
 from jaxpp.core import add_jaxpr_parameters, compute_needed, pushout_add_any
 from jaxpp.jax_primitives import dax_pscan_p
-from jaxpp.loop_output import MUBATCH_AXIS, LoopOutput
-from jaxpp.pipelining import PipelineStageContext
+from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import BaseSchedule
 from jaxpp.utils import log_elapsed_time
 
-
-def mapped_aval(path, e, n_mubatches: int):
-    aval: jcore.ShapedArray = jcore.get_aval(e)
-    if aval.shape[MUBATCH_AXIS] != n_mubatches:
-        raise TypeError(
-            f"{jax.tree_util.keystr(path)} Axis 1 should be the same for all "
-            f"arguments: {aval.shape[MUBATCH_AXIS]=} != {n_mubatches}"
-        )
-    return aval.update(
-        shape=(aval.shape[0:MUBATCH_AXIS] + aval.shape[MUBATCH_AXIS + 1 :])
-    )
-
-
-@lu.transformation
-def scan_body_loop_output(batch, mubatch_idx, loop_state: LoopOutput):
-    new_mubatch_idx = mubatch_idx + 1
-    mubatch = jax.tree.map(lambda v: jnp.take(v, mubatch_idx, axis=MUBATCH_AXIS), batch)
-    res: LoopOutput = yield ((mubatch,), {})
-
-    yield (new_mubatch_idx, loop_state.update(mubatch_idx, res))
-
-
-@lu.transformation
-def scan_body(batch, mubatch_idx, carry):
-    new_mubatch_idx = mubatch_idx + 1
-    mubatch = jax.tree.map(lambda v: jnp.take(v, mubatch_idx, axis=MUBATCH_AXIS), batch)
-    res = yield ((carry, mubatch), {})
-    yield (new_mubatch_idx, res)
-
-
-def sharding_with_data(
-    spmd_axis_name: str, path: jax.tree_util.KeyPath, s: jax.sharding.NamedSharding
-):
-    assert isinstance(s, jax.sharding.NamedSharding)
-    used = {n for ns in s.spec for n in (ns if isinstance(ns, tuple) else (ns,))}
-    if spmd_axis_name in used:
-        raise ValueError(
-            f"mesh axis name {spmd_axis_name} cannot appear in "
-            f"out_shardings. Found out_shardings{jax.tree_util.keystr(path)}={s.spec}"
-        )
-    parsed_pspec = s._parsed_pspec.insert_axis_partitions(0, (spmd_axis_name,))
-    return jax.sharding.NamedSharding._from_parsed_pspec(s.mesh, parsed_pspec)
+MUBATCH_AXIS = 1
 
 
 Carry = TypeVar("Carry")
@@ -92,18 +52,18 @@ def pscan(
     pass
 
 
-def pscan_wrapped(fun: lu.WrappedFun, init, xs, length, schedule):
+def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     # NOTE: + 0 needed so that jax doesn't make it a `Literal` argument
     mubatch_idx = jax.lax.zeros_like_array(0) + 0
 
-    flat_args, in_tree = jax.tree_util.tree_flatten((xs, mubatch_idx, init))
+    flat_args, in_tree = jax.tree_util.tree_flatten((mubatch_idx, init))
     flat_scan_body, out_tree = jau.flatten_fun_nokwargs(fun, in_tree)
 
     scan_body_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(
         flat_scan_body, tuple(jcore.get_aval(e) for e in flat_args)
     )
 
-    n_consts = len(consts) + len(jax.tree_util.tree_leaves(xs))
+    n_consts = len(consts)
     flat_args = consts + flat_args
     scan_body_jaxpr = pe.convert_constvars_jaxpr(scan_body_jaxpr)
 
@@ -154,114 +114,202 @@ def pscan_wrapped(fun: lu.WrappedFun, init, xs, length, schedule):
     return jax.tree_util.tree_unflatten(out_tree(), new_out)[1]
 
 
-Batch = TypeVar("Batch")
-SubLoopOutput = TypeVar("SubLoopOutput", bound=LoopOutput)
+class Op(Protocol):
+    def state(self, n: int, a: jax.ShapeDtypeStruct) -> jax.Array: ...
+
+    def update(self, state: jax.Array, update: jax.Array, index: int) -> jax.Array: ...
 
 
-def accumulate_grads(
-    fun: Callable[[Batch], SubLoopOutput],
-    batch: Batch,
-    out_shardings,
-    schedule: BaseSchedule,
-    spmd_axis_name: str = "data",
-) -> SubLoopOutput:
-    """Accumulates gradients and auxiliary outputs over microbatches using a schedule.
+@dataclass(frozen=True)
+class AddT:
+    """Represents an element-wise addition operation."""
 
-    This function automatically handles the boilerplate of iterating over
-    microbatches for gradient accumulation.
-    It first applies `jax.vmap` to the input function `fun`, mapping over the
-    data parallel dimension specified by `spmd_axis_name`.
-    The vmapped function is then applied to each microbatch
-    generated from the full `batch` according to the `schedule`.
+    def state(self, _: int, a: jax.ShapeDtypeStruct) -> jax.Array:
+        return jax.numpy.zeros(a.shape, dtype=a.dtype)
 
-    It functions like `jax.lax.scan` but abstracts the state management. The
-    outputs of `fun` for each microbatch, encapsulated in a `LoopOutput` object,
-    determine how results are accumulated across microbatches (summation,
-    concatenation, max, or keeping the last).
+    def update(self, l: jax.Array, r: jax.Array, _: int) -> jax.Array:
+        return jax.lax.add(l, r)
+
+
+Add = AddT()
+
+
+@dataclass(frozen=True)
+class Concat:
+    """Represents a concatenation operation along a specified axis."""
+
+    axis: int = 0
+
+    def state(self, n: int, a: jax.ShapeDtypeStruct) -> jax.Array:
+        shape = a.shape[: self.axis] + (n,) + a.shape[self.axis :]
+        return jax.numpy.zeros(shape, dtype=a.dtype)
+
+    def update(self, state: jax.Array, update: jax.Array, index: int) -> jax.Array:
+        return jax.lax.dynamic_update_index_in_dim(state, update, index, axis=self.axis)
+
+
+@dataclass(frozen=True)
+class MaxT:
+    """Represents an element-wise maximum operation."""
+
+    def state(self, _: int, a: jax.ShapeDtypeStruct) -> jax.Array:
+        return jax.lax.full(
+            a.shape,
+            (-np.inf if dtypes.supports_inf(a.dtype) else dtypes.finfo(a.dtype).min),
+            dtype=a.dtype,
+        )
+
+    def update(self, l: jax.Array, r: jax.Array, _: int) -> jax.Array:
+        return jax.lax.max(l, r)
+
+
+Max = MaxT()
+
+
+default_op = (Concat(), Add)
+
+
+def treduce(
+    fun: Callable[[X], Y], xs: X, schedule: BaseSchedule, operation=default_op
+) -> Y:
+    """Temporally reduces a sequence of inputs with a pipelined schedule.
+
+    This function behaves like the functional-programming primitive
+    ``reduce`` applied along the leading (time / micro-batch) axis of
+    ``xs``.  At each timestep ``i`` it applies ``fun`` to the slice
+    ``xs[i]`` and combines the resulting values using ``operation``, as shown
+    in the following example::
+
+        def treduce(fun, xs, operation=(Concat(), Add())):
+          # xs has shape (T, ...)
+          state = tree_map(lambda a, op: op.state(len(xs), a),
+                           fun(xs[0]), operation)
+          for i in range(len(xs)):
+            state = tree_map(lambda op, s, v: op.update(s, v, i),
+                             operation, state, fun(xs[i]))
+          return state
+
+    Unlike a vanilla reduce, the execution of the loop body may be
+    interleaved according to ``schedule`` so that different timesteps can
+    overlap on the accelerator.
 
     Args:
-        fun: A function to be applied to each microbatch. It takes a microbatch
-            (without the leading data parallel and microbatch dimensions)
-            as input and must return a `LoopOutput` object. The structure within
-            the `LoopOutput` (pytrees in `sum`, `cat`, `max`, `last`) defines
-            both the values to be accumulated and the accumulation method for each.
-            Example: `LoopOutput(sum=grads, cat=(loss, metrics))`
-        batch: The complete batch of data, expected to have a shape starting with
-            `(dp_size, n_mubatches, ...)`, where `dp_size` is the size of the
-            data parallel dimension. This batch will be divided into
-            microbatches along the second dimension (`n_mubatches`).
-        out_shardings: Specifies the desired JAX sharding for the *finalized*
-            accumulated outputs. This should match the pytree structure of the
-            `LoopOutput` returned by `fun`. The sharding applies to the tensors
-            *after* the data parallel dimension has been processed by `vmap`.
-        schedule: A `BaseSchedule` object (e.g., `Std1F1B`) that defines the
-            microbatching strategy, pipeline stages, and execution order.
-        spmd_axis_name: The name of the axis used for data parallelism. This is
-            passed to the internal `jax.vmap` call that wraps `fun`. Defaults to "data".
+      fun: A function that is applied to a single slice. It
+        receives one element ``xs[i]`` (a PyTree slice with the leading axis
+        removed) and returns a PyTree.
+      xs: A PyTree whose leaf nodes are arrays. All leaf arrays must share
+        the same leading dimension size; this leading dimension is the axis
+        that is reduced over.
+      schedule: A :class:`~jaxpp.schedules.BaseSchedule` specifying how loop
+        iterations should overlap.
+      operation: A PyTree of :class:`~.Op` objects (default: ``default_op``,
+        i.e., ``(Concat(), Add)``) describing how the per-timestep values are
+        aggregated. Each leaf :class:`~.Op` object defines ``state``
+        and ``update`` methods. Convenient predefined ops include:
+
+        - :data:`~.Add`: Element-wise sum.
+        - :data:`~.Max`: Element-wise maximum.
+        - :obj:`~.Concat`\ ``(axis=0)``: Stacks results from each timestep.
+          The ``axis`` parameter specifies the dimension in the output array
+          that corresponds to the reduction timesteps.
 
     Returns:
-        A `LoopOutput` object containing the finalized accumulated values. The
-        pytree structure mirrors the `LoopOutput` returned by `fun`, but the
-        arrays hold the results aggregated across all microbatches according
-        to the specified operations (`sum`, `cat`, `max`, `last`).
+      A PyTree containing the aggregated result, with the same structure as ``Y``.
     """
-    flat_batch = jax.tree_util.tree_leaves(batch)
+    flat_batch = jax.tree_util.tree_leaves(xs)
     first_batch_shape = flat_batch[0].shape
-    if len(first_batch_shape) < 2:
-        raise TypeError(
-            f"Expected batch of shape (dp_size, n_mubatches, ...), {first_batch_shape} "
-            "found"
+    if any(a.shape[0] != first_batch_shape[0] for a in flat_batch):
+        raise AssertionError("Leading dimensions differing among xs")
+
+    @functools.wraps(fun)
+    def wrap(i):
+        e = jax.tree.map(lambda x: x[i], xs)
+        return fun(e)
+
+    return treduce_i(wrap, first_batch_shape[0], schedule=schedule, operation=operation)
+
+
+def treduce_i(
+    fun: Callable[[int], Y], length: int, schedule: BaseSchedule, operation=default_op
+) -> Y:
+    """Lower-level helper for :func:`~.treduce` that takes an explicit ``length``.
+
+    Instead of slicing from a pre-materialised batch this variant invokes
+    ``fun(i)`` directly for each ``0 <= i < length`` and reduces the returned
+    values using ``operation``::
+
+        def treduce_i(fun, length, operation):
+          state = tree_map(lambda a, op: op.state(length, a),
+                           fun(0), operation)
+          for i in range(length):
+            state = tree_map(lambda op, s, v: op.update(s, v, i),
+                             operation, state, fun(i))
+          return state
+
+    Args:
+      fun: Function that receives the micro-batch/timestep index ``i`` (an
+        integer) and returns a PyTree to be reduced.
+      length: The number of timesteps / micro-batches.
+      schedule: A :class:`~jaxpp.schedules.BaseSchedule` determining how
+        iterations may overlap.
+      operation: A PyTree of :class:`~.Op` objects (default: ``default_op``,
+        i.e., ``(Concat(), Add)``) controlling the accumulation. See
+        :func:`~.treduce` for details. Convenient predefined ops include:
+
+        - :data:`~.Add`: Element-wise sum.
+        - :data:`~.Max`: Element-wise maximum.
+        - :obj:`~.Concat`\ ``(axis=0)``: Stacks results from each timestep.
+          The ``axis`` parameter specifies the dimension in the output array
+          that corresponds to the reduction timesteps.
+
+    Returns:
+      A PyTree containing the result of the temporal reduction, with the same
+      structure as ``Y``.
+    """
+    with log_elapsed_time("jaxpr/first_loop_tracing"), yield_scope():
+        body_args = jcore.ShapedArray((), dtype=jnp.int32)
+        vmapped_jaxpr, loop_out_shapes = jax.make_jaxpr(fun, return_shape=True)(
+            body_args
         )
-    dp_size, n_mubatches = first_batch_shape[:2]
 
-    vmapped_fun = jax.vmap(fun, spmd_axis_name=spmd_axis_name)
+    # TODO: maybe use custom definition of `tree_broadcast` and
+    #  improve error message if it cannot be broadcasted
+    from jax._src.custom_transpose import tree_broadcast
 
-    flat_args, in_tree = jax.tree_util.tree_flatten_with_path((batch,))
+    operation = tree_broadcast(jax.tree_util.tree_structure(loop_out_shapes), operation)
 
-    with PipelineStageContext.tracing_scope():
-        with log_elapsed_time("jaxpr/first_loop_tracing"):
-            body_args = tuple(
-                mapped_aval(path, arg, n_mubatches) for path, arg in flat_args
-            )
-            dbg_info = jau.debug_info(
-                accumulate_grads.__name__, vmapped_fun, (body_args,), {}
-            )
-            jaxpr, _, loop_out_tree = _initial_style_jaxpr(
-                vmapped_fun, in_tree, body_args, dbg_info
-            )
+    def state(op: Op, a):
+        return op.state(length, a)
 
-        node_data = loop_out_tree.node_data()
-        if node_data is None:
-            raise ValueError("`loop_out_tree.node_data()` shall not be None")
+    loop_state = jax.tree_util.tree_map(state, operation, loop_out_shapes)
 
-        if not issubclass(node_data[0], LoopOutput):
-            raise TypeError(
-                f"{accumulate_grads.__name__} body expects a {LoopOutput.__qualname__}"
-                "output"
-            )
+    def _fun(mubatch_idx, loop_state):
+        def update(op: Op, state, update):
+            return op.update(state, update, mubatch_idx)
 
-        loop_output: LoopOutput = jax.tree_util.tree_unflatten(
-            loop_out_tree, jaxpr.out_avals
-        )
-        loop_state = loop_output.state(n_mubatches)
-
-        with log_elapsed_time("jaxpr/second_loop_tracing"):
-            PipelineStageContext.reset()  # Reset the stage ID counter to 0
-            loop_output = pscan_wrapped(
-                scan_body_loop_output(lu.wrap_init(vmapped_fun, debug_info=dbg_info)),
+        return (
+            mubatch_idx + 1,
+            jax.tree_util.tree_map(
+                update,
+                operation,
                 loop_state,
-                batch,
-                length=n_mubatches,
-                schedule=schedule,
-            )
+                jax.tree.unflatten(
+                    jax.tree.structure(loop_out_shapes),
+                    jcore.eval_jaxpr(
+                        vmapped_jaxpr.jaxpr,
+                        vmapped_jaxpr.consts,
+                        mubatch_idx,
+                        propagate_source_info=False,
+                    ),
+                ),
+            ),
+        )
 
-    constrained_loop_output = jax.lax.with_sharding_constraint(
-        loop_output,
-        jax.tree.map_with_path(
-            partial(sharding_with_data, spmd_axis_name), out_shardings
-        ),
-    )
+    debug_info = jau.debug_info(treduce_i.__name__, fun, (body_args,), {})
+    wrapped_vmapped_fun = lu.wrap_init(_fun, debug_info=debug_info)
+    with log_elapsed_time("jaxpr/second_loop_tracing"), yield_scope():
+        loop_output = pscan_wrapped(
+            wrapped_vmapped_fun, loop_state, length=length, schedule=schedule
+        )
 
-    loop_output_reduced = constrained_loop_output.finalize()
-
-    return loop_output_reduced
+    return loop_output

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import abc
+import dataclasses
 import itertools as it
 import logging
 import math
@@ -21,6 +23,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from functools import cached_property, partial
 from typing import (
+    Any,
     Concatenate,
     Generic,
     NamedTuple,
@@ -29,20 +32,20 @@ from typing import (
     TypeVar,
     cast,
 )
-from weakref import ref
 
 import jax
-import jax.core as jcore
+import jax._src.core as jcore
 import jax.interpreters.partial_eval as pe
 import jax.util as ju
 import ray
 from jax._src.debugging import inspect_sharding_p
+from jax._src.pjit import _infer_params, _parse_jit_arguments
 from jax._src.util import weakref_lru_cache
 from jax.interpreters.ad import add_jaxvals_p as add_any_p
 
 from jaxpp.arrayref import ArrayRef, ArrayRefSharding
 from jaxpp.compilation import (
-    CompileThunk,
+    LoweringCache,
     SerializeableMeshComputation,
     pjit_to_serializeable_mesh_computation,
 )
@@ -53,7 +56,6 @@ from jaxpp.jax_primitives import (
     add_multi_p,
     all_reduce_p,
     dax_pscan_p,
-    jit_infer_params,
     pipeline_yield_p,
     recv_p,
     send_p,
@@ -67,6 +69,7 @@ from jaxpp.jaxpr_utils import (
     schedule_dependencies,
     substitute,
 )
+from jaxpp.licm import hoist_and_cse_pscan_invariant_equations
 from jaxpp.mesh import MpmdMesh, RemoteMpmdMesh
 from jaxpp.ops import (
     UID,
@@ -80,6 +83,7 @@ from jaxpp.ops import (
     add_delete_ops,
     get_comm_keys,
 )
+from jaxpp.pipelining import yield_scope
 from jaxpp.types import (
     Bind,
     DistributedSharding,
@@ -92,7 +96,7 @@ from jaxpp.types import (
     UniqueSortedSequence,
     fresh_scalar_uid,
 )
-from jaxpp.utils import CtxVar, RichDict, groupby, hbytes, log_elapsed_time
+from jaxpp.utils import BoolCtxVar, RichDict, groupby, hbytes, log_elapsed_time
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +208,17 @@ SubTrace = TypeVar("SubTrace", bound=jcore.Trace)
 
 class AllReduceRewriteTrace(jcore.Trace, Generic[SubTrace]):
     def __init__(self, parent_trace: SubTrace):
+        super().__init__()
         self.parent_trace = parent_trace
+
+    def new_arg(self, aval, mpmd_defs):
+        if jax.__version_info__ > (0, 6, 0):
+            from jax._src import source_info_util
+
+            val = self.parent_trace.new_arg(aval, source_info_util.current())
+        else:
+            val = self.parent_trace.new_arg(aval)
+        return AllReduceRewriteTracer(self, val, mpmd_defs)
 
     def call_parent(self, primitive, tracers, params, *, placement=None):
         parent_tracers = [
@@ -303,14 +317,12 @@ def propagate_and_rewrite_adds(
     """
     mpmd_trace = AllReduceRewriteTrace(pe.DynamicJaxprTrace(jaxpr.debug_info))
     in_tracers = [
-        AllReduceRewriteTracer(
-            mpmd_trace, mpmd_trace.parent_trace.new_arg(invar.aval), mpmd_defs
-        )
+        mpmd_trace.new_arg(invar.aval, mpmd_defs)
         for invar, mpmd_defs in zip(jaxpr.invars, invar_mpmd_defs, strict=True)
     ]
 
     with jcore.set_current_trace(mpmd_trace):
-        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers)
+        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers, propagate_source_info=False)
 
     # TODO: handle literals in `res`
     jaxpr, consts, _ = mpmd_trace.parent_trace.to_jaxpr(
@@ -488,6 +500,11 @@ def pushout_add_any(loop_body: jcore.Jaxpr) -> jcore.Jaxpr:
     return loop_body.replace(eqns=res)
 
 
+def paranoid_assert(cond: bool, msg: str | None = None):
+    if not cond:
+        raise AssertionError(msg)
+
+
 def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
     """
     Given the following Jaxpr
@@ -520,58 +537,85 @@ def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
     """
     gensym = jcore.gensym("_licm")
     defs, refs = ivar_defs_and_refs(loop_body)
+    invar_indices = {invar: idx for idx, invar in enumerate(loop_body.invars)}
 
     replicated_loop_body_invars = defaultdict[int, list[jcore.Var]](list)
     replicated_loop_body_outvars = dict[int, tuple[jcore.JaxprEqn, list[jcore.Var]]]()
     replace_eqns = dict[int, list[jcore.JaxprEqn]]()
 
     for outvar_idx, outvar in enumerate(loop_body.outvars):
-        if isinstance(outvar, jcore.Var) and (add_eqn_idx := defs[outvar]):
-            add_eqn = loop_body.eqns[add_eqn_idx]
-            if add_eqn.primitive is jax.lax.add_p:
-                [linvar, rinvar] = add_eqn.invars
-                loop_body_invar, grad = (
-                    (linvar, rinvar) if defs[linvar] is None else (rinvar, linvar)
+        if not isinstance(outvar, jcore.Var):
+            # outvar is jcore.Literal
+            continue
+        if (add_eqn_idx := defs[outvar]) is None:
+            # outvar is not defined in the loop body
+            # FIXME: use `pe._jaxpr_forwarding` in an early pass to remove
+            # these variables as done in https://github.com/jax-ml/jax/blob/a04b5ecfcdd6a15cf412844d49114c609ae72f50/jax/_src/lax/control_flow/conditionals.py#L154-L158
+            raise ValueError("Passthrough output variable found")
+
+        add_eqn = loop_body.eqns[add_eqn_idx]
+
+        if add_eqn.primitive is not jax.lax.add_p:
+            continue
+
+        [linvar, rinvar] = add_eqn.invars
+        if not isinstance(linvar, jcore.Var) or not isinstance(rinvar, jcore.Var):
+            continue
+
+        loop_body_invar, grad = (
+            (linvar, rinvar) if defs[linvar] is None else (rinvar, linvar)
+        )
+
+        if (
+            invar_idx := invar_indices.get(loop_body_invar)
+        ) is None or invar_idx < body_nconsts:
+            # This is not a loop variable or is a loop constant
+            continue
+
+        if (add_any_eqn_idx := defs.get(grad)) is None:
+            # Gradient is not produced in the loop body
+            # FIXME: maybe raise an error?
+            continue
+
+        if (
+            add_any_eqn := cast(jcore.JaxprEqn, loop_body.eqns[add_any_eqn_idx])
+        ) and add_any_eqn.primitive is not add_any_p:
+            continue
+
+        use_eqn_idxs = refs[add_any_eqn.outvars[0]]
+        paranoid_assert(
+            len(use_eqn_idxs) >= 1,
+            "refs is inconsistent with defs. "
+            "While walking up the def chain, `add_any_eqn` is not present in refs",
+        )
+
+        if len(use_eqn_idxs) > 1:
+            # TODO: maybe handle the case when multiple uses of the gradients
+            # are present. This should be impossible/uncommon (higher-order gradients (?)).
+            continue
+
+        paranoid_assert(use_eqn_idxs[0] == add_eqn_idx)
+        assert outvar_idx == invar_idx - body_nconsts
+
+        replicated_ga_eqns = []
+        for cross_worker_invar in add_any_eqn.invars:
+            in_replica = gensym(cross_worker_invar.aval)
+            out_replica = gensym(cross_worker_invar.aval)
+            replicated_loop_body_invars[invar_idx].append(in_replica)
+
+            if outvar_idx not in replicated_loop_body_outvars:
+                replicated_loop_body_outvars[outvar_idx] = (add_any_eqn, [])
+            replicated_loop_body_outvars[outvar_idx][1].append(out_replica)
+
+            replicated_ga_eqns.append(
+                add_eqn.replace(
+                    invars=[in_replica, cross_worker_invar],
+                    outvars=[out_replica],
                 )
-                if (
-                    defs[loop_body_invar] is None
-                    and (add_any_eqn_idx := defs[grad])
-                    and (
-                        add_any_eqn := cast(
-                            jcore.JaxprEqn, loop_body.eqns[add_any_eqn_idx]
-                        )
-                    )
-                    and add_any_eqn.primitive is add_any_p
-                    # Verifying the to-be-deleted reference is not being used elsewhere.
-                    and len(refs[add_any_eqn.outvars[0]]) == 1
-                    and refs[add_any_eqn.outvars[0]] == [add_eqn_idx]
-                    and (
-                        (invar_idx := loop_body.invars.index(loop_body_invar))
-                        >= body_nconsts
-                    )
-                    # TODO: maybe add separate workers condition? (not necessary for correctness)
-                ):
-                    assert outvar_idx == invar_idx - body_nconsts
+            )
 
-                    replicated_ga_eqns = []
-                    for cross_worker_invar in add_any_eqn.invars:
-                        in_replica = gensym(cross_worker_invar.aval)
-                        out_replica = gensym(cross_worker_invar.aval)
-                        replicated_loop_body_invars[invar_idx].append(in_replica)
-
-                        if outvar_idx not in replicated_loop_body_outvars:
-                            replicated_loop_body_outvars[outvar_idx] = (add_any_eqn, [])
-                        replicated_loop_body_outvars[outvar_idx][1].append(out_replica)
-
-                        replicated_ga_eqns.append(
-                            add_eqn.replace(
-                                invars=[in_replica, cross_worker_invar],
-                                outvars=[out_replica],
-                            )
-                        )
-
-                    replace_eqns[add_eqn_idx] = replicated_ga_eqns
-                    replace_eqns[add_any_eqn_idx] = []
+        replace_eqns[add_eqn_idx] = replicated_ga_eqns
+        replace_eqns[add_any_eqn_idx] = []
 
     return replicated_loop_body_invars, replicated_loop_body_outvars, replace_eqns
 
@@ -612,19 +656,22 @@ def make_task_eqn(
     eqns: list[jcore.JaxprEqn],
     mpmd_idx: int,
     task_name: str,
+    out_sharding_store=None,
 ) -> jcore.JaxprEqn:
     source_infos = [None] * len(outvars)
-    outvar_idx = {o: idx for idx, o in enumerate(outvars)}
+    outvar_idx = {o: idx for idx, o in enumerate(outvars) if isinstance(o, jcore.Var)}
     for eqn in eqns:
         for o in eqn.outvars:
             if (idx := outvar_idx.get(o)) is not None:
                 source_infos[idx] = eqn
 
     in_sharding_store, inspect_invars = ShardingStore.collect_jaxpr(invars)
-    out_sharding_store, inspect_outvars = ShardingStore.collect_jaxpr(
-        outvars, _provenance_info=task_name, _source_info=source_infos
-    )
-
+    if out_sharding_store is None:
+        out_sharding_store, inspect_outvars = ShardingStore.collect_jaxpr(
+            outvars, _provenance_info=task_name, _source_info=source_infos
+        )
+    else:
+        inspect_outvars = []
     eqns = inspect_invars + eqns + inspect_outvars
     effects = jcore.join_effects(*(eqn.effects for eqn in eqns))
     task_jaxpr = jcore.Jaxpr(
@@ -637,7 +684,7 @@ def make_task_eqn(
         outvars,
         task_p,
         {
-            "call_jaxpr": task_jaxpr,
+            "call_jaxpr": jcore.ClosedJaxpr(task_jaxpr, ()),
             "task_name": task_name,
             "mpmd_idx": mpmd_idx,
             "in_shardings": in_sharding_store,
@@ -793,22 +840,13 @@ def infer_cluster_idx_for_eqns(
 def cluster_by_yield_eqns(
     eqns: list[jcore.JaxprEqn], mpmd_dim: int
 ) -> tuple[list[Cluster], list[jcore.JaxprEqn]]:
-    idx_update, *eqns = eqns
-    if not (
-        idx_update.primitive is jax.lax.add_p
-        and isinstance(r := idx_update.invars[1], jcore.Literal)
-        and r.val == 1
-    ):
-        raise AssertionError("First equation in loop body is not an index update")
-
     pp_eqn_idx = first_pipeline_yield_eqn_idx(eqns)
     if pp_eqn_idx is None:
         # FIXME: is defaulting to MpmdIdx(0) ok?
-        return [Cluster(MpmdIdx(0), TaskType.FWD, [idx_update, *eqns], stage_id=0)], []
+        return [Cluster(MpmdIdx(0), TaskType.FWD, eqns, stage_id=0)], []
 
     stage_0, eqns = schedule_dependencies(eqns, pp_eqn_idx)
     curr_enter_eqn = stage_0.pop()
-    stage_0 = [idx_update, *stage_0]
     stages: list[Cluster] = [
         Cluster(
             get_mpmd_idx(curr_enter_eqn.params["from_stage_id"], mpmd_dim),
@@ -851,7 +889,7 @@ def cluster_eqns(
 ) -> tuple[list[Cluster], list[jcore.JaxprEqn]]:
     bias = bias or {}
     clusters, rest = cluster_by_yield_eqns(eqns, mpmd_dim)
-    eqns_cluster_idxs = infer_cluster_idx_for_eqns(clusters, rest)
+    eqns_cluster_idxs = infer_cluster_idx_for_eqns(clusters, rest, bias)
     unclustered_eqns = list[jcore.JaxprEqn]()
     for cluster_idx, eqn in zip(eqns_cluster_idxs, rest, strict=True):
         if cluster_idx is not None:
@@ -862,9 +900,9 @@ def cluster_eqns(
 
 
 def clusters_to_tasks(
-    clusters: list[Cluster], outvars: Iterable[jcore.Var]
+    clusters: list[Cluster], outvars: Iterable[jcore.Atom]
 ) -> list[jcore.JaxprEqn]:
-    undef = set[jcore.Var](outvars)
+    undef = set[jcore.Var](nonlit(outvars))
     rev_stage_eqns = []
     for mpmd_idx, ty, stage_eqns, maybe_stage_id in reversed(clusters):
         assert maybe_stage_id is not None
@@ -873,7 +911,11 @@ def clusters_to_tasks(
             logger.warning(f"Empty stage {task_name}")
         free, defs = eqns_free_vars(stage_eqns)
         stage_eqn = make_task_eqn(
-            sorted(free), sorted(defs & undef), stage_eqns, mpmd_idx, task_name
+            sorted(free, key=lambda v: v.count),
+            sorted(defs & undef, key=lambda v: v.count),
+            stage_eqns,
+            mpmd_idx,
+            task_name,
         )
         rev_stage_eqns.append(stage_eqn)
         undef.difference_update(defs)
@@ -885,36 +927,61 @@ def clusters_to_tasks(
     return list(reversed(rev_stage_eqns))
 
 
+def cluster_jaxpr(
+    jaxpr: jcore.Jaxpr,
+    target_num_stages: int,
+    mpmd_dim: int,
+    bias: list[set[MpmdIdx] | None] | None = None,
+    is_loop: bool = True,
+):
+    bias_map = None
+    if bias is not None:
+        bias_map = {
+            invar: p
+            for invar, p in zip(jaxpr.invars, bias, strict=True)
+            if p is not None
+        }
+    clusters, unclustered_eqns = cluster_eqns(jaxpr.eqns, mpmd_dim, bias_map)
+    if is_loop and len(unclustered_eqns) != 0:
+        raise AssertionError()
+    else:
+        clusters[-1].eqns.extend(unclustered_eqns)
+    del unclustered_eqns
+
+    if is_loop:
+        inferred_num_stages, rem = divmod(len(clusters) + 1, 2)
+        if rem != 0:
+            raise AssertionError(
+                f"Expected even number of stages, {len(clusters) + 1} found"
+            )
+
+    if target_num_stages is not None:
+        if inferred_num_stages != target_num_stages:
+            raise AssertionError(
+                f"Unexpected number of pipeline markers: found {inferred_num_stages} "
+                f"expected {target_num_stages}"
+            )
+    else:
+        logger.info(f"Inferred {len(clusters)}")
+
+    clustered_jaxpr = jaxpr.replace(eqns=clusters_to_tasks(clusters, jaxpr.outvars))
+    return clustered_jaxpr
+
+
 def wrap_into_tasks_inside_loop(
     loop_eqn: jcore.JaxprEqn,
     mpmd_dim: int,
-    bias: dict[jcore.Var, set[MpmdIdx]] | None = None,
+    bias: list[set[MpmdIdx] | None] | None = None,
 ) -> jcore.JaxprEqn:
-    bias = bias or {}
     jaxpr: jcore.Jaxpr = loop_eqn.params["jaxpr"].jaxpr
     # TODO: let bind literals
     assert len(jaxpr.outvars) == len(
         set(jaxpr.outvars)
     ), "Literal outvars (hash error) or duplicate outvars not supported"
 
-    clusters, unclustered_eqns = cluster_eqns(jaxpr.eqns, mpmd_dim, bias)
-    assert len(unclustered_eqns) == 0
-    del unclustered_eqns
-
-    target_num_stages = loop_eqn.params["schedule"].num_stages
-    inferred_num_stages, rem = divmod(len(clusters) + 1, 2)
-    if rem != 0:
-        raise AssertionError(
-            f"Expected even number of stages, {len(clusters) + 1} found"
-        )
-
-    if inferred_num_stages != target_num_stages:
-        raise AssertionError(
-            f"Unexpected number of pipeline markers: found {inferred_num_stages} "
-            f"expected {target_num_stages}"
-        )
-
-    clustered_jaxpr = jaxpr.replace(eqns=clusters_to_tasks(clusters, jaxpr.outvars))
+    clustered_jaxpr = cluster_jaxpr(
+        jaxpr, loop_eqn.params["schedule"].num_stages, mpmd_dim, bias
+    )
 
     # Infer where loop inputs are used (refs) and where loop outputs
     # are defined (defs)
@@ -971,40 +1038,41 @@ def strip_inspect_sharding_eqns(jaxpr: jcore.Jaxpr) -> jcore.Jaxpr:
     return jaxpr.replace(eqns=new_eqns, effects=new_effects)
 
 
-class DistributedFunction:
+JLayout = Any
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class InInfo:
+    in_used: Sequence[bool]
+    in_donated: Sequence[bool]
+    in_tree: jax.tree_util.PyTreeDef
+    out_tree: jax.tree_util.PyTreeDef
+    in_avals: Sequence[jcore.AbstractValue]
+    out_avals: Sequence[jcore.AbstractValue]
+    in_shardings: Sequence[jax.sharding.NamedSharding]
+    out_shardings: Sequence[jax.sharding.NamedSharding]
+    in_layouts: Sequence[JLayout]
+    out_layouts: Sequence[JLayout]
+    in_mpmd_defs: Sequence[set[MpmdIdx]]
+    out_mpmd_defs: Sequence[set[MpmdIdx]]
+
+
+class MpmdFunction:
     def __init__(
         self,
         consts: Sequence[jax.Array],
-        in_tree,
-        out_tree,
-        in_avals: Sequence[jcore.AbstractValue],
-        out_avals: Sequence[jcore.AbstractValue],
-        in_shardings: Sequence[jax.sharding.NamedSharding],
-        out_shardings: Sequence[jax.sharding.NamedSharding],
-        in_mpmd_idxs: Sequence[set[int]],
-        out_mpmd_idxs: Sequence[set[int]],
+        in_info: InInfo,
         in_uids: Sequence[UID],
         out_uids: Sequence[UID],
-        donated_invars: Sequence[bool],
-        used_invars: list[bool],
-        worker_mesh: RemoteMpmdMesh,
+        worker_mesh: RemoteMpmdMesh | MpmdMesh,
         instructions_by_worker: list[list[Op]],
         passthrough_outvars: list[int | None],
     ):
         self.consts = tuple(consts)
-        self.in_tree = in_tree
-        self.out_tree = out_tree
-        self.in_avals = in_avals
-        self.out_avals = out_avals
-        self._in_shardings = in_shardings
-        self.out_shardings = out_shardings
-        self.in_mpmd_idxs = in_mpmd_idxs
-        self.out_mpmd_idxs = out_mpmd_idxs
+        self.in_info = in_info
         self.in_uids = in_uids
         self.out_uids = out_uids
 
-        self.donated_invars = donated_invars
-        self.used_invars = used_invars
         self.worker_mesh = worker_mesh
         self.instructions_by_worker = instructions_by_worker
         self.comm_keys = get_comm_keys(self.instructions_by_worker)
@@ -1020,11 +1088,13 @@ class DistributedFunction:
     @cached_property
     def in_shardings(self):
         res = jax.tree_util.tree_unflatten(
-            self.in_tree,
+            self.in_info.in_tree,
             [
                 DistributedSharding(mpmd_idxs, sharding)
                 for mpmd_idxs, sharding in zip(
-                    self.in_mpmd_idxs, self._in_shardings, strict=True
+                    self.in_info.in_mpmd_defs,
+                    self.in_info.in_shardings,
+                    strict=True,
                 )
             ][len(self.consts) :],
         )
@@ -1036,15 +1106,15 @@ class DistributedFunction:
             self.comm_established = True
 
         flat_args_w_path, in_tree = jax.tree_util.tree_flatten_with_path(args)
-        assert in_tree == self.in_tree
+        assert in_tree == self.in_info.in_tree
 
         local_indices = list[int]()
         # TODO `deletions` below seems unnecessary? deletion computation already covers donations
         deletions = defaultdict[int, list[UID]](list)
         for (idx, (path, a)), used, donated in ju.safe_zip(
             enumerate(it.chain(zip(it.repeat(None), self.consts), flat_args_w_path)),
-            self.used_invars,
-            self.donated_invars,
+            self.in_info.in_used,
+            self.in_info.in_donated,
         ):
             if used:
                 if not isinstance(a, ArrayRef):
@@ -1060,20 +1130,20 @@ class DistributedFunction:
                         for mpmd_idx in a.mpmd_idxs:
                             deletions[mpmd_idx].append(a.uid)
 
-        _, flat_args = ju.unzip2(flat_args_w_path)
+        arg_names, flat_args = ju.unzip2(flat_args_w_path)
         flat_args = list(self.consts + flat_args)
 
         put_args = list[PutArg]()
         for in_idx in local_indices:
             uid = fresh_scalar_uid()
-            mpmd_idxs = self.in_mpmd_idxs[in_idx]
-            sharding = self._in_shardings[in_idx]
+            mpmd_idxs = self.in_info.in_mpmd_defs[in_idx]
+            sharding = self.in_info.in_shardings[in_idx]
             val = flat_args[in_idx]
             flat_args[in_idx] = ArrayRef(
                 ArrayRefSharding(mpmd_idxs, sharding),
                 uid,
                 self.worker_mesh,
-                self.in_avals[in_idx],
+                self.in_info.in_avals[in_idx],
             )
             put_args.append(
                 PutArg(
@@ -1091,30 +1161,37 @@ class DistributedFunction:
             if passthrough_idx is not None
             else ArrayRef(
                 ArrayRefSharding(
-                    self.out_mpmd_idxs[out_idx], self.out_shardings[out_idx]
+                    self.in_info.out_mpmd_defs[out_idx],
+                    self.in_info.out_shardings[out_idx],
                 ),
                 fresh_scalar_uid(),
                 self.worker_mesh,
-                self.out_avals[out_idx],
+                self.in_info.out_avals[out_idx],
             )
             for out_idx, passthrough_idx in enumerate(self.passthrough_outvars)
         ]
 
         for mpmd_idx in range(self.worker_mesh.mpmd_dim):
             mpmd_in_binding = []
-            for arg_array_ref, in_mpmd_idxs, in_uid, used in zip(
-                flat_args,
-                self.in_mpmd_idxs,
-                self.in_uids,
-                self.used_invars,
-                strict=True,
-            ):
-                if used and mpmd_idx in in_mpmd_idxs:
-                    mpmd_in_binding.append(Bind(from_=arg_array_ref.uid, to_=in_uid))
+            for arg_idx, arg_array_ref in enumerate(flat_args):
+                if self.in_info.in_used[arg_idx] and mpmd_idx in (
+                    in_mpmd_idxs := self.in_info.in_mpmd_defs[arg_idx]
+                ):
+                    if mpmd_idx not in arg_array_ref.mpmd_idxs:
+                        kstr = jax.tree_util.keystr(
+                            arg_names[arg_idx - len(self.consts)]
+                        )
+                        raise AssertionError(
+                            f"Array passed as `args{kstr}` required in {in_mpmd_idxs} "
+                            f"but present only in {arg_array_ref.mpmd_idxs}"
+                        )
+                    mpmd_in_binding.append(
+                        Bind(from_=arg_array_ref.uid, to_=self.in_uids[arg_idx])
+                    )
 
             mpmd_out_binding = []
             for out_mpmd_idxs, out_uid, res_array_ref in zip(
-                self.out_mpmd_idxs, self.out_uids, results, strict=True
+                self.in_info.out_mpmd_defs, self.out_uids, results, strict=True
             ):
                 if mpmd_idx in out_mpmd_idxs:
                     mpmd_out_binding.append(Bind(from_=out_uid, to_=res_array_ref.uid))
@@ -1127,7 +1204,7 @@ class DistributedFunction:
                 deletions[mpmd_idx],
             )
 
-        return jax.tree_util.tree_unflatten(self.out_tree, results)
+        return jax.tree_util.tree_unflatten(self.in_info.out_tree, results)
 
 
 def last_used(jaxpr: jcore.Jaxpr) -> dict[jcore.Var, int | None]:
@@ -1151,6 +1228,7 @@ def compute_send_and_recv(
     n_consts: int,
     mpmd_def: dict[jcore.Var, set[int]],
     mpmd_refs: dict[jcore.Var, set[int]],
+    is_loop: bool = True,
 ) -> PscanJaxpr:
     """
     Computes the send and receive operations for a given `loop_jaxpr`.
@@ -1171,7 +1249,6 @@ def compute_send_and_recv(
     for constvar in loop_jaxpr.invars[:n_consts]:
         assert mpmd_refs[constvar].issubset(mpmd_def[constvar])
 
-    loop_constvars = set(loop_jaxpr.invars[:n_consts])
     loop_jaxpr_outvars_idx = {outvar: i for i, outvar in enumerate(loop_jaxpr.outvars)}
     received_by_mpmd_idx = defaultdict[int, set[jcore.Var]](set)
 
@@ -1180,29 +1257,29 @@ def compute_send_and_recv(
     for eqn_idx, eqn in enumerate(loop_jaxpr.eqns):
         # Compute recvs
         eqn_mpmd_idx = get_task_mpmd_idx(eqn)
-        recv_invars = list[tuple[int, int]]()
+        recv_invars = list[tuple[int, MpmdIdx]]()
         for invar_idx, invar in enumerate(eqn.invars):
-            # constvars are already placed correctly (no need to receive them)
-            #  as checked above
-            if invar not in loop_constvars:
-                if (
-                    eqn_mpmd_idx not in (def_mpmd_idxs := mpmd_def[invar])
-                    # The condition below ensures that if an invar is used twice
-                    # by an mpmd_idx in different stages, we receive it only once
-                    and invar
-                    not in (already_received := received_by_mpmd_idx[eqn_mpmd_idx])
-                ):
-                    # NOTE: this asserts that `def_mpmd_idxs` is a singleton set
-                    (def_mpmd_idx,) = def_mpmd_idxs
-                    recv_invars.append((invar_idx, def_mpmd_idx))
-                    already_received.add(invar)
+            if (
+                eqn_mpmd_idx not in (def_mpmd_idxs := mpmd_def[invar])
+                # The condition below ensures that if an invar is used twice
+                # by an mpmd_idx in different stages, we receive it only once
+                and invar
+                not in (already_received := received_by_mpmd_idx[eqn_mpmd_idx])
+            ):
+                # NOTE: this asserts that `def_mpmd_idxs` is a singleton set
+                (def_mpmd_idx,) = def_mpmd_idxs
+                recv_invars.append((invar_idx, def_mpmd_idx))
+                already_received.add(invar)
 
         # Compute sends
-        send_outvars = list[tuple[int, list[int]]]()
+        send_outvars = list[tuple[int, list[MpmdIdx]]]()
         for outvar_idx, outvar in enumerate(eqn.outvars):
             backedge_refs = set()
             # If this is a loop output
-            if (loop_outvar_idx := loop_jaxpr_outvars_idx.get(outvar)) is not None:
+            if (
+                is_loop
+                and (loop_outvar_idx := loop_jaxpr_outvars_idx.get(outvar)) is not None
+            ):
                 # Then it must be also a loop input
                 loop_invar = loop_jaxpr.invars[n_consts + loop_outvar_idx]
 
@@ -1237,7 +1314,7 @@ def compute_send_and_recv(
     return loop_jaxpr.replace(eqns=new_eqns)
 
 
-def compute_loop_placement(loop_jaxpr: PscanJaxpr, n_consts: int):
+def compute_loop_placement(loop_jaxpr: PscanJaxpr, n_consts: int, is_loop: bool = True):
     mpmd_def, mpmd_refs = (
         # For `mpmd_def`, the value is a singleton set for all cases
         #  except when it is a constant invar. Only constants can be replicated.
@@ -1252,28 +1329,34 @@ def compute_loop_placement(loop_jaxpr: PscanJaxpr, n_consts: int):
         for outvar in eqn.outvars:
             mpmd_def[outvar] = {eqn_mpmd_idx}
 
-    for invar, outvar in ju.safe_zip(
-        loop_jaxpr.invars[n_consts:],
-        loop_jaxpr.outvars,
-    ):
-        # State invars are defined where their corresponding
-        #  outvars are defined
-        mpmd_def[invar] = mpmd_def[outvar]
+    if is_loop:
+        for invar, outvar in ju.safe_zip(
+            loop_jaxpr.invars[n_consts:],
+            loop_jaxpr.outvars,
+        ):
+            # State invars are defined where their corresponding
+            #  outvars are defined
+            mpmd_def[invar] = mpmd_def[outvar]
 
-        # Check that the mpmd_index that produces an outvar
-        #  is a subset of the ones that refer to it.
-        # Note that, although `mpmd_def[outvar]` is a set, only one
-        #  mpmd_idx produces an outvar since we don't allow replicated
-        #  computation in the loop
-        (mpmd_idx,) = mpmd_def[outvar]
-        if len(mpmd_refs[invar]) > 0 and mpmd_idx not in mpmd_refs[invar]:
-            raise AssertionError("Loop state is not stable across iterations")
+            # Check that the mpmd_index that produces an outvar
+            #  is a subset of the ones that refer to it.
+            # Note that, although `mpmd_def[outvar]` is a set, only one
+            #  mpmd_idx produces an outvar since we don't allow replicated
+            #  computation in the loop
+            (mpmd_idx,) = mpmd_def[outvar]
+            if len(mpmd_refs[invar]) > 0 and mpmd_idx not in mpmd_refs[invar]:
+                raise AssertionError("Loop state is not stable across iterations")
 
-    # Loop constants must be defined where they are referred
-    for invar in loop_jaxpr.invars[:n_consts]:
-        mpmd_def[invar] = mpmd_refs[invar]
+        # Loop constants must be defined where they are referred
+        for invar in loop_jaxpr.invars[:n_consts]:
+            mpmd_def[invar] = mpmd_refs[invar]
+    else:
+        for invar in loop_jaxpr.invars:
+            mpmd_def[invar] = mpmd_refs[invar]
 
-    loop_jaxpr = compute_send_and_recv(loop_jaxpr, n_consts, mpmd_def, mpmd_refs)
+    loop_jaxpr = compute_send_and_recv(
+        loop_jaxpr, n_consts, mpmd_def, mpmd_refs, is_loop=is_loop
+    )
 
     loop_invar_mpmd_refs = [mpmd_refs[invar] for invar in loop_jaxpr.invars]
     loop_outvar_mpmd_def = [mpmd_def[outvar] for outvar in loop_jaxpr.outvars]
@@ -1291,7 +1374,10 @@ def make_replicated_jaxpr(
     for mpmd_idx in mpmd_indices:
         dced_jaxpr, used_inputs = pe.dce_jaxpr(
             jaxpr,
-            used_outputs=[mpmd_idx in place for place in outvar_mpmd_refs],
+            used_outputs=[
+                isinstance(outvar, jcore.Var) and mpmd_idx in place
+                for outvar, place in zip(jaxpr.outvars, outvar_mpmd_refs, strict=True)
+            ],
         )
         res.append(dced_jaxpr)
         for invar_idx, used in enumerate(used_inputs):
@@ -1307,12 +1393,13 @@ def make_replicated_jaxpr(
 
 def infer_outvar_placement_rev(
     jaxpr: jcore.Jaxpr, partial_outvar_placement: Iterable[set[MpmdIdx] | None]
-) -> tuple[list[set[MpmdIdx]], list[set[MpmdIdx]]]:
+) -> tuple[list[set[MpmdIdx]], list[set[MpmdIdx] | None]]:
+    partial_outvar_placement = tuple(partial_outvar_placement)
     outvars = cast(list[jcore.Var], jaxpr.outvars)
     placement = {
         outvar: maybe_p
         for outvar, maybe_p in ju.safe_zip(outvars, partial_outvar_placement)
-        if maybe_p is not None
+        if isinstance(outvar, jcore.Var) and maybe_p is not None
     }
 
     # Infer from outvars to invars
@@ -1333,8 +1420,11 @@ def infer_outvar_placement_rev(
             for outvar in eqn.outvars:
                 placement[outvar] = placement.get(outvar, set()) | eqn_p
 
-    return [placement[invar] for invar in jaxpr.invars], [
-        placement[outvar] for outvar in outvars
+    return [placement.get(invar) for invar in jaxpr.invars], [
+        placement.get(outvar)
+        if isinstance(outvar, jcore.Var)
+        else partial_outvar_placement[outvar_idx]
+        for outvar_idx, outvar in enumerate(outvars)
     ]
 
 
@@ -1348,8 +1438,7 @@ def get_one_loop_eqn_idx(
     loop_eqn_idxs = [idx for idx, e in enumerate(eqns) if e.primitive is dax_pscan_p]
     if len(loop_eqn_idxs) != 1:
         raise AssertionError(
-            "Expected 1 `accumulate_grads` loop at the top level "
-            f"but {len(loop_eqn_idxs)} found."
+            "Expected 1 loop at the top level but {len(loop_eqn_idxs)} found."
         )
     return loop_eqn_idxs[0]
 
@@ -1394,11 +1483,7 @@ def wrap_into_tasks_before_loop(
     jaxpr: jcore.Jaxpr,
     partial_mpmd_refs: Mapping[jcore.Var, set[MpmdIdx] | None],
     mpmd_dim: int,
-) -> tuple[
-    list[jcore.JaxprEqn],
-    dict[jcore.Var, set[MpmdIdx] | None],
-    dict[jcore.Var, set[MpmdIdx]],
-]:
+) -> tuple[jcore.Jaxpr, dict[jcore.Var, set[MpmdIdx] | None], list[set[MpmdIdx]]]:
     """
     NOTE: for tasks before and after the loop, the same outvar (object reference)
     can be "defined" by multiple tasks.
@@ -1422,68 +1507,81 @@ def wrap_into_tasks_before_loop(
     maybe_before_loop_outvar_placement = [
         partial_mpmd_refs.get(outvar) for outvar in before_loop_jaxpr.outvars
     ]
-
-    # NOTE: this inference can widen (replicate) before_loop equations too
-    #  much. This is checked below when we check the `before_loop_invar_mpmd_refs`
-    #  against the `mpmd_def`.
-    #  That check ensures that loop placements have higher priority
-    #  and if the before_loop equations replication breaks such placements
-    #  an error is raised
-    _, before_loop_outvar_mpmd_defs = infer_outvar_placement_rev(
+    (
+        before_loop_tasked_jaxpr,
+        before_loop_invar_placement,
+        before_loop_outvar_mpmd_defs,
+    ) = mpmd_unzip_reverse(
         before_loop_jaxpr,
-        partial_outvar_placement=maybe_before_loop_outvar_placement,
+        maybe_before_loop_outvar_placement,
+        mpmd_dim,
+        name="before_loop",
+    )
+    return (
+        before_loop_tasked_jaxpr,
+        dict(
+            zip(
+                before_loop_tasked_jaxpr.invars,
+                before_loop_invar_placement,
+                strict=True,
+            )
+        ),
+        before_loop_outvar_mpmd_defs,
     )
 
-    before_loop_mpmd_jaxprs, before_loop_invar_placement = make_replicated_jaxpr(
-        before_loop_jaxpr, before_loop_outvar_mpmd_defs, map(MpmdIdx, range(mpmd_dim))
+
+def mpmd_unzip_reverse(
+    jaxpr: jcore.Jaxpr,
+    out_refs: list[set[MpmdIdx] | None],
+    mpmd_dim: int,
+    name: str,
+    out_shardings=None,
+):
+    _, outvar_placement = infer_outvar_placement_rev(
+        jaxpr, partial_outvar_placement=out_refs
+    )
+    assert all(p is not None for p in outvar_placement)
+
+    jaxprs, invar_placement = make_replicated_jaxpr(
+        jaxpr, outvar_placement, map(MpmdIdx, range(mpmd_dim))
     )
 
     logger.info(
-        f"Before loop: {hbytes(outvar.aval for outvar in before_loop_jaxpr.outvars)}"
+        f"{name} output size: {hbytes(outvar.aval for outvar in jaxpr.outvars)}"
     )
     replication_factor = [
-        (i, len(j.eqns) / len(before_loop_jaxpr.eqns))
-        for i, j in enumerate(before_loop_mpmd_jaxprs)
+        (i, len(j.eqns) / len(jaxpr.eqns)) for i, j in enumerate(jaxprs)
     ]
-    logger.info(f"Before loop replication {replication_factor=}")
+    logger.info(f"{name} replication {replication_factor=}")
 
     task_eqns = list[jcore.JaxprEqn]()
-    for mpmd_idx, j in enumerate(before_loop_mpmd_jaxprs):
+    uid = fresh_scalar_uid()
+    for mpmd_idx, j in enumerate(jaxprs):
+        out_sharding_store = None
+        if out_shardings is not None:
+            shardings = [
+                sharding
+                for sharding, mpmd_defs in zip(
+                    out_shardings, outvar_placement, strict=True
+                )
+                if mpmd_idx in mpmd_defs
+            ]
+            out_sharding_store = ShardingStore(
+                [v.aval for v in j.outvars], _shardings=shardings
+            )
+
         task_eqns.append(
             make_task_eqn(
                 invars=j.invars,
                 outvars=j.outvars,
                 eqns=j.eqns,
                 mpmd_idx=mpmd_idx,
-                task_name=f"before_loop_{mpmd_idx}",
+                task_name=f"{name}_{uid}_{mpmd_idx}",
+                out_sharding_store=out_sharding_store,
             )
         )
-    return (
-        task_eqns,
-        dict(zip(before_loop_jaxpr.invars, before_loop_invar_placement, strict=True)),
-        dict(
-            zip(
-                cast(list[jcore.Var], before_loop_jaxpr.outvars),
-                before_loop_outvar_mpmd_defs,
-                strict=True,
-            )
-        ),
-    )
 
-
-def check_loop_invars_with_before_loop_invars(
-    loop_mpmd_refs: dict[jcore.Var, set[MpmdIdx] | None],
-    before_loop_invar_mpmd_refs: Mapping[jcore.Var, set[MpmdIdx] | None],
-):
-    for invar, mpmd_idxs in loop_mpmd_refs.items():
-        if (loop_mpmd_idxs := before_loop_invar_mpmd_refs.get(invar)) is not None:
-            if loop_mpmd_idxs is not None:
-                if mpmd_idxs != loop_mpmd_idxs:
-                    raise AssertionError(
-                        f"Loop placement is {loop_mpmd_idxs} while before loop placement is {mpmd_idxs}"
-                    )
-            else:
-                loop_mpmd_refs[invar] = mpmd_idxs
+    return (jaxpr.replace(eqns=task_eqns), invar_placement, outvar_placement)
 
 
 def wrap_into_tasks_after_loop(
@@ -1574,7 +1672,8 @@ def wrap_into_tasks_after_loop(
     for invar, is_used in zip(jaxpr.invars, used_invars):
         if is_used:
             refs = mpmd_refs.get(invar)
-            assert refs is not None
+            if refs is None:
+                raise AssertionError()
             mpmd_def[invar] = refs
         else:
             assert invar not in mpmd_def
@@ -1652,7 +1751,28 @@ def loop_placement_by_clusters(
     invar_idx = {invar: idx for idx, invar in enumerate(jaxpr.invars)}
     outvar_idx = {outvar: idx for idx, outvar in enumerate(jaxpr.outvars)}
 
+    mubatch_idx_outvar = jaxpr.outvars[0]
+    mubatch_idx_update_eqn = None
+    for mubatch_idx_update_eqn_idx, eqn in enumerate(jaxpr.eqns):
+        for outvar in eqn.outvars:
+            if outvar == mubatch_idx_outvar:
+                mubatch_idx_update_eqn = eqn
+                break
+        if mubatch_idx_update_eqn is not None:
+            break
+
+    if not (
+        mubatch_idx_update_eqn is not None
+        and mubatch_idx_update_eqn.primitive is jax.lax.add_p
+        and isinstance(r := mubatch_idx_update_eqn.invars[1], jcore.Literal)
+        and r.val == 1
+    ):
+        raise AssertionError("Malformed loop body")
+
+    eqns = [*jaxpr.eqns]
+    eqns.pop(mubatch_idx_update_eqn_idx)
     clusters, _ = cluster_eqns(jaxpr.eqns, mpmd_dim)
+    clusters[0].eqns.insert(0, mubatch_idx_update_eqn)
     cluster_info = get_cluster_information(clusters)
 
     in_mpmd_refs: list[set[MpmdIdx] | None] = [None] * len(invar_idx)
@@ -1694,10 +1814,41 @@ def loop_placement_by_clusters(
     return in_mpmd_refs, out_mpmd_defs
 
 
-loop_passes = lambda j: j
+def var_is_duplicate(invars: Iterable[jcore.Atom]) -> list[int | None]:
+    existing_index = dict[jcore.Var, int]()
+    replace_with_orig_idx = []
+    for invar_idx, invar in enumerate(invars):
+        idx = None
+        if isinstance(invar, jcore.Var):
+            idx = existing_index.get(invar)
+            if idx is None:
+                existing_index[invar] = invar_idx
+        replace_with_orig_idx.append(idx)
+    return replace_with_orig_idx
 
 
-# TODO: move `preprocess_loop` to the tracing done by `accum_grads`
+jaxpp_enable_licm = BoolCtxVar(False, "JAXPP_ENABLE_LICM")
+
+
+@unwrap_closed
+def loop_passes(jaxpr: jcore.Jaxpr) -> jcore.Jaxpr:
+    if jaxpp_enable_licm.value:
+        jaxpr = hoist_and_cse_pscan_invariant_equations(jaxpr, cross_remat=True)
+    check_jaxpr(jaxpr)
+    return jaxpr
+
+
+def join_argument_refs(invars, mpmd_refs):
+    loop_args_mpmd_refs_map = dict[jcore.Var, set[int]]()
+    for invar, refs in zip(invars, mpmd_refs, strict=True):
+        if refs is not None:
+            loop_args_mpmd_refs_map[invar] = (
+                loop_args_mpmd_refs_map.get(invar, set()) | refs
+            )
+    return loop_args_mpmd_refs_map
+
+
+@weakref_lru_cache
 def wrap_into_tasks(
     cjaxpr: jcore.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
 ) -> tuple[jcore.ClosedJaxpr, dict[jcore.Var, set[MpmdIdx]]]:
@@ -1706,8 +1857,7 @@ def wrap_into_tasks(
     (1) `task` equations, or (2) a `dax_pscan` equation containing `task` equations
     or (3) `inspect_sharding`.
     """
-    jaxpr: jcore.Jaxpr = loop_passes(cjaxpr.jaxpr)
-
+    jaxpr = cjaxpr.jaxpr
     [*before_loop_eqns, loop_eqn], after_loop_eqns = schedule_dependencies(
         jaxpr.eqns, get_one_loop_eqn_idx(jaxpr.eqns)
     )
@@ -1715,31 +1865,78 @@ def wrap_into_tasks(
     loop_eqn_idx = len(before_loop_eqns)
     loop_eqn = jaxpr.eqns[loop_eqn_idx]
 
+    # Infer partial placement from loop body
     loop_in_mpmd_refs, loop_out_mpmd_defs = loop_placement_by_clusters(
         loop_eqn, mpmd_dim
     )
 
-    loop_in_mpmd_refs_map = defaultdict[jcore.Var, set[int]](set)
-    for invar, refs in zip(loop_eqn.invars, loop_in_mpmd_refs, strict=True):
-        if refs is not None:
-            loop_in_mpmd_refs_map[invar] |= refs
-
-    before_loop_task_eqns, before_loop_invar_placement, before_loop_outvar_mpmd_defs = (
-        wrap_into_tasks_before_loop(jaxpr, loop_in_mpmd_refs_map, mpmd_dim)
-    )
-    check_loop_invars_with_before_loop_invars(
-        loop_in_mpmd_refs_map, before_loop_invar_placement
+    # Use partial placement from loop body to infer
+    #  before loop partial placement
+    before_loop_jaxpr = jaxpr_from_eqns(
+        jaxpr.eqns[:loop_eqn_idx], eqns_free_vars(jaxpr.eqns[loop_eqn_idx:])[0]
     )
 
-    task_eqns = list[jcore.JaxprEqn](before_loop_task_eqns)
-
-    task_eqns.append(
-        wrap_into_tasks_inside_loop(
-            loop_eqn,
-            mpmd_dim,
-            {k: v for k, v in loop_in_mpmd_refs_map.items() if v is not None},
+    before_loop_invar_placement, before_loop_outvar_mpmd_defs = (
+        infer_outvar_placement_rev(
+            before_loop_jaxpr,
+            partial_outvar_placement=tuple(
+                map(
+                    join_argument_refs(loop_eqn.invars, loop_in_mpmd_refs).get,
+                    before_loop_jaxpr.outvars,
+                )
+            ),
         )
     )
+
+    # Merge all partial placement known so far
+    placement = {}
+    for invar, p in zip(
+        before_loop_jaxpr.invars, before_loop_invar_placement, strict=True
+    ):
+        assert invar not in placement
+        placement[invar] = p
+
+    for outvar, p in zip(
+        before_loop_jaxpr.outvars, before_loop_outvar_mpmd_defs, strict=True
+    ):
+        assert outvar not in placement
+        if p is not None:
+            placement[outvar] = p
+
+    loop_placement_changed = False
+    for invar_idx, invar in enumerate(loop_eqn.invars):
+        p = placement.get(invar)
+        loop_parameter_p = loop_in_mpmd_refs[invar_idx]
+        if loop_parameter_p is not None and p is not None:
+            if not loop_parameter_p.issubset(p):
+                raise AssertionError()
+
+        if loop_parameter_p is None and p is not None:
+            loop_placement_changed = True
+            loop_in_mpmd_refs[invar_idx] = p
+
+    # TODO: use partial placement to obtain partial placement from
+    #  after loop part
+
+    # Use current placement to taskify loop body
+    tasked_loop_eqn = wrap_into_tasks_inside_loop(loop_eqn, mpmd_dim, loop_in_mpmd_refs)
+
+    # Use current placement to taskify before loop
+    before_loop_out_refs = tuple(
+        map(
+            join_argument_refs(
+                loop_eqn.invars, tasked_loop_eqn.params["in_mpmd_refs"]
+            ).get,
+            before_loop_jaxpr.outvars,
+        )
+    )
+    before_loop_tasked_jaxpr, _, _ = mpmd_unzip_reverse(
+        before_loop_jaxpr, before_loop_out_refs, mpmd_dim=mpmd_dim, name="before_loop"
+    )
+
+    task_eqns = list[jcore.JaxprEqn](before_loop_tasked_jaxpr.eqns)
+    task_eqns.append(tasked_loop_eqn)
+
     new_jaxpr = jaxpr.replace(eqns=task_eqns + jaxpr.eqns[loop_eqn_idx + 1 :])
 
     new_jaxpr, mpmd_def = wrap_into_tasks_after_loop(new_jaxpr, used_invars, mpmd_dim)
@@ -1747,7 +1944,14 @@ def wrap_into_tasks(
         effects=jcore.join_effects(*(eqn.effects for eqn in new_jaxpr.eqns))
     )
 
-    return cjaxpr.replace(jaxpr=new_jaxpr), mpmd_def
+    return (
+        cjaxpr.replace(jaxpr=new_jaxpr),
+        tuple(mpmd_def.get(invar) or set() for invar in new_jaxpr.invars),
+        tuple(
+            mpmd_def[outvar] if isinstance(outvar, jcore.Var) else set(range(mpmd_dim))
+            for outvar in new_jaxpr.outvars
+        ),
+    )
 
 
 def infer_task_donation(
@@ -1757,12 +1961,12 @@ def infer_task_donation(
 ):
     assert task_eqn.primitive is task_p
     recv_invars_idxs = set(e[0] for e in task_eqn.params["recv_invars"])
-    task_donated_invars = [
+    task_donated_invars = tuple(
         is_last_use_for_invar[invar_idx]
         and donated_invars_map.get(invar, True)
         and invar_idx not in recv_invars_idxs
         for invar_idx, invar in enumerate(task_eqn.invars)
-    ]
+    )
 
     return task_eqn.replace(
         params={**task_eqn.params, "donate_invars": task_donated_invars}
@@ -1782,6 +1986,10 @@ def infer_loop_donation(
         and invar_idx >= n_consts
         for invar_idx, invar in enumerate(loop_eqn.invars)
     ]
+    for idx, first_idx in enumerate(var_is_duplicate(loop_eqn.invars)):
+        if first_idx is not None:
+            loop_donation[first_idx] = False
+            loop_donation[idx] = False
 
     return loop_eqn.replace(
         params={
@@ -1800,6 +2008,8 @@ def infer_donation(
     Returns a new jaxpr identical to the input jaxpr, where every
     `task` equation has `params["donate_invars"]` set properly, according
     to the lifetime of that variable.
+    It ensures that dlpack arrays from receive operations and all-reduces
+    are never donated as that's not supported in some versions of XLA.
     """
     last_use = last_used(tasked_jaxpr)
 
@@ -1819,6 +2029,9 @@ def infer_donation(
             new_eqns.append(
                 infer_task_donation(task_eqn, is_last_use_for_invar, invar_is_donated)
             )
+            # NOTE(all_reduce_task)
+            if isinstance(task_eqn.params["mpmd_idx"], tuple):
+                is_all_reduce_outvar.update(task_eqn.outvars)
         elif task_eqn.primitive is dax_pscan_p:
             new_eqns.append(
                 infer_loop_donation(task_eqn, is_last_use_for_invar, invar_is_donated)
@@ -1830,6 +2043,9 @@ def infer_donation(
                 f"Unexpected equation with primitive {task_eqn.primitive}"
             )
     return tasked_jaxpr.replace(eqns=new_eqns)
+
+
+send_recv_id = it.count()
 
 
 def mpmdify_loop(loop_eqn: jcore.JaxprEqn):
@@ -1867,7 +2083,7 @@ def mpmdify_loop(loop_eqn: jcore.JaxprEqn):
         dict(zip(loop_jaxpr.jaxpr.invars[:n_consts], loop_eqn.invars[:n_consts]))
         for _ in range(n_mubatches)
     )
-    send_recv_id = it.count()
+
     eqns_by_mpmd_idx = [list[jcore.JaxprEqn]() for _ in range(n_workers)]
     for tick in range(n_ticks):
         end_of_tick_eqns = [list[jcore.JaxprEqn]() for _ in range(n_workers)]
@@ -1909,11 +2125,21 @@ def mpmdify_loop(loop_eqn: jcore.JaxprEqn):
                 and worker_id == eqn.params["mpmd_idx"]
             )
             orig_outvars = eqn.outvars
+            invars = [envs_by_iteration[mubatch_idx][invar] for invar in eqn.invars]
             outvars = [gensym(outvar.aval) for outvar in eqn.outvars]
-            eqn = eqn.replace(
-                invars=[envs_by_iteration[mubatch_idx][invar] for invar in eqn.invars],
-                outvars=outvars,
-            )
+
+            duplicate_invars = var_is_duplicate(invars)
+            for invar_idx, ref_idx in enumerate(duplicate_invars):
+                if ref_idx is not None:
+                    if (
+                        eqn.params["donate_invars"][invar_idx]
+                        or eqn.params["donate_invars"][ref_idx]
+                    ):
+                        raise NotImplementedError(
+                            "Loop unrolling leads to double donation"
+                        )
+
+            eqn = eqn.replace(invars=invars, outvars=outvars)
             eqns_by_mpmd_idx[worker_id].append(eqn)
             end_of_tick_defines.append((mubatch_idx, (orig_outvars, outvars)))
 
@@ -1927,53 +2153,11 @@ def mpmdify_loop(loop_eqn: jcore.JaxprEqn):
                 end_of_tick_defines.append(
                     (mubatch_idx + 1, (defined_loop_invars, loop_invar_definition))
                 )
-
-            send_to_mpmd_idx: dict[int, list[int]] = groupby(
-                (mpmd_idx, outvar_idx)
-                for outvar_idx, mpmd_idxs in eqn.params["send_outvars"]
-                for mpmd_idx in mpmd_idxs
+            sends, recvs = send_recvs_by_receiver(
+                eqn, log_communication=mubatch_idx == 0
             )
-            for recv_mpmd_idx, send_outvar_idx in send_to_mpmd_idx.items():
-                send_shardings = [
-                    eqn.params["out_shardings"].shardings[outvar_idx]
-                    for outvar_idx in send_outvar_idx
-                ]
-                invars = [eqn.outvars[idx] for idx in send_outvar_idx]
-                if mubatch_idx == 0:
-                    logger.info(
-                        f"Comm {eqn.params['task_name']} {worker_id} -> {recv_mpmd_idx}: "
-                        f"{hbytes(invar.aval for invar in invars)}"
-                    )
-                op_id = next(send_recv_id)
-                params = {
-                    "id": op_id,
-                    "shardings": tuple(
-                        zip((recv_mpmd_idx,) * len(invars), send_shardings, strict=True)
-                    ),
-                }
-                send_eqn = jcore.new_jaxpr_eqn(
-                    invars=invars,
-                    outvars=[gensym(v.aval) for v in invars],
-                    primitive=send_p,
-                    params=params,
-                    effects=jcore.no_effects,  # FIXME
-                )
-                recv_eqn = jcore.new_jaxpr_eqn(
-                    invars=[],
-                    outvars=invars,
-                    primitive=recv_p,
-                    params={
-                        **params,
-                        "shape_and_dtype": [
-                            (v.aval.shape, v.aval.dtype) for v in invars
-                        ],
-                        "shardings": tuple(
-                            zip((worker_id,) * len(invars), send_shardings, strict=True)
-                        ),
-                    },
-                    effects=jcore.no_effects,  # FIXME
-                )
-                end_of_tick_eqns[worker_id].append(send_eqn)
+            end_of_tick_eqns[worker_id].extend(sends)
+            for recv_mpmd_idx, recv_eqn in recvs:
                 end_of_tick_eqns[recv_mpmd_idx].append(recv_eqn)
 
         for mpmd_idx, eqns in enumerate(end_of_tick_eqns):
@@ -1987,7 +2171,60 @@ def mpmdify_loop(loop_eqn: jcore.JaxprEqn):
     ], eqns_by_mpmd_idx
 
 
-def mpmdify(tasked_jaxpr: jcore.ClosedJaxpr, mpmd_dim: int) -> list[jcore.ClosedJaxpr]:
+def send_recvs_by_receiver(eqn: jcore.JaxprEqn, log_communication: bool = False):
+    mpmd_idx = eqn.params["mpmd_idx"]
+    send_to_mpmd_idx: dict[int, list[int]] = groupby(
+        (mpmd_idx, outvar_idx)
+        for outvar_idx, mpmd_idxs in eqn.params["send_outvars"]
+        for mpmd_idx in mpmd_idxs
+    )
+
+    sends = []
+    recvs = list[tuple[MpmdIdx, jcore.JaxprEqn]]()
+    for recv_mpmd_idx, send_outvar_idx in send_to_mpmd_idx.items():
+        send_shardings = [
+            eqn.params["out_shardings"].shardings[outvar_idx]
+            for outvar_idx in send_outvar_idx
+        ]
+        invars = [eqn.outvars[idx] for idx in send_outvar_idx]
+        if log_communication:
+            logger.info(
+                f"Comm {eqn.params['task_name']} {mpmd_idx} -> {recv_mpmd_idx}: "
+                f"{hbytes(invar.aval for invar in invars)}"
+            )
+        op_id = next(send_recv_id)
+        params = {
+            "id": op_id,
+            "shardings": tuple(
+                zip((recv_mpmd_idx,) * len(invars), send_shardings, strict=True)
+            ),
+        }
+        send_eqn = jcore.new_jaxpr_eqn(
+            invars=invars,
+            outvars=[jcore.DropVar(v.aval) for v in invars],
+            primitive=send_p,
+            params=params,
+            effects=jcore.no_effects,  # FIXME
+        )
+        recv_eqn = jcore.new_jaxpr_eqn(
+            invars=[],
+            outvars=invars,
+            primitive=recv_p,
+            params={
+                **params,
+                "shape_and_dtype": [(v.aval.shape, v.aval.dtype) for v in invars],
+                "shardings": tuple(
+                    zip((mpmd_idx,) * len(invars), send_shardings, strict=True)
+                ),
+            },
+            effects=jcore.no_effects,  # FIXME
+        )
+        sends.append(send_eqn)
+        recvs.append((recv_mpmd_idx, recv_eqn))
+    return sends, recvs
+
+
+def mpmdify(tasked_jaxpr: jcore.ClosedJaxpr, mpmd_dim: int) -> list[jcore.Jaxpr]:
     # TODO: add token args/results to communications
     jaxpr: jcore.Jaxpr = tasked_jaxpr.jaxpr
     eqns_by_mpmd_idx = [list[jcore.JaxprEqn]() for _ in range(mpmd_dim)]
@@ -2024,6 +2261,12 @@ def mpmdify(tasked_jaxpr: jcore.ClosedJaxpr, mpmd_dim: int) -> list[jcore.Closed
                     )
                 continue
             eqns_by_mpmd_idx[mpmd_idx].append(eqn)
+
+            sends, recvs = send_recvs_by_receiver(eqn)
+            eqns_by_mpmd_idx[mpmd_idx].extend(sends)
+            for recv_mpmd_idx, recv_eqn in recvs:
+                eqns_by_mpmd_idx[recv_mpmd_idx].append(recv_eqn)
+
         elif eqn.primitive is dax_pscan_p:
             outvars, loop_eqns_by_mpmd_idx = mpmdify_loop(eqn)
             sub.update(zip(eqn.outvars, outvars))
@@ -2032,7 +2275,7 @@ def mpmdify(tasked_jaxpr: jcore.ClosedJaxpr, mpmd_dim: int) -> list[jcore.Closed
         else:
             raise AssertionError(f"Unkown equation primitive {eqn.primitive}")
 
-    outvar_set = set(jaxpr.outvars)
+    outvar_set = set(nonlit(jaxpr.outvars))
     jaxprs = list[jcore.ClosedJaxpr]()
 
     for eqns in eqns_by_mpmd_idx:
@@ -2045,8 +2288,8 @@ def mpmdify(tasked_jaxpr: jcore.ClosedJaxpr, mpmd_dim: int) -> list[jcore.Closed
 
 def lower_tasked_jaxpr(
     global_jaxpr: jcore.ClosedJaxpr,
-    jaxprs: list[jcore.Jaxpr],
-    donated_invars: Sequence[bool],
+    jaxprs: Sequence[jcore.Jaxpr],
+    in_donated: Sequence[bool],
     shardings_map,
     mpmd_mesh: MpmdMesh | RemoteMpmdMesh,
     compiler_options=None,
@@ -2056,50 +2299,40 @@ def lower_tasked_jaxpr(
     in_var_ids = [var_ids[invar] for invar in global_jaxpr.jaxpr.invars]
     out_var_ids = [var_ids[outvar] for outvar in global_jaxpr.jaxpr.outvars]
 
-    donated_invars = dict(zip(global_jaxpr.jaxpr.invars, donated_invars))
+    donated_invars = dict(zip(global_jaxpr.jaxpr.invars, in_donated))  # noqa: F841
     lowering_mesh = mpmd_mesh.lowering_mesh()
     computations = [
-        dict[tuple[str, jcore.Jaxpr], SerializeableMeshComputation]()
-        for _ in range(mpmd_mesh.mpmd_dim)
+        dict[UID, SerializeableMeshComputation]() for _ in range(mpmd_mesh.mpmd_dim)
     ]
 
-    instructions_by_worker = [[] for _ in range(mpmd_mesh.mpmd_dim)]
-
+    mpmd_instructions = [[] for _ in range(mpmd_mesh.mpmd_dim)]
+    lowering_cache = LoweringCache()
     for mpmd_idx, jaxpr in enumerate(jaxprs):
         if isinstance(mpmd_mesh, MpmdMesh) and mpmd_idx != mpmd_mesh.my_mpmd_axis_index:
             continue
-
         # jaxpr = improve_overlap(jaxpr, shardings_map)
-        jaxpr = infer_donation(
-            jaxpr, donated_invars=[donated_invars[v] for v in jaxpr.invars]
-        )
+
         for eqn in jaxpr.eqns:
             if eqn.primitive is task_p:
-                task_name = eqn.params["task_name"]
                 in_shardings = eqn.params["in_shardings"].shardings
                 out_shardings = eqn.params["out_shardings"].shardings
-                # FIXME: this cache key is too weak, also add in_shardings, out_shardings etc.
-                if (
-                    mesh_computation := computations[mpmd_idx].get(
-                        (task_name, eqn.params["call_jaxpr"])
-                    )
-                ) is None:
-                    mesh_computation = pjit_to_serializeable_mesh_computation(
-                        closed_jaxpr=jcore.ClosedJaxpr(eqn.params["call_jaxpr"], ()),
+                exec_uid, mesh_computation = (
+                    lowering_cache.pjit_to_serializeable_mesh_computation(
+                        closed_jaxpr=eqn.params["call_jaxpr"],
                         in_axis_resources=in_shardings,
                         out_axis_resources=out_shardings,
-                        name=task_name,
+                        name=eqn.params["task_name"],
                         mesh=lowering_mesh,
                         donate_invars=eqn.params["donate_invars"],
                         compiler_options=compiler_options,
                         use_pgle=use_pgle,
                     )
-                    computations[mpmd_idx][(task_name, eqn.params["call_jaxpr"])] = (
-                        mesh_computation
-                    )
-                instructions_by_worker[mpmd_idx].append(
+                )
+                computations[mpmd_idx][exec_uid] = mesh_computation
+
+                mpmd_instructions[mpmd_idx].append(
                     RunOp(
-                        exec_uid=task_name,
+                        exec_uid=exec_uid,
                         _in_uids=[var_ids[invar] for invar in eqn.invars],
                         _out_uids=[var_ids[outvar] for outvar in eqn.outvars],
                     )
@@ -2127,7 +2360,7 @@ def lower_tasked_jaxpr(
                         eqn.invars, eqn.params["shardings"], strict=True
                     )
                 ]
-                instructions_by_worker[mpmd_idx].append(SendOp(comm_descs))
+                mpmd_instructions[mpmd_idx].append(SendOp(comm_descs))
             elif eqn.primitive is recv_p:
                 comm_descs = []
                 for outvar, (from_mpmd_idx, sharding) in zip(
@@ -2152,7 +2385,7 @@ def lower_tasked_jaxpr(
                             to_dev_ids=to_dev_ids,
                         )
                     )
-                instructions_by_worker[mpmd_idx].append(RecvOp(comm_descs))
+                mpmd_instructions[mpmd_idx].append(RecvOp(comm_descs))
             elif eqn.primitive is all_reduce_p:
                 assert len(eqn.invars) == 1
                 mpmd_idxs, sharding = eqn.params["shardings_by_mpmd_idx"]
@@ -2162,177 +2395,534 @@ def lower_tasked_jaxpr(
                 desc = AllReduceDesc(
                     keys, var_ids[eqn.invars[0]], var_ids[eqn.outvars[0]]
                 )
-                instructions_by_worker[mpmd_idx].append(AllReduceOp([desc]))
+                mpmd_instructions[mpmd_idx].append(AllReduceOp([desc]))
             else:
                 raise NotImplementedError(f"Unknown primitive {eqn.primitive}")
 
-    return (
-        instructions_by_worker,
-        computations,
-        (in_var_ids, out_var_ids),
+    must_live = set(out_var_ids)
+    must_live.update(
+        uid for uid, donated in ju.safe_zip(in_var_ids, in_donated) if not donated
     )
 
+    mpmd_instructions = [
+        add_delete_ops(instrs, must_live) for instrs in mpmd_instructions
+    ]
 
-def prepare_pipelined(
-    fun: Callable,
-    args,
-    remote_mesh: RemoteMpmdMesh,
-    in_axis_resources=None,
-    out_axis_resources=None,
-    static_argnums=(),
-    donate_argnums=(),
-    compiler_options=None,
-    use_pgle=False,
-):
-    lowering_mesh = remote_mesh.lowering_mesh()
+    return (mpmd_instructions, computations, (in_var_ids, out_var_ids))
 
-    with log_elapsed_time("jaxpr/tracing"), lowering_mesh:
-        pjit_params, _ = jit_infer_params(
-            fun,
-            tuple(args),
-            in_axis_resources=in_axis_resources,
-            out_axis_resources=out_axis_resources,
-            static_argnums=static_argnums,
-            donate_argnums=donate_argnums,
-        )
 
-    params = pjit_params.params
-    consts = pjit_params.consts
-    jaxpr_with_consts = pe.convert_constvars_jaxpr(params["jaxpr"].jaxpr)
-    jaxpr, used_invars = pe.dce_jaxpr(
-        jaxpr_with_consts,
-        used_outputs=[True] * len(jaxpr_with_consts.outvars),
-    )
-
-    jaxpr = jaxpr.replace(
-        invars=jaxpr_with_consts.invars, debug_info=jaxpr_with_consts.debug_info
-    )
-
-    # If a variable is passthrough - an input variable is returned unmodified as output
-    # 1. We store its input position
-    # 2. We can return the variable by properly identifying it
-    invars_idx = {invar: idx for idx, invar in enumerate(jaxpr.invars)}
-    passthrough_outvars = [invars_idx.get(outvar) for outvar in jaxpr.outvars]
-
-    closed_jaxpr = pe.close_jaxpr(jaxpr)
-    del jaxpr_with_consts
-
-    is_flat_arg_donated: tuple[bool] = params["donated_invars"]
-    donated_invars = ((False,) * len(consts)) + is_flat_arg_donated
-
-    with stable_names_ctx():
-        closed_jaxpr, mpmd_def = wrap_into_tasks(
-            closed_jaxpr, used_invars, remote_mesh.mpmd_dim
-        )
-
-    replicated_sharding = jax.sharding.NamedSharding(
-        lowering_mesh, jax.sharding.PartitionSpec()
-    )
-    flat_in_shardings = ((replicated_sharding,) * len(consts)) + params["in_shardings"]
-    in_layouts = ((None,) * len(consts)) + params["in_layouts"]
-    flat_out_shardings = params["out_shardings"]
-
+def infer_shardings(
+    lowering_mesh: jax.sharding.Mesh,
+    closed_jaxpr: jcore.ClosedJaxpr,
+    in_shardings,
+    out_shardings,
+    in_layouts,
+    out_layouts,
+    compiler_options,
+    name: str,
+) -> jcore.ClosedJaxpr:
     with log_elapsed_time("xla_compilation/driver"):
         # Trigger first compilation on the driver for inferring intermediate shardings
         # NOTE: do not enable PGLE for this compilation otherwise it will lead to hangs
         mesh_executable = pjit_to_serializeable_mesh_computation(
             closed_jaxpr,
-            in_axis_resources=flat_in_shardings,
-            out_axis_resources=flat_out_shardings,
+            in_axis_resources=in_shardings,
+            out_axis_resources=out_shardings,
             in_layouts=in_layouts,
-            out_layouts=params["out_layouts"],
-            name=fun.__name__,
+            out_layouts=out_layouts,
+            name=name,
             mesh=lowering_mesh,
             compiler_options=compiler_options,
         ).to_mesh_executable(lowering_mesh)
         del mesh_executable
 
     closed_jaxpr = strip_inspect_sharding_eqns(closed_jaxpr)
-    with stable_names_ctx(mpmd_def.get):
-        # NOTE: mutates sharding stored inside `closed_jaxpr`
-        reconcile_sharding_for_replicated_vars(
-            closed_jaxpr, flat_in_shardings, flat_out_shardings
+    # NOTE: mutates sharding stored inside `closed_jaxpr`
+    reconcile_sharding_for_replicated_vars(closed_jaxpr, in_shardings, out_shardings)
+
+    # log_activation_shardings(closed_jaxpr)
+    return closed_jaxpr
+
+
+def extract_params(params, n_consts, replicated_sharding):
+    donated_invars = ((False,) * n_consts) + params["donated_invars"]
+    flat_in_shardings = ((replicated_sharding,) * n_consts) + params["in_shardings"]
+    flat_out_shardings = params["out_shardings"]
+    flat_in_layouts = ((None,) * n_consts) + params["in_layouts"]
+    flat_out_layouts = params["out_layouts"]
+    return (
+        donated_invars,
+        flat_in_shardings,
+        flat_out_shardings,
+        flat_in_layouts,
+        flat_out_layouts,
+    )
+
+
+@weakref_lru_cache
+def preprocess_jaxpr(
+    cjaxpr: jcore.ClosedJaxpr,
+) -> tuple[jcore.ClosedJaxpr, Sequence[bool]]:
+    jaxpr_with_consts = pe.convert_constvars_jaxpr(cjaxpr.jaxpr)
+    licm_jaxpr = loop_passes(jaxpr_with_consts)
+    dced_jaxpr, used_inputs = pe.dce_jaxpr(
+        licm_jaxpr, used_outputs=[True] * len(licm_jaxpr.outvars)
+    )
+    jaxpr = dced_jaxpr.replace(
+        invars=licm_jaxpr.invars, debug_info=licm_jaxpr.debug_info
+    )
+    return pe.close_jaxpr(jaxpr), tuple(used_inputs)
+
+
+@dataclasses.dataclass
+class Strategy(abc.ABC):
+    @abc.abstractmethod
+    def __call__(
+        self,
+        closed_jaxpr: jcore.ClosedJaxpr,
+        in_used: Sequence[bool],
+        out_tree,
+        flat_out_shardings,
+        mpmd_dim: int,
+        name: str,
+    ): ...
+
+
+@dataclasses.dataclass(eq=False, kw_only=True)
+class FunctionWithLoop(Strategy):
+    def __call__(
+        self,
+        closed_jaxpr: jcore.ClosedJaxpr,
+        in_used: Sequence[bool],
+        out_tree,
+        flat_out_shardings,
+        mpmd_dim: int,
+        name: str,
+    ):
+        closed_jaxpr, in_mpmd_defs, out_mpmd_defs = wrap_into_tasks(
+            closed_jaxpr, in_used, mpmd_dim
+        )
+        return closed_jaxpr, in_mpmd_defs, out_mpmd_defs
+
+
+@dataclasses.dataclass(eq=False, kw_only=True)
+class FunctionReverse(Strategy):
+    out_refs: Any
+
+    def __call__(
+        self,
+        closed_jaxpr: jcore.ClosedJaxpr,
+        in_used: Sequence[bool],
+        out_tree,
+        flat_out_shardings,
+        mpmd_dim: int,
+        name: str,
+    ):
+        flat_out_refs, out_refs_tree = jax.tree.flatten(self.out_refs)
+        assert out_refs_tree == out_tree
+        jaxpr, in_mpmd_defs, out_mpmd_defs = mpmd_unzip_reverse(
+            closed_jaxpr.jaxpr,
+            flat_out_refs,
+            mpmd_dim,
+            name=name,
+            out_shardings=flat_out_shardings,
+        )
+        closed_jaxpr = jcore.ClosedJaxpr(jaxpr, closed_jaxpr.consts)
+        return closed_jaxpr, in_mpmd_defs, out_mpmd_defs
+
+
+@dataclasses.dataclass(eq=False, kw_only=True)
+class FunctionWithYield(Strategy):
+    target_num_stages: int | None = None
+
+    def __call__(
+        self,
+        closed_jaxpr: jcore.ClosedJaxpr,
+        in_used: Sequence[bool],
+        out_tree,
+        flat_out_shardings,
+        mpmd_dim: int,
+        name: str,
+    ):
+        jaxpr = cluster_jaxpr(
+            closed_jaxpr.jaxpr, self.target_num_stages, mpmd_dim, is_loop=False
+        )
+        jaxpr, in_mpmd_refs, out_mpmd_defs = compute_loop_placement(
+            jaxpr, n_consts=0, is_loop=False
+        )
+        closed_jaxpr = jcore.ClosedJaxpr(jaxpr, closed_jaxpr.consts)
+        return closed_jaxpr, in_mpmd_refs, out_mpmd_defs
+
+
+@dataclasses.dataclass(eq=False, kw_only=True)
+class TraceableFunction:
+    fun: Callable
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh
+    pjit_info: Any
+    strategy: Strategy
+    _compiled: Callable | None = None
+
+    def compile(self, *args, **kwargs):
+        if self._compiled is None:
+            self._compiled = (
+                self.trace_and_place(*args, **kwargs)
+                .infer_intermediate_shardings()
+                .mpmdify()
+                .compile_and_load()
+            )
+        return self._compiled
+
+    def __call__(self, *args, **kwargs):
+        if self._compiled is None:
+            self._compiled = self.compile(*args, **kwargs)
+        return self._compiled(*args, **kwargs)
+
+    def trace_and_place(self, *args, **kwargs):
+        with (
+            log_elapsed_time("jaxpr/tracing"),
+            self.mpmd_mesh.lowering_mesh(),
+            yield_scope(isinstance(self.strategy, FunctionWithYield)),
+        ):
+            p, _ = _infer_params(self.fun, self.pjit_info, args, kwargs)
+            consts = p.consts
+
+        # TODO: understand why `true_consts` is inconsistent with `p.consts` above
+        true_consts = p.params["jaxpr"].consts
+        closed_jaxpr, in_used = preprocess_jaxpr(p.params["jaxpr"])
+        replicated_sharding = jax.sharding.NamedSharding(
+            self.mpmd_mesh.lowering_mesh(), jax.sharding.PartitionSpec()
         )
 
-        # log_activation_shardings(closed_jaxpr)
+        (
+            flat_in_donated,
+            flat_in_shardings,
+            flat_out_shardings,
+            flat_in_layouts,
+            flat_out_layouts,
+        ) = extract_params(
+            p.params, len(true_consts), replicated_sharding=replicated_sharding
+        )
 
-        jaxprs = mpmdify(closed_jaxpr, remote_mesh.mpmd_dim)
+        closed_jaxpr, in_mpmd_defs, out_mpmd_defs = self.strategy(
+            closed_jaxpr,
+            in_used,
+            p.out_tree,
+            flat_out_shardings,
+            mpmd_dim=self.mpmd_mesh.mpmd_dim,
+            name=self.fun.__name__,
+        )
+
+        return GlobalMpmdFunction(
+            closed_jaxpr=closed_jaxpr,
+            consts=true_consts,
+            mpmd_mesh=self.mpmd_mesh,
+            pjit_info=self.pjit_info,
+            in_info=InInfo(
+                in_used=in_used,
+                in_donated=flat_in_donated,
+                in_tree=p.in_tree.children()[0],  # TODO: maybe keep p around?
+                out_tree=p.out_tree,
+                in_avals=closed_jaxpr.in_avals,
+                out_avals=closed_jaxpr.out_avals,
+                in_shardings=flat_in_shardings,
+                out_shardings=flat_out_shardings,
+                in_layouts=flat_in_layouts,
+                out_layouts=flat_out_layouts,
+                in_mpmd_defs=in_mpmd_defs,
+                out_mpmd_defs=out_mpmd_defs,
+            ),
+            name=self.fun.__name__,  # FIXME: use name from `pjit_info` or `params`
+        )
+
+
+@dataclasses.dataclass(eq=False, frozen=True, kw_only=True)
+class GlobalMpmdFunction:
+    closed_jaxpr: jcore.ClosedJaxpr
+    consts: Sequence[Any]
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh
+    pjit_info: Any
+    in_info: InInfo
+    name: str
+    compiler_options: dict[str, Any] | None = None
+    _inferred_intermediate_shardings: bool = False
+
+    @cached_property
+    def as_fun(self):
+        return jcore.jaxpr_as_fun(
+            strip_inspect_sharding_eqns(self.closed_jaxpr).map_jaxpr(
+                partial(infer_donation, donated_invars=self.in_info.in_donated)
+            )
+        )
+
+    def infer_intermediate_shardings(self):
+        closed_jaxpr = infer_shardings(
+            self.mpmd_mesh.lowering_mesh(),
+            self.closed_jaxpr,
+            in_shardings=self.in_info.in_shardings,
+            out_shardings=self.in_info.out_shardings,
+            in_layouts=self.in_info.in_layouts,
+            out_layouts=self.in_info.out_layouts,
+            compiler_options=self.compiler_options,
+            name=self.name,
+        )
+        return dataclasses.replace(
+            self, closed_jaxpr=closed_jaxpr, _inferred_intermediate_shardings=True
+        )
+
+    @cached_property
+    def in_shardings(self):
+        res = jax.tree_util.tree_unflatten(
+            self.in_info.in_tree,
+            [
+                DistributedSharding(mpmd_idxs, sharding)
+                for mpmd_idxs, sharding in zip(
+                    self.in_info.in_mpmd_defs,
+                    self.in_info.in_shardings,
+                    strict=True,
+                )
+            ][len(self.consts) :],
+        )
+        return res
+
+    def __call__(self, *args, **kwds):
+        assert self.in_info.in_tree == jax.tree.structure(args)
+
+        def array_ref_to_array(array_ref: ArrayRef | Any):
+            if isinstance(array_ref, ArrayRef):
+                return self.mpmd_mesh.store.get_array(array_ref.uid)
+            return array_ref
+
+        array_args = [array_ref_to_array(a) for a in jax.tree.leaves(args)]
+
+        with self.mpmd_mesh:
+            f = self.as_fun
+            result = f(*self.consts, *array_args)
+            return jax.tree.unflatten(self.in_info.out_tree, result)
+
+    def mpmdify(self):
+        if not self._inferred_intermediate_shardings:
+            raise AssertionError(
+                "Intermediate shardings must be inferred before mpmdifying"
+            )
+
+        closed_jaxpr = self.closed_jaxpr
+        in_mpmd_defs = self.in_info.in_mpmd_defs
+        out_mpmd_defs = self.in_info.out_mpmd_defs
+
+        invar_mpmd_defs = {
+            invar: e
+            for invar, e in zip(closed_jaxpr.jaxpr.invars, in_mpmd_defs, strict=True)
+        }
+        outvar_mpmd_defs = {
+            outvar: e
+            for outvar, e in zip(closed_jaxpr.jaxpr.outvars, out_mpmd_defs, strict=True)
+            if isinstance(outvar, jcore.Var)
+        }
+
+        closed_jaxpr = closed_jaxpr.map_jaxpr(
+            partial(infer_donation, donated_invars=self.in_info.in_donated)
+        )
+        jaxprs = mpmdify(closed_jaxpr, self.mpmd_mesh.mpmd_dim)
         for mpmd_idx, jaxpr in enumerate(jaxprs):
             for invar in jaxpr.invars:
-                assert mpmd_idx in mpmd_def[invar]
+                assert mpmd_idx in invar_mpmd_defs[invar]
             for outvar in jaxpr.outvars:
-                assert mpmd_idx in mpmd_def[outvar]
+                if isinstance(outvar, jcore.Var):
+                    assert mpmd_idx in outvar_mpmd_defs[outvar]
 
-        instructions, lowerings_by_worker, (in_uids, out_uids) = lower_tasked_jaxpr(
-            closed_jaxpr,
-            jaxprs,
-            donated_invars=donated_invars,
-            shardings_map=dict(
-                zip(closed_jaxpr.jaxpr.invars, flat_in_shardings, strict=True)
-            ),
-            mpmd_mesh=remote_mesh,
-            compiler_options=compiler_options,
-            use_pgle=use_pgle,
+        return MpmdComputation(
+            global_jaxpr=closed_jaxpr,
+            jaxprs=jaxprs,
+            consts=self.consts,
+            mpmd_mesh=self.mpmd_mesh,
+            pjit_info=self.pjit_info,
+            in_info=self.in_info,
+            name=self.name,
+            compiler_options=self.compiler_options,
         )
 
-    must_live = set(out_uids)
-    must_live.update(
-        uid for uid, donated in ju.safe_zip(in_uids, donated_invars) if not donated
-    )
 
-    mpmd_instructions = [add_delete_ops(instrs, must_live) for instrs in instructions]
+@dataclasses.dataclass(eq=False, frozen=True, kw_only=True)
+class MpmdComputation:
+    global_jaxpr: jcore.ClosedJaxpr
+    jaxprs: Sequence[jcore.Jaxpr]
+    consts: Sequence[Any]
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh
+    pjit_info: Any
+    in_info: InInfo
+    name: str
+    compiler_options: Sequence[tuple[str, Any]] | None = None
 
-    futs = []
-    for mpmd_idx, serializeable_computations in enumerate(lowerings_by_worker):
-        for (uid, _), comp in serializeable_computations.items():
-            futs.append(remote_mesh.put_mesh_computation(mpmd_idx, uid, comp))
+    def __post_init__(self):
+        assert not isinstance(self.compiler_options, dict)
 
-    remote_mesh.blocking_tree(futs)
+    def compile_and_load(self):
+        mpmd_instructions, lowerings_by_worker, (in_uids, out_uids) = (
+            lower_tasked_jaxpr(
+                self.global_jaxpr,
+                self.jaxprs,
+                in_donated=self.in_info.in_donated,
+                shardings_map=dict(
+                    zip(
+                        self.global_jaxpr.jaxpr.invars,
+                        self.in_info.in_shardings,
+                        strict=True,
+                    )
+                ),
+                mpmd_mesh=self.mpmd_mesh,
+                compiler_options=self.compiler_options,
+                use_pgle=False,  # FIXME
+            )
+        )
 
-    return DistributedFunction(
-        consts=consts,
-        # NOTE: in_tree is (args, kwargs) and we do not support kwargs
-        # so we drop them from the structure here
-        in_tree=pjit_params.in_tree.children()[0],
-        out_tree=pjit_params.out_tree,
-        in_avals=closed_jaxpr.in_avals,
-        out_avals=closed_jaxpr.out_avals,
-        in_shardings=flat_in_shardings,
-        out_shardings=flat_out_shardings,
-        in_mpmd_idxs=[mpmd_def[invar] for invar in closed_jaxpr.jaxpr.invars],
-        out_mpmd_idxs=[mpmd_def[outvar] for outvar in closed_jaxpr.jaxpr.outvars],
-        in_uids=in_uids,
-        out_uids=out_uids,
-        donated_invars=donated_invars,
-        used_invars=used_invars,
-        worker_mesh=remote_mesh,
-        instructions_by_worker=mpmd_instructions,
-        passthrough_outvars=passthrough_outvars,
-    )
+        futs = []
+        for mpmd_idx, serializeable_computations in enumerate(lowerings_by_worker):
+            for uid, comp in serializeable_computations.items():
+                futs.append(self.mpmd_mesh.put_mesh_computation(mpmd_idx, uid, comp))
+
+        self.mpmd_mesh.blocking_tree(futs)
+
+        invars_idx = {
+            invar: idx for idx, invar in enumerate(self.global_jaxpr.jaxpr.invars)
+        }
+        passthrough_outvars = [
+            invars_idx.get(outvar) for outvar in self.global_jaxpr.jaxpr.outvars
+        ]
+
+        return MpmdFunction(
+            consts=self.consts,
+            in_info=self.in_info,
+            in_uids=in_uids,
+            out_uids=out_uids,
+            worker_mesh=self.mpmd_mesh,
+            instructions_by_worker=mpmd_instructions,
+            passthrough_outvars=passthrough_outvars,
+        )
 
 
-def pipelined(
+def _mpmd_jit(
     fun: Callable,
-    mpmd_mesh,
-    in_axis_resources=None,
-    out_axis_resources=None,
-    static_argnums=(),
-    donate_argnums=(),
-    compiler_options: Mapping | None = None,
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh,
+    *,
+    strategy,
+    in_shardings=None,
+    out_shardings=None,
+    static_argnums: int | Sequence[int] | None = None,
+    static_argnames: str | Iterable[str] | None = None,
+    donate_argnums: int | Sequence[int] | None = None,
+    donate_argnames: str | Iterable[str] | None = None,
+    abstracted_axes: Any | None = None,
+    compiler_options: dict[str, Any] | None = None,
     use_pgle=False,
-) -> CompileThunk:
-    def compile_fn(*args, **kwargs):
-        assert kwargs == {}, "Unsupported kwargs"
-        return prepare_pipelined(
-            fun,
-            args,
-            mpmd_mesh,
-            in_axis_resources=in_axis_resources,
-            out_axis_resources=out_axis_resources,
-            static_argnums=static_argnums,
-            donate_argnums=donate_argnums,
-            compiler_options=compiler_options,
-            use_pgle=use_pgle,
-        )
+) -> TraceableFunction:
+    pjit_info = _parse_jit_arguments(
+        fun=fun,
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
+        donate_argnums=donate_argnums,
+        donate_argnames=donate_argnames,
+        static_argnums=static_argnums,
+        static_argnames=static_argnames,
+        device=None,
+        backend=None,
+        abstracted_axes=abstracted_axes,
+        keep_unused=True,
+        inline=False,
+        compiler_options=compiler_options,
+        use_resource_env=True,  # FIXME
+    )
+    return TraceableFunction(
+        fun=fun, mpmd_mesh=mpmd_mesh, pjit_info=pjit_info, strategy=strategy
+    )
 
-    return CompileThunk(compile_fn)
+
+def mpmd_jit_with_loop(
+    fun: Callable,
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh,
+    *,
+    in_shardings=None,
+    out_shardings=None,
+    static_argnums: int | Sequence[int] | None = None,
+    static_argnames: str | Iterable[str] | None = None,
+    donate_argnums: int | Sequence[int] | None = None,
+    donate_argnames: str | Iterable[str] | None = None,
+    abstracted_axes: Any | None = None,
+    compiler_options: dict[str, Any] | None = None,
+    use_pgle=False,
+) -> TraceableFunction:
+    return _mpmd_jit(
+        fun=fun,
+        mpmd_mesh=mpmd_mesh,
+        strategy=FunctionWithLoop(),
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
+        static_argnums=static_argnums,
+        static_argnames=static_argnames,
+        donate_argnums=donate_argnums,
+        donate_argnames=donate_argnames,
+        abstracted_axes=abstracted_axes,
+        compiler_options=compiler_options,
+        use_pgle=use_pgle,
+    )
+
+
+def mpmd_jit_by_yield(
+    fun: Callable,
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh,
+    *,
+    target_num_stages: int | None = None,
+    in_shardings=None,
+    out_shardings=None,
+    static_argnums: int | Sequence[int] | None = None,
+    static_argnames: str | Iterable[str] | None = None,
+    donate_argnums: int | Sequence[int] | None = None,
+    donate_argnames: str | Iterable[str] | None = None,
+    abstracted_axes: Any | None = None,
+    compiler_options: dict[str, Any] | None = None,
+    use_pgle=False,
+):
+    return _mpmd_jit(
+        fun=fun,
+        mpmd_mesh=mpmd_mesh,
+        strategy=FunctionWithYield(target_num_stages=target_num_stages),
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
+        static_argnums=static_argnums,
+        static_argnames=static_argnames,
+        donate_argnums=donate_argnums,
+        donate_argnames=donate_argnames,
+        abstracted_axes=abstracted_axes,
+        compiler_options=compiler_options,
+        use_pgle=use_pgle,
+    )
+
+
+def mpmd_jit_rev(
+    fun: Callable,
+    mpmd_mesh: MpmdMesh | RemoteMpmdMesh,
+    *,
+    out_refs,
+    in_shardings=None,
+    out_shardings=None,
+    static_argnums: int | Sequence[int] | None = None,
+    static_argnames: str | Iterable[str] | None = None,
+    donate_argnums: int | Sequence[int] | None = None,
+    donate_argnames: str | Iterable[str] | None = None,
+    abstracted_axes: Any | None = None,
+    compiler_options: dict[str, Any] | None = None,
+    use_pgle=False,
+) -> TraceableFunction:
+    return _mpmd_jit(
+        fun=fun,
+        mpmd_mesh=mpmd_mesh,
+        strategy=FunctionReverse(out_refs=out_refs),
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
+        static_argnums=static_argnums,
+        static_argnames=static_argnames,
+        donate_argnums=donate_argnums,
+        donate_argnames=donate_argnames,
+        abstracted_axes=abstracted_axes,
+        compiler_options=compiler_options,
+        use_pgle=use_pgle,
+    )

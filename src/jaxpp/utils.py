@@ -15,6 +15,7 @@
 
 import contextlib
 import logging
+import os
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
@@ -44,6 +45,29 @@ class CtxVar(Generic[T]):
             yield
         finally:
             self._value = prev
+
+
+def parse_bool(s):
+    if s.lower() in ["true", "1", "t", "y", "yes"]:
+        return True
+    elif s.lower() in ["false", "0", "f", "n", "no"]:
+        return False
+    return None
+
+
+class BoolCtxVar(CtxVar[bool]):
+    def __init__(self, default_value=False, env_key: str | None = None):
+        super().__init__(default_value)
+        self.env_key = env_key
+
+    @property
+    def value(self) -> T:
+        if self.env_key is not None and (vs := os.getenv(self.env_key)) is not None:
+            if v := parse_bool(vs):
+                return v
+            else:
+                logger.warning(f"Unsupported flag value {self.env_key}={vs}")
+        return super().value
 
 
 def unzip_multi(xs, arity=2):

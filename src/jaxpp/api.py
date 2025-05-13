@@ -18,14 +18,12 @@
 
 from jaxpp import __version__
 from jaxpp.arrayref import ArrayRef
-from jaxpp.core import pipelined
+from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_rev, mpmd_jit_with_loop
 from jaxpp.jax_primitives import add_multi_p
-from jaxpp.loop_output import LoopOutput
 from jaxpp.mesh import MpmdMesh, RemoteMpmdMesh
 from jaxpp.pipelining import pipeline_enter_stage
-from jaxpp.replication import run_replicated_dced
 from jaxpp.schedules import BaseSchedule, Eager1F1B, Interleaved1F1B, Std1F1B
-from jaxpp.training import accumulate_grads
+from jaxpp.training import Add, Concat, Max, treduce, treduce_i
 
 
 def cross_mpmd_all_reduce(*args):

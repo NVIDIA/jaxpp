@@ -21,57 +21,36 @@ import jax
 from jaxpp.jax_primitives import pipeline_yield_p
 from jaxpp.types import TaskType
 
+_current_stage = None
 
-class PipelineStageContext:
-    _is_tracing = False
-    _current_stage: int = 0
 
-    def __init__(self) -> None:
-        raise RuntimeError("This class can not be instanciated.")
-
-    @classmethod
-    def next_stage(cls) -> tuple[int, int]:
-        from_stage = cls._current_stage
-        cls._current_stage += 1
-        return from_stage, cls._current_stage
-
-    @classmethod
-    def reset(cls):
-        cls._current_stage = 0
-
-    @classmethod
-    @contextmanager
-    def tracing_scope(cls):
-        cls._is_tracing = True
-        _current_stage = cls._current_stage
-        cls.reset()
-
+@contextmanager
+def yield_scope(enabled: bool = True):
+    global _current_stage
+    prev_stage = _current_stage
+    _current_stage = 0 if enabled else None
+    try:
         yield
-
-        cls._is_tracing = False
-        cls._current_stage = _current_stage
-
-    @classmethod
-    def mark_stage_switch(cls, anchor: Any) -> Any:
-        if not cls._is_tracing:
-            return anchor
-
-        from_stage_id, current_stage = cls.next_stage()
-
-        anchor_flat, tree = jax.tree_util.tree_flatten(anchor)
-        return jax.tree_util.tree_unflatten(
-            tree,
-            pipeline_yield_p.bind(
-                *anchor_flat,
-                name=f"stage_{current_stage:03d}",
-                task_type=TaskType.FWD,
-                from_stage_id=from_stage_id,
-                to_stage_id=current_stage,
-            ),
-        )
+    finally:
+        _current_stage = prev_stage
 
 
-def pipeline_enter_stage(
-    anchor: Any, name: str | None = None, stage_id: int | None = None
-) -> Any:
-    return PipelineStageContext.mark_stage_switch(anchor)
+def pipeline_enter_stage(anchor: Any, name: str | None = None) -> Any:
+    global _current_stage
+    if _current_stage is None:
+        return anchor
+
+    from_stage_id = _current_stage
+    _current_stage += 1
+
+    anchor_flat, tree = jax.tree_util.tree_flatten(anchor)
+    return jax.tree_util.tree_unflatten(
+        tree,
+        pipeline_yield_p.bind(
+            *anchor_flat,
+            name=f"stage_{name}_{_current_stage:03d}",
+            task_type=TaskType.FWD,
+            from_stage_id=from_stage_id,
+            to_stage_id=_current_stage,
+        ),
+    )

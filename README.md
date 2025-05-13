@@ -2,7 +2,7 @@
 
 JaxPP is a JAX library enabling Multiple-Program Multiple-Data (MPMD)
 pipeline parallelism through simple user annotations `pipeline_enter_stage(layer)`
-and decorators `@pipelined`.
+and decorators `@mpmd_jit_with_loop`.
 
 JaxPP automatically splits JAX computations into multiple SPMD modules that
 are independently jitted and dispatched to different devices.
@@ -22,8 +22,7 @@ Please contact the maintainers for any questions or concerns.
 Issues and feature requests are welcome.
 
 # Installation instructions
-
-JaxPP currently supports JAX 0.5.1 and it requires CUDA 12 and cuDNN 9, similarly to `jax[cuda_12]`'s default dependencies.
+JaxPP dependencies and supported JAX versions are listed in [`pyproject.toml`](https://github.com/NVIDIA/jaxpp/-/blob/main/pyproject.toml).
 
 ```bash
 git clone https://github.com/NVIDIA/jaxpp.git
@@ -77,26 +76,20 @@ def loss(pars, batch):
     res = model.apply(pars, batch)
     return jnp.mean((res - batch) ** 2) / num_mubatches, (res, 4)
 
-# The `pipelined` transformation, with `accumulate_grads`,
-# will make this function execute in pipelined fashion over 2 devices
+# The `mpmd_jit_with_loop` transformation, with `treduce`,
+# will make this function execute in mpmd_jit_with_loop fashion over 2 devices
 # using the `Eager1F1B` schedule
-@partial(jaxpp.pipelined, mpmd_mesh=mpmd_mesh)
+@partial(jaxpp.mpmd_jit_with_loop, mpmd_mesh=mpmd_mesh)
 def pp_train_step(opt_state, pars, batch):
-    def mubatch_grad(mubatch):
-        ((l, (pred, _)), grad) = jax.value_and_grad(loss, has_aux=True)(pars, mubatch)
-        return grad, (l, pred)
-
+    mubatch_grad = partial(jax.value_and_grad(loss_fn, has_aux=True), params)
     # Compute loss and gradients
-    grad, (l, pred) = jaxpp.accumulate_grads(
-        mubatch_grad,
-        batch=batch,
-        out_shardings=None,
-        schedule=jaxpp.Eager1F1B(2),
+    (losses, (pred, _)), grad = jaxpp.treduce(
+        mubatch_grad, batch, schedule=jaxpp.Std1F1B(mpmd_mesh.mpmd_dim)
     )
     # Apply the optimizer as usual
     (updates, opt_state) = optimizer.update(grad, opt_state, pars)
     new_pars = optax.apply_updates(pars, updates)
-    return opt_state, new_pars, l, pred
+    return opt_state, new_pars, losses, pred
 ```
 
 To run the train step, we need to create a `MpmdMesh` object, which
@@ -107,7 +100,7 @@ mpmd one.
 devices = np.array(jax.devices()[0]).reshape(2, 1, 4)
 jax_mesh = jax.sharding.Mesh(devices, ("mpmd", "data", "model"))
 mpmd_mesh = jaxpp.MpmdMesh(jax_mesh, "mpmd")
-print(mpmd_mesh.lowering_mesh().shape) # OrderedDict([('mpmd', 1), ('data', 1), ('model', 1)])
+print(mpmd_mesh.lowering_mesh().shape) # OrderedDict([('mpmd', 1), ('data', 1), ('model', 4)])
 ```
 
 [examples/basic.py](examples/basic.py) provides a complete example.
@@ -127,7 +120,7 @@ The base image contains all the core dependencies and is built using CUDA 12.6:
 ```bash
 docker build --force-rm=true \
   -f scripts/docker/Dockerfile.base \
-  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:12.6.3-devel-ubuntu22.04 \
+  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:12.9.0-devel-ubuntu22.04 \
   -t jaxpp-base .
 ```
 

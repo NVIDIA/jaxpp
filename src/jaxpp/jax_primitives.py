@@ -18,42 +18,15 @@ from pprint import pformat
 from typing import Callable, ParamSpec, Sequence, TypedDict, TypeVar, cast
 
 import jax
-import jax.core as jcore
+import jax._src.core as jcore
 from jax._src import source_info_util
 from jax._src.debugging import debug_effect, inspect_sharding_p
-from jax._src.pjit import _infer_params, _parse_jit_arguments
 from jax.interpreters import ad, batching, mlir
 from jax.interpreters import partial_eval as pe
 
+from jaxpp.compilation import pjit_lower
+from jaxpp.mesh import MpmdMesh
 from jaxpp.types import TaskType
-
-
-def jit_infer_params(
-    fun,
-    args,
-    in_axis_resources,
-    out_axis_resources,
-    static_argnums=(),
-    donate_argnums=(),
-):
-    jit_info = _parse_jit_arguments(
-        fun=fun,
-        in_shardings=in_axis_resources,
-        out_shardings=out_axis_resources,
-        donate_argnums=donate_argnums,
-        donate_argnames=None,
-        static_argnums=static_argnums,
-        static_argnames=None,
-        device=None,
-        backend=None,
-        abstracted_axes=None,
-        keep_unused=True,
-        inline=False,
-        compiler_options=None,
-        use_resource_env=True,
-    )
-    return _infer_params(fun, jit_info, args, {})
-
 
 add_multi_p = jcore.Primitive("add_multi")
 
@@ -159,7 +132,7 @@ dax_pscan_p.multiple_results = True
 dax_pscan_p.def_abstract_eval(dax_pscan_abstract_eval)
 
 
-def dax_pscan_lower(
+def dax_pscan_impl(
     *args,
     jaxpr,
     n_mubatches,
@@ -169,22 +142,31 @@ def dax_pscan_lower(
     in_mpmd_refs,
     out_mpmd_defs,
     schedule,
+    eager=False,
 ):
+    # FIXME: acutally implement schedule
     fun = jcore.jaxpr_as_fun(jaxpr)
 
     if n_mubatches == 1:
         return fun(*args)
 
-    loop_invariant_args = args[:n_consts]
+    loop_invariant_args, loop_state = args[:n_consts], args[n_consts:]
+
+    if eager:
+        for i in range(0, n_mubatches):
+            loop_state = fun(*loop_invariant_args, *loop_state)
+        return loop_state
 
     def loop_body(idx, loop_state):
-        return fun(*(*loop_invariant_args, *loop_state))
+        return fun(*loop_invariant_args, *loop_state)
 
-    return jax.lax.fori_loop(0, n_mubatches, loop_body, list(args[n_consts:]))
+    return jax.lax.fori_loop(0, n_mubatches, loop_body, list(loop_state))
 
+
+dax_pscan_p.def_impl(partial(dax_pscan_impl, eager=True))
 
 mlir.register_lowering(
-    dax_pscan_p, mlir.lower_fun(dax_pscan_lower, multiple_results=True)
+    dax_pscan_p, mlir.lower_fun(dax_pscan_impl, multiple_results=True)
 )
 
 
@@ -197,11 +179,11 @@ def task_lower(
     *args,
     name=None,
     backend=None,
-    call_jaxpr,
+    call_jaxpr: jcore.ClosedJaxpr,
     task_name,
     mpmd_idx,
-    in_shardings,
-    out_shardings,
+    in_shardings: "ShardingStore",
+    out_shardings: "ShardingStore",
     recv_invars,
     send_outvars,
     donate_invars,
@@ -266,9 +248,76 @@ def dce_jaxpr_dax_pscan(
     return used_inputs, new_eqn
 
 
-task_p = jcore.CallPrimitive("task")
-task_p.def_impl(jcore.call_impl)
+enable_task_impl = False
 
+
+def task_impl(
+    *args,
+    call_jaxpr: jcore.ClosedJaxpr,
+    backend=None,
+    task_name,
+    mpmd_idx,
+    in_shardings: "ShardingStore",
+    out_shardings: "ShardingStore",
+    recv_invars,
+    send_outvars,
+    donate_invars,
+):
+    if (
+        enable_task_impl
+        and in_shardings._called_at_least_once
+        or len(in_shardings.shardings) == 0
+    ):
+        mesh = MpmdMesh.mesh_stack[-1].remote_mesh_at(mpmd_idx)
+        kwargs = dict(
+            in_shardings=tuple(
+                jax.NamedSharding(mesh, s.spec, memory_kind=s.memory_kind)
+                for s in in_shardings.shardings
+            ),
+            out_shardings=tuple(
+                jax.NamedSharding(mesh, s.spec, memory_kind=s.memory_kind)
+                for s in out_shardings.shardings
+            ),
+            in_layouts=(None,) * len(args),
+            out_layouts=(None,) * len(out_shardings.shardings),
+            donated_invars=donate_invars,
+            ctx_mesh=mesh,
+            name=task_name,
+            keep_unused=True,
+            inline=False,
+            compiler_options_kvs=tuple(),
+            lowering_platforms=("cuda",),
+            lowering_parameters=mlir.LoweringParameters(),
+            pgle_profiler=None,
+        )
+        compiled = pjit_lower(call_jaxpr, **kwargs).compile()
+        compiled._all_args_info = None  # FIXME
+        return compiled.call(*args)
+    raise NotImplementedError()
+
+
+def task_abstract_eval(
+    *args,
+    call_jaxpr: jcore.ClosedJaxpr,
+    name=None,
+    backend=None,
+    task_name,
+    mpmd_idx,
+    in_shardings: "ShardingStore",
+    out_shardings: "ShardingStore",
+    recv_invars,
+    send_outvars,
+    donate_invars,
+):
+    return (call_jaxpr.out_avals, call_jaxpr.effects)
+
+
+task_p = jcore.Primitive("task")
+task_p.multiple_results = True
+# TODO: use `task_impl` above once fixed.
+# As of now tasks aren't jitted
+task_p.def_impl(task_impl)
+task_p.def_effectful_abstract_eval(task_abstract_eval)
 T = TypeVar("T")
 P = ParamSpec("P")
 
@@ -321,7 +370,7 @@ class ShardingStore:
             return repr(self)
 
     @property
-    def shardings(self) -> list:
+    def shardings(self) -> list[jax.NamedSharding]:
         if len(self._shardings) > 0 and not self._called_at_least_once:
             raise AssertionError(
                 "Shardings can be inspected only after compiling the jaxpr"
@@ -378,7 +427,7 @@ class ShardingStore:
 
 # Refined type annotations for key Jaxprs/Eqns we use in the jaxpr
 class TaskEqnParams(TypedDict):
-    call_jaxpr: jcore.Jaxpr
+    call_jaxpr: jcore.ClosedJaxpr
     task_type: TaskType
     stage_id: int
     out_shardings: ShardingStore
@@ -404,7 +453,7 @@ class TaskEqn(jcore.JaxprEqn):
         assert eqn.primitive is task_p
         for invar in eqn.invars:
             assert isinstance(invar, jcore.Var), "Pipeline stage has literal arguments"
-        for outvar in eqn.params["call_jaxpr"].outvars:
+        for outvar in eqn.params["call_jaxpr"].jaxpr.outvars:
             assert isinstance(outvar, jcore.Var), "Pipeline stage has literal results"
         assert len(eqn.invars) == len(set(eqn.invars)), "Duplicate arguments to stage"
         return cast(TaskEqn, eqn)

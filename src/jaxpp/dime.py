@@ -97,17 +97,7 @@ class RawShardedArray(NamedTuple):
 def sharded_array_from_single_arrays(
     aval: jax.core.ShapedArray, sharding: jax.sharding.Sharding, arrays
 ):
-    is_bool = (
-        aval.dtype == jnp.bool_
-    )  # NOTE: dlpack doesn't support bool https://github.com/google/jax/issues/4719
-    if is_bool:
-        aval = aval.update(dtype=jnp.uint8)
-
     res = array.ArrayImpl(aval, sharding, arrays, committed=True)
-
-    if is_bool:
-        return res.astype(jnp.bool_)
-
     return res
 
 
@@ -147,6 +137,9 @@ class Dime:
         return res
 
     def register_gpus(self, comm_key: CommKeyWithNcclId):
+        if comm_key.device_ids in self.communicators:
+            return
+
         comms = self.communicators[comm_key.device_ids]
         import os
 

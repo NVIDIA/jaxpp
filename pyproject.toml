@@ -99,7 +99,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "jax[cuda12]==0.5.1",
+    "jax[cuda12]>=0.5.1,<=0.6.0",
     "numpy<2.0.0",
     "ray==2.36.0",
     "cupy-cuda12x"

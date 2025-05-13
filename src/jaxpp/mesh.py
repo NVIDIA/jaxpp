@@ -23,22 +23,17 @@ import subprocess
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 import jax
 import jax.core
 import jax.experimental.topologies as topologies
 import jax_cuda12_plugin._versions as cuda_versions
-import jaxlib.xla_extension as xe
 import numpy as np
 import ray
-from cupy.cuda.nccl import NcclCommunicator
 from cupy.cuda.nccl import get_unique_id as nccl_get_unique_id
-from cupy.cuda.nccl import groupEnd as nccl_group_end
-from cupy.cuda.nccl import groupStart as nccl_group_start
 from jax._src import dtypes, xla_bridge
 from jax._src.distributed import initialize as dist_init
 from jax._src.distributed import shutdown as dist_shutdown
@@ -48,7 +43,7 @@ from ray.air._internal.util import find_free_port
 from ray.exceptions import RayError
 from ray.runtime_env import RuntimeEnv
 
-from jaxpp.compilation import SerializeableMeshComputation, to_pspec
+from jaxpp.compilation import SerializeableMeshComputation
 from jaxpp.dime import Dime, DimeMixin, RawShardedArray
 from jaxpp.ops import (
     UID,
@@ -69,6 +64,15 @@ from jaxpp.types import (
     WorkerId,
 )
 
+if jax.__version_info__ > (0, 6, 0):
+    from jax._src.lib import _jax
+
+    DistributedRuntimeClient = _jax.DistributedRuntimeClient
+else:
+    import jaxlib.xla_extension as xe
+
+    DistributedRuntimeClient = xe.DistributedRuntimeClient
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +85,7 @@ def live_arrays_size(backend: xc.Client) -> float:
     return sum(bytes_used_list) / (2**30)
 
 
-@dataclass
+@dataclasses.dataclass
 class Ctx:
     coordinator_address: str
     num_processes: int
@@ -99,12 +103,6 @@ def initialize_backend(ctx: Ctx) -> jax.sharding.Mesh:
         sorted((d for d in devices), key=lambda d: (d.process_index, d.id))
     ).reshape(ctx.mesh_shape)
     return jax.sharding.Mesh(remote_devices, ctx.mesh_axis_names)
-
-
-def get_pspec(a: jax.Array, lmesh: jax.sharding.Mesh) -> jax.sharding.PartitionSpec:
-    assert isinstance(a.sharding, jax.sharding.Sharding)
-    hlo_sharding = a.sharding._to_xla_hlo_sharding(a.ndim)
-    return to_pspec(hlo_sharding, lmesh)
 
 
 # Identity function is at the top level so that `GPUWorker.replicate` doesn't
@@ -182,22 +180,13 @@ class Store:
         self, uid: UID, mesh_executable: pxla.MeshExecutable, name: str
     ) -> None:
         in_shardings = jax.util.safe_zip(
-            mesh_executable.in_avals, mesh_executable.input_shardings()
+            mesh_executable.in_avals, mesh_executable._in_shardings
         )
         self._logger.debug(f"{name} {in_shardings=}")
         out_shardings = jax.util.safe_zip(
-            mesh_executable.out_avals, mesh_executable.output_shardings()
+            mesh_executable.out_avals, mesh_executable._out_shardings
         )
         self._logger.debug(f"{name} {out_shardings=}")
-        cpp_call = mesh_executable.create_cpp_call(
-            no_kwargs=True,
-            in_tree=jax.tree_util.tree_structure(
-                (tuple(mesh_executable.input_shardings()), {})
-            ),
-            out_tree=jax.tree_util.tree_structure(mesh_executable.output_shardings()),
-        )
-        assert cpp_call is not None
-        mesh_executable.cpp_call = cpp_call
 
         # TODO: use mesh_executable.as_text() or directly the hlo module
         # to compute number of collectives as proxy metric for intra-stage
@@ -237,7 +226,7 @@ def execute_op(
                 executable, pxla.MeshExecutable
             ), f"Unexpected executable {op.exec_uid} type {type(executable)}"
 
-            results = executable.cpp_call(*args)
+            results = executable.call(*args)
 
         case SendOp():
             store.collect_pending_deletes()
@@ -384,7 +373,7 @@ class GPUWorker(DimeMixin):
 
         from jax._src.distributed import global_state
 
-        assert isinstance(global_state.client, xe.DistributedRuntimeClient)
+        assert isinstance(global_state.client, DistributedRuntimeClient)
         self.distributed_client = global_state.client
         self.backend: xc.Client = jax.local_devices()[0].client
         self.comm = Dime(self.backend)
@@ -569,10 +558,10 @@ def split_mesh_shape(
     ]
 
 
-def get_distributed_client() -> xe.DistributedRuntimeClient:
+def get_distributed_client() -> DistributedRuntimeClient:
     from jax._src.distributed import global_state
 
-    assert isinstance(global_state.client, xe.DistributedRuntimeClient)
+    assert isinstance(global_state.client, DistributedRuntimeClient)
     return global_state.client
 
 
@@ -611,7 +600,7 @@ def get_nccl_id(devs: UniqueDevices):
     return nccl_id
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class MpmdMesh:
     jax_mesh: jax.sharding.Mesh
     mpmd_axis_name: str
@@ -620,6 +609,14 @@ class MpmdMesh:
         default_factory=lambda: Dime(jax.local_devices()[0].client)
     )
     strict: bool = True
+    mesh_stack: ClassVar[list["MpmdMesh"]] = []
+
+    def __enter__(self):
+        MpmdMesh.mesh_stack.append(self)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.mesh_stack.pop()
 
     def __post_init__(self):
         if self.strict:
@@ -651,8 +648,11 @@ class MpmdMesh:
 
     @cached_property
     def my_mpmd_axis_index(self) -> int:
+        local_devices = set(jax.local_devices())
         my_devices_coord = {
-            self.device_coords[d][self.mpmd_axis] for d in jax.local_devices()
+            self.device_coords[d][self.mpmd_axis]
+            for d in self.jax_mesh._flat_devices_tuple
+            if d in local_devices
         }
         (mpmd_axis_index,) = my_devices_coord
         return mpmd_axis_index
@@ -745,10 +745,9 @@ class MpmdMesh:
 
     def get_tensor(self, mpmd_idx: int, uid: UID) -> jax.Array:
         self.store._logger.debug("get_tensor")
-        if self.my_mpmd_axis_index == mpmd_idx:
-            with self.my_mpmd_group_mesh:
-                return self.replicate(self.store.get_array(uid))
-        # TODO: return
+        assert self.my_mpmd_axis_index == mpmd_idx
+        with self.my_mpmd_group_mesh:
+            return self.replicate(self.store.get_array(uid))
 
     def delete(self, mpmd_idx: int, uid: UID):
         if self.my_mpmd_axis_index == mpmd_idx:

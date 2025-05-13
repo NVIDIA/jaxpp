@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import unittest
+from functools import partial
 
 import jax
-import jax.lib
 import jax.random
 import numpy as np
 import optax
@@ -65,31 +65,9 @@ class ModelWithPassthrough(nn.Module):
 
             return loss.mean(), (logits, x_out, y_out)
 
-        def compute_grads(params, data):
-            grad_fn = jax.value_and_grad(
-                loss_fn,
-                # * has_aux (bool): Optional, bool. Indicates whether fun returns a
-                #                   pair where the first element is considered the
-                #                   output of the mathematical function to be
-                #                   differentiated and the second element is
-                #                   auxiliary data.
-                #                   Default: False.
-                has_aux=True,
-                # argnums (int | Sequence[int]): Optional, integer or sequence of
-                #                                integers. Specifies which
-                #                                positional argument(s) to
-                #                                differentiate with respect to
-                #                                Default: 0.
-                argnums=0,
-            )
-            (loss, (logits, x, y)), grads = grad_fn(state.params, data)
-
-            return jaxpp.api.LoopOutput(grads, (loss, (logits, x, y)))
-
-        grads, (loss, (logits, x, y)), _, _ = jaxpp.api.accumulate_grads(
-            lambda data: compute_grads(params=state.params, data=data),
-            batch=(inputs, targets),
-            out_shardings=None,
+        (loss, (logits, x, y)), grads = jaxpp.api.treduce(
+            partial(jax.value_and_grad(loss_fn, has_aux=True, argnums=0), state.params),
+            (inputs, targets),
             schedule=jaxpp.schedules.Std1F1B(num_stages=1),
         )
 
@@ -107,8 +85,10 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
             pytest.skip()
 
         self._mesh = MpmdMesh(
-            jax.sharding.Mesh(np.array(jax.devices())[:1].reshape(1,1,1), ("stage", "data", "model")),
-            "stage"
+            jax.sharding.Mesh(
+                np.array(jax.devices())[:1].reshape(1, 1, 1), ("stage", "data", "model")
+            ),
+            "stage",
         )
 
         self._root_key = jax.random.key(seed=0)
@@ -127,6 +107,10 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
             apply_fn=model.apply, params=params, tx=optax.adam(1e-3)
         )
 
+        train_step = jaxpp.api.mpmd_jit_with_loop(
+            model.train_step, mpmd_mesh=self._mesh
+        )
+
         # 10 Steps of Training
         for step_id in range(10):
             x_rng = jax.random.fold_in(key=data_key, data=3 * step_id)
@@ -140,9 +124,7 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
                 key=targets_rng, shape=(1, TENSOR_SHAPE[0]), minval=1, maxval=10
             )
 
-            state, loss = jaxpp.api.pipelined(model.train_step, mpmd_mesh=self._mesh)(
-                state, (x, y), targets
-            )
+            state, loss = train_step(state, (x, y), targets)
 
             # Test API is functional - No timing test
             loss.block_until_ready()  # Forced Resync to allow accurate timing
@@ -154,7 +136,9 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
         y_infer = jax.random.uniform(jax.random.fold_in(data_key, 2), TENSOR_SHAPE)
 
         logits, x_out, y_out = state.apply_fn(
-            {"params": state.params}, x=x_infer, y=y_infer
+            {"params": jax.tree.map(lambda a: a._value, state.params)},
+            x=x_infer,
+            y=y_infer,
         )
 
         assert logits.shape == (10, 100)
