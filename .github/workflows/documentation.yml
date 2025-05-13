@@ -29,7 +29,8 @@ jobs:
           python-version: '3.10'
       - name: Sphinx build
         run: |
-          make docs
+          pip install -e '.[docs]'
+          make -C docs html
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
