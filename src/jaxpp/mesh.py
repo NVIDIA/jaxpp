@@ -32,6 +32,7 @@ import jax.core
 import jax.experimental.topologies as topologies
 import jax_cuda12_plugin._versions as cuda_versions
 import numpy as np
+import portpicker
 import ray
 from cupy.cuda.nccl import get_unique_id as nccl_get_unique_id
 from jax._src import dtypes, xla_bridge
@@ -39,7 +40,6 @@ from jax._src.distributed import initialize as dist_init
 from jax._src.distributed import shutdown as dist_shutdown
 from jax.interpreters import pxla
 from jax.lib import xla_client as xc
-from ray.air._internal.util import find_free_port
 from ray.exceptions import RayError
 from ray.runtime_env import RuntimeEnv
 
@@ -888,7 +888,7 @@ class RemoteMpmdMesh:
             logger.warning("Multi-host SPMD detected. This feature is experimental")
 
         ctx = Ctx(
-            coordinator_address=f"{ray.util.get_node_ip_address()}:{find_free_port()}",
+            coordinator_address=f"{ray.util.get_node_ip_address()}:{portpicker.pick_unused_port()}",
             num_processes=num_processes,
             gpus_per_process=gpus_per_process,
             import_modules=import_modules,
