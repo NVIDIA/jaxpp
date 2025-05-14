@@ -1,0 +1,1535 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>jaxpp.mesh &#8212; jaxpp</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=d0aa047a" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../../_static/documentation_options.js?v=8fa8b3e9"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/jaxpp/mesh';</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.6.0" />
+
+
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../readme.html">JaxPP</a></li>
+
+
+
+
+
+
+
+
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../modules.html">jaxpp</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../jaxpp.html">api</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">jaxpp.mesh</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for jaxpp.mesh</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &amp; AFFILIATES. All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">importlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">it</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderedDict</span><span class="p">,</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">cached_property</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ClassVar</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.core</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.experimental.topologies</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">topologies</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax_cuda12_plugin._versions</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">cuda_versions</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">portpicker</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cupy.cuda.nccl</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_unique_id</span> <span class="k">as</span> <span class="n">nccl_get_unique_id</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax._src</span><span class="w"> </span><span class="kn">import</span> <span class="n">dtypes</span><span class="p">,</span> <span class="n">xla_bridge</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax._src.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">initialize</span> <span class="k">as</span> <span class="n">dist_init</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax._src.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">shutdown</span> <span class="k">as</span> <span class="n">dist_shutdown</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax.interpreters</span><span class="w"> </span><span class="kn">import</span> <span class="n">pxla</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax.lib</span><span class="w"> </span><span class="kn">import</span> <span class="n">xla_client</span> <span class="k">as</span> <span class="n">xc</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ray.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">RayError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ray.runtime_env</span><span class="w"> </span><span class="kn">import</span> <span class="n">RuntimeEnv</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.compilation</span><span class="w"> </span><span class="kn">import</span> <span class="n">SerializeableMeshComputation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.dime</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dime</span><span class="p">,</span> <span class="n">DimeMixin</span><span class="p">,</span> <span class="n">RawShardedArray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.ops</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">UID</span><span class="p">,</span>
+    <span class="n">AllReduceOp</span><span class="p">,</span>
+    <span class="n">DeleteOp</span><span class="p">,</span>
+    <span class="n">Op</span><span class="p">,</span>
+    <span class="n">RecvOp</span><span class="p">,</span>
+    <span class="n">RunOp</span><span class="p">,</span>
+    <span class="n">SendOp</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.types</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Bind</span><span class="p">,</span>
+    <span class="n">CommKeyWithNcclId</span><span class="p">,</span>
+    <span class="n">GlobalDeviceId</span><span class="p">,</span>
+    <span class="n">PutArg</span><span class="p">,</span>
+    <span class="n">UniqueGlobalDeviceIds</span><span class="p">,</span>
+    <span class="n">UniqueSortedSequence</span><span class="p">,</span>
+    <span class="n">WorkerId</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">if</span> <span class="n">jax</span><span class="o">.</span><span class="n">__version_info__</span> <span class="o">&gt;</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">jax._src.lib</span><span class="w"> </span><span class="kn">import</span> <span class="n">_jax</span>
+
+    <span class="n">DistributedRuntimeClient</span> <span class="o">=</span> <span class="n">_jax</span><span class="o">.</span><span class="n">DistributedRuntimeClient</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">jaxlib.xla_extension</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xe</span>
+
+    <span class="n">DistributedRuntimeClient</span> <span class="o">=</span> <span class="n">xe</span><span class="o">.</span><span class="n">DistributedRuntimeClient</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">live_arrays_size</span><span class="p">(</span><span class="n">backend</span><span class="p">:</span> <span class="n">xc</span><span class="o">.</span><span class="n">Client</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="n">bytes_used_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">dev</span> <span class="ow">in</span> <span class="n">backend</span><span class="o">.</span><span class="n">local_devices</span><span class="p">():</span>
+        <span class="n">mem_stats</span> <span class="o">=</span> <span class="n">dev</span><span class="o">.</span><span class="n">memory_stats</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mem_stats</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bytes_used_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mem_stats</span><span class="p">[</span><span class="s2">&quot;bytes_in_use&quot;</span><span class="p">])</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">bytes_used_list</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">30</span><span class="p">)</span>
+
+
+<span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Ctx</span><span class="p">:</span>
+    <span class="n">coordinator_address</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">num_processes</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">gpus_per_process</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">import_modules</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">mesh_shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">mesh_axis_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">event_sync_before_delete</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">log_level</span><span class="p">:</span> <span class="nb">int</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_backend</span><span class="p">(</span><span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+    <span class="n">devices</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">()</span>
+    <span class="n">remote_devices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">((</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">devices</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">process_index</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">id</span><span class="p">))</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">mesh_shape</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span><span class="n">remote_devices</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">mesh_axis_names</span><span class="p">)</span>
+
+
+<span class="c1"># Identity function is at the top level so that `GPUWorker.replicate` doesn&#39;t</span>
+<span class="c1"># recompile on every invocation.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_identity_fn</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">x</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Store</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">event_sync_before_delete</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">_logger</span><span class="p">:</span> <span class="n">logging</span><span class="o">.</span><span class="n">Logger</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_executables</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">UID</span><span class="p">,</span> <span class="n">Any</span><span class="p">]()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_arrays</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">UID</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">RawShardedArray</span><span class="p">]()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_sync_before_delete</span> <span class="o">=</span> <span class="n">event_sync_before_delete</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span> <span class="o">=</span> <span class="n">_logger</span> <span class="ow">or</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">pop_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="n">elem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_arrays</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elem</span><span class="p">,</span> <span class="n">RawShardedArray</span><span class="p">):</span>
+            <span class="n">elem</span> <span class="o">=</span> <span class="n">elem</span><span class="o">.</span><span class="n">to_jax_array</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">elem</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="n">elem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_arrays</span><span class="p">[</span><span class="n">uid</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elem</span><span class="p">,</span> <span class="n">RawShardedArray</span><span class="p">):</span>
+            <span class="n">elem</span> <span class="o">=</span> <span class="n">elem</span><span class="o">.</span><span class="n">to_jax_array</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_arrays</span><span class="p">[</span><span class="n">uid</span><span class="p">]</span> <span class="o">=</span> <span class="n">elem</span>
+        <span class="k">return</span> <span class="n">elem</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">,</span> <span class="n">array</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">RawShardedArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_arrays</span><span class="p">[</span><span class="n">uid</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">synchronize_use</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arr</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">event</span> <span class="o">:=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="s2">&quot;jaxpp_use_event&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">event</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">collect_pending_deletes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">wait</span><span class="p">:</span>
+            <span class="n">remaining</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span><span class="p">:</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">event</span> <span class="o">:=</span> <span class="n">arr</span><span class="o">.</span><span class="n">jaxpp_use_event</span><span class="p">)</span> <span class="ow">and</span> <span class="n">event</span><span class="o">.</span><span class="n">done</span><span class="p">:</span>
+                    <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+                    <span class="k">del</span> <span class="n">arr</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">remaining</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span> <span class="o">=</span> <span class="n">remaining</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">safe_map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">synchronize_use</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">maybe_async_delete_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">arr</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pop_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="s2">&quot;jaxpp_use_event&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_event_sync_before_delete</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">synchronize_use</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+            <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+            <span class="k">del</span> <span class="n">arr</span>
+
+        <span class="k">elif</span> <span class="n">event</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">done</span><span class="p">:</span>
+                <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+                <span class="k">del</span> <span class="n">arr</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_pending_deletes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+            <span class="k">del</span> <span class="n">arr</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_mesh_computation</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">,</span> <span class="n">mesh_executable</span><span class="p">:</span> <span class="n">pxla</span><span class="o">.</span><span class="n">MeshExecutable</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">in_shardings</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">safe_zip</span><span class="p">(</span>
+            <span class="n">mesh_executable</span><span class="o">.</span><span class="n">in_avals</span><span class="p">,</span> <span class="n">mesh_executable</span><span class="o">.</span><span class="n">_in_shardings</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">in_shardings</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">out_shardings</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">safe_zip</span><span class="p">(</span>
+            <span class="n">mesh_executable</span><span class="o">.</span><span class="n">out_avals</span><span class="p">,</span> <span class="n">mesh_executable</span><span class="o">.</span><span class="n">_out_shardings</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">out_shardings</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># TODO: use mesh_executable.as_text() or directly the hlo module</span>
+        <span class="c1"># to compute number of collectives as proxy metric for intra-stage</span>
+        <span class="c1"># communication</span>
+
+        <span class="n">cas</span> <span class="o">=</span> <span class="n">mesh_executable</span><span class="o">.</span><span class="n">cost_analysis</span><span class="p">()</span>
+
+        <span class="c1"># TODO</span>
+        <span class="c1"># mflops = cas[0].get(&quot;flops&quot;, 0.0) / (10**6)</span>
+        <span class="c1"># self._logger.info(</span>
+        <span class="c1">#     f&quot;{serializeable_mesh_computation.name:20} &quot;</span>
+        <span class="c1">#     f&quot;(Module 1 of {len(cas)}): {mflops:6.2f} MFLOPS&quot;</span>
+        <span class="c1"># )</span>
+
+        <span class="c1"># TODO Memory analysis not very helpful as of 05/25/2023</span>
+        <span class="c1"># mesh_executable.memory_analysis()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_executables</span><span class="p">[</span><span class="n">uid</span><span class="p">]</span> <span class="o">=</span> <span class="n">mesh_executable</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_executable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pxla</span><span class="o">.</span><span class="n">MeshExecutable</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_executables</span><span class="p">[</span><span class="n">uid</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">zeros</span><span class="p">(</span><span class="n">avals</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">aval</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">aval</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="k">for</span> <span class="n">aval</span> <span class="ow">in</span> <span class="n">avals</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">execute_op</span><span class="p">(</span>
+    <span class="n">comm</span><span class="p">:</span> <span class="n">Dime</span><span class="p">,</span> <span class="n">store</span><span class="p">:</span> <span class="n">Store</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="n">Op</span><span class="p">,</span> <span class="n">local_mesh</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawShardedArray</span><span class="p">]:</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="p">[</span><span class="n">store</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span> <span class="k">for</span> <span class="n">uid</span> <span class="ow">in</span> <span class="n">op</span><span class="o">.</span><span class="n">in_uids</span><span class="p">]</span>
+    <span class="n">results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawShardedArray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">match</span> <span class="n">op</span><span class="p">:</span>
+        <span class="k">case</span> <span class="n">RunOp</span><span class="p">():</span>
+            <span class="n">executable</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">get_executable</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">exec_uid</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span>
+                <span class="n">executable</span><span class="p">,</span> <span class="n">pxla</span><span class="o">.</span><span class="n">MeshExecutable</span>
+            <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;Unexpected executable </span><span class="si">{</span><span class="n">op</span><span class="o">.</span><span class="n">exec_uid</span><span class="si">}</span><span class="s2"> type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">executable</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+
+            <span class="n">results</span> <span class="o">=</span> <span class="n">executable</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+        <span class="k">case</span> <span class="n">SendOp</span><span class="p">():</span>
+            <span class="n">store</span><span class="o">.</span><span class="n">collect_pending_deletes</span><span class="p">()</span>
+            <span class="c1"># NOTE `send` sets the `jaxpp_use_event` attribute</span>
+            <span class="n">comm</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">comm_desc</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">args</span>
+
+        <span class="k">case</span> <span class="n">RecvOp</span><span class="p">():</span>
+            <span class="n">avals</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">desc</span><span class="o">.</span><span class="n">aval</span> <span class="k">for</span> <span class="n">desc</span> <span class="ow">in</span> <span class="n">op</span><span class="o">.</span><span class="n">comm_desc</span><span class="p">)</span>
+            <span class="n">shardings</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+                <span class="n">desc</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">to_named_sharding</span><span class="p">(</span><span class="n">local_mesh</span><span class="p">)</span> <span class="k">for</span> <span class="n">desc</span> <span class="ow">in</span> <span class="n">op</span><span class="o">.</span><span class="n">comm_desc</span>
+            <span class="p">)</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">zeros</span><span class="p">,</span> <span class="n">out_shardings</span><span class="o">=</span><span class="n">shardings</span><span class="p">,</span> <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,))(</span><span class="n">avals</span><span class="p">)</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">comm</span><span class="o">.</span><span class="n">recv_in_group</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">comm_desc</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span>
+            <span class="c1"># NOTE: Recv consumes its arguments</span>
+            <span class="k">del</span> <span class="n">args</span>
+
+        <span class="k">case</span> <span class="n">AllReduceOp</span><span class="p">():</span>
+            <span class="c1"># TODO: maybe replace cupy all_reduce with &quot;MPMD-local to MPMD-global&quot; cast</span>
+            <span class="c1">#  (global_array) + `a.sum(0)`</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">comm</span><span class="o">.</span><span class="n">all_reduce</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">descs</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span>
+            <span class="c1"># NOTE: AllReduce consumes its arguments</span>
+            <span class="k">del</span> <span class="n">args</span>
+
+        <span class="k">case</span> <span class="n">DeleteOp</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">uid</span> <span class="ow">in</span> <span class="n">op</span><span class="o">.</span><span class="n">in_uids</span><span class="p">:</span>
+                <span class="n">store</span><span class="o">.</span><span class="n">maybe_async_delete_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+
+        <span class="k">case</span><span class="w"> </span><span class="k">_</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown operation type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">op</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">out_uids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># NOTE: for `SendOp` we</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">safe_map</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">put_array</span><span class="p">,</span> <span class="n">op</span><span class="o">.</span><span class="n">out_uids</span><span class="p">,</span> <span class="n">results</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">results</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">execute_instructions</span><span class="p">(</span>
+    <span class="n">comm</span><span class="p">:</span> <span class="n">Dime</span><span class="p">,</span>
+    <span class="n">store</span><span class="p">:</span> <span class="n">Store</span><span class="p">,</span>
+    <span class="n">in_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+    <span class="n">ops</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Op</span><span class="p">],</span>
+    <span class="n">out_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+    <span class="n">deletions</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">UID</span><span class="p">],</span>
+    <span class="n">local_mesh</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">,</span>
+    <span class="n">block_on_output</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">store</span><span class="o">.</span><span class="n">collect_pending_deletes</span><span class="p">(</span><span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">last_run_result</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">is_debug</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">isEnabledFor</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+    <span class="n">block_on_output</span> <span class="o">=</span> <span class="n">block_on_output</span> <span class="ow">or</span> <span class="n">is_debug</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">binding</span> <span class="ow">in</span> <span class="n">in_binding</span><span class="p">:</span>
+        <span class="n">store</span><span class="o">.</span><span class="n">put_array</span><span class="p">(</span><span class="n">binding</span><span class="o">.</span><span class="n">to_</span><span class="p">,</span> <span class="n">store</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">binding</span><span class="o">.</span><span class="n">from_</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">op</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ops</span><span class="p">):</span>
+        <span class="n">op_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">is_run_op</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">op</span><span class="p">,</span> <span class="n">RunOp</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_run_op</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">get_executable</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">exec_uid</span><span class="p">)</span><span class="o">.</span><span class="n">unsafe_call</span><span class="o">.</span><span class="n">name</span>
+
+        <span class="k">if</span> <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+            <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ops</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">op</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Start - </span><span class="si">{</span><span class="n">live_arrays_size</span><span class="p">(</span><span class="n">comm</span><span class="o">.</span><span class="n">backend</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">GiB&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">execute_op</span><span class="p">(</span><span class="n">comm</span><span class="p">,</span> <span class="n">store</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">local_mesh</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">is_run_op</span><span class="p">:</span>
+                <span class="c1"># FIXME: this might be a deleted array</span>
+                <span class="c1"># Use a local store for executing the instructions and then</span>
+                <span class="c1"># update global store as needed</span>
+                <span class="n">last_run_result</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed while running </span><span class="si">{</span><span class="n">name</span><span class="si">=}</span><span class="s2"> </span><span class="si">{</span><span class="n">op</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+        <span class="k">if</span> <span class="n">block_on_output</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">jarray_or_raw</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">jarray_or_raw</span><span class="p">,</span> <span class="n">RawShardedArray</span><span class="p">):</span>
+                    <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Synchronizing on RawShardedArray&quot;</span><span class="p">)</span>
+                    <span class="n">jarray_or_raw</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Synchronizing on block_until_ready&quot;</span><span class="p">)</span>
+                    <span class="n">jax</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">(</span><span class="n">jarray_or_raw</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="p">(</span>
+                        <span class="n">event</span> <span class="o">:=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">jarray_or_raw</span><span class="p">,</span> <span class="s2">&quot;jaxpp_use_event&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Synchronizing on jaxpp_use_event&quot;</span><span class="p">)</span>
+                        <span class="n">event</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+            <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">idx</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ops</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">op</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Done in </span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">op_start</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">s - &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">live_arrays_size</span><span class="p">(</span><span class="n">comm</span><span class="o">.</span><span class="n">backend</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">GiB&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">uid</span> <span class="ow">in</span> <span class="n">deletions</span><span class="p">:</span>
+        <span class="n">store</span><span class="o">.</span><span class="n">pop_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">binding</span> <span class="ow">in</span> <span class="n">out_binding</span><span class="p">:</span>
+        <span class="n">store</span><span class="o">.</span><span class="n">put_array</span><span class="p">(</span><span class="n">binding</span><span class="o">.</span><span class="n">to_</span><span class="p">,</span> <span class="n">store</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">binding</span><span class="o">.</span><span class="n">from_</span><span class="p">))</span>
+
+    <span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">,</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ops</span><span class="p">)</span><span class="si">}</span><span class="s2"> Instructions done in </span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">last_run_result</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">GPUWorker</span><span class="p">(</span><span class="n">DimeMixin</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">Ctx</span><span class="p">,</span> <span class="n">process_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">coordinates</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">process_id</span> <span class="o">=</span> <span class="n">process_id</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">log_level</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Trying to connect to distributed client&quot;</span><span class="p">)</span>
+
+        <span class="n">dist_init</span><span class="p">(</span>
+            <span class="n">coordinator_address</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">coordinator_address</span><span class="p">,</span>
+            <span class="n">num_processes</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">num_processes</span><span class="p">,</span>
+            <span class="n">process_id</span><span class="o">=</span><span class="n">process_id</span><span class="p">,</span>
+            <span class="n">local_device_ids</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">gpus_per_process</span><span class="p">)),</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">coordinates</span><span class="si">}</span><span class="s2"> Connected&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span> <span class="o">=</span> <span class="n">coordinates</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gmesh</span> <span class="o">=</span> <span class="n">initialize_backend</span><span class="p">(</span><span class="n">ctx</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pp_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lmesh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gmesh</span><span class="o">.</span><span class="n">devices</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">pp_idx</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">gmesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">mod</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">import_modules</span><span class="p">:</span>
+            <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">jax._src.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">global_state</span>
+
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">global_state</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="n">DistributedRuntimeClient</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">distributed_client</span> <span class="o">=</span> <span class="n">global_state</span><span class="o">.</span><span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="p">:</span> <span class="n">xc</span><span class="o">.</span><span class="n">Client</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">comm</span> <span class="o">=</span> <span class="n">Dime</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="p">)</span>
+
+        <span class="c1"># NOTE: maybe useful for self.distributed_client.wait_at_barrier(&quot;this_barrier&quot;)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span> <span class="o">=</span> <span class="n">Store</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">event_sync_before_delete</span><span class="p">,</span> <span class="n">_logger</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">replicate</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span>
+            <span class="n">_identity_fn</span><span class="p">,</span>
+            <span class="n">out_shardings</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lmesh</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">PartitionSpec</span><span class="p">()),</span>  <span class="c1"># type: ignore</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">profiler_trace_path</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Starting trace </span><span class="si">{</span><span class="n">profiler_trace_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">start_trace</span><span class="p">(</span><span class="n">profiler_trace_path</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">stop_trace</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_tensors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arrays</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PutArg</span><span class="p">]):</span>
+        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">arrays</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp_idx</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">mpmd_idxs</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">t</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">if</span> <span class="n">dtypes</span><span class="o">.</span><span class="n">is_python_scalar</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">dtypes</span><span class="o">.</span><span class="n">coerce_to_array</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+            <span class="n">sharding</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">to_named_sharding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lmesh</span><span class="p">)</span>
+            <span class="n">device_ts</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">t</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">d</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">sharding</span><span class="o">.</span><span class="n">addressable_devices_indices_map</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">]</span>
+            <span class="n">ga</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">sharding</span><span class="p">,</span> <span class="n">device_ts</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">put_array</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">uid</span><span class="p">,</span> <span class="n">ga</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">maybe_async_delete_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_mesh_computation</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">,</span> <span class="n">serializeable_mesh_computation</span><span class="p">:</span> <span class="n">SerializeableMeshComputation</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Compiling xla computation </span><span class="si">{</span><span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="n">xla_dump_to</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">compiler_options</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">xla_dump_to</span> <span class="o">=</span> <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">compiler_options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                <span class="s2">&quot;xla_dump_to&quot;</span>
+            <span class="p">)</span>
+        <span class="n">mesh_executable</span> <span class="o">=</span> <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">to_mesh_executable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lmesh</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">xla_dump_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">glob_pattern</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;*</span><span class="si">{</span><span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">*buffer-assignment.txt&quot;</span>
+            <span class="p">)</span>
+            <span class="n">buffer_assignments</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">xla_dump_to</span><span class="p">)</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">glob_pattern</span><span class="p">))</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">buffer_assignments</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Compilation did not result in buffer assignment dump&quot;</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">buffer_assignments</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">ba_pattern</span> <span class="o">=</span> <span class="s2">&quot;Total bytes used: &quot;</span>
+                <span class="p">[</span><span class="n">ba</span><span class="p">]</span> <span class="o">=</span> <span class="n">buffer_assignments</span>
+                <span class="k">with</span> <span class="n">ba</span><span class="o">.</span><span class="n">open</span><span class="p">()</span> <span class="k">as</span> <span class="n">oba</span><span class="p">:</span>
+                    <span class="n">matched</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">oba</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">ba_pattern</span><span class="p">):</span>
+                            <span class="n">size</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()[</span><span class="nb">len</span><span class="p">(</span><span class="n">ba_pattern</span><span class="p">)</span> <span class="p">:]</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                                <span class="s2">&quot;buffer-assignment &quot;</span>
+                                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">size</span><span class="si">}</span><span class="s2">&quot;</span>
+                            <span class="p">)</span>
+                            <span class="n">matched</span> <span class="o">=</span> <span class="kc">True</span>
+                            <span class="k">break</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">matched</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                            <span class="s2">&quot;Pattern did not match buffer assignment pattern: &quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ba_pattern</span><span class="si">}</span><span class="s2"> for file </span><span class="si">{</span><span class="n">ba</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">paths</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="n">ba</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">ba</span> <span class="ow">in</span> <span class="n">buffer_assignments</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Multiple buffer assignments found: </span><span class="si">{</span><span class="n">paths</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">put_mesh_computation</span><span class="p">(</span>
+            <span class="n">uid</span><span class="p">,</span> <span class="n">mesh_executable</span><span class="p">,</span> <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">name</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">mpmd_group_allgather</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uid</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">replicate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">uid</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">return_value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">res</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_instructions</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">in_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">ops</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Op</span><span class="p">],</span>
+        <span class="n">out_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">deletions</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">UID</span><span class="p">],</span>
+        <span class="n">block_on_output</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">execute_instructions</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">,</span>
+            <span class="n">in_binding</span><span class="p">,</span>
+            <span class="n">ops</span><span class="p">,</span>
+            <span class="n">out_binding</span><span class="p">,</span>
+            <span class="n">deletions</span><span class="p">,</span>
+            <span class="n">local_mesh</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lmesh</span><span class="p">,</span>
+            <span class="n">block_on_output</span><span class="o">=</span><span class="n">block_on_output</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">memory_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">device_stats</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">local_devices</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">memory_stats</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">device_stats</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pool_size</span> <span class="o">=</span> <span class="n">device_stats</span><span class="p">[</span><span class="s2">&quot;pool_bytes&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">30</span><span class="p">)</span>
+            <span class="n">peak_size</span> <span class="o">=</span> <span class="n">device_stats</span><span class="p">[</span><span class="s2">&quot;peak_bytes_in_use&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">30</span><span class="p">)</span>
+            <span class="n">largest_alloc_size</span> <span class="o">=</span> <span class="n">device_stats</span><span class="p">[</span><span class="s2">&quot;largest_alloc_size&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">30</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;GPU memory &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;peak size: </span><span class="si">{</span><span class="n">peak_size</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> GiB, &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;largest alloc size: </span><span class="si">{</span><span class="n">largest_alloc_size</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> GiB, &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;pool size: </span><span class="si">{</span><span class="n">pool_size</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> GiB&quot;</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;JaxWorker(process_id=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">process_id</span><span class="si">}</span><span class="s2">, coords=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span><span class="si">}</span><span class="s2">)&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">dist_shutdown</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">process_ids</span><span class="p">(</span><span class="n">devs</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Device</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">UniqueSortedSequence</span><span class="p">[</span><span class="n">WorkerId</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="n">UniqueSortedSequence</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">WorkerId</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">process_index</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">devs</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">mesh_process_ids</span><span class="p">(</span><span class="n">pjit_mesh</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">process_ids</span><span class="p">(</span><span class="n">pjit_mesh</span><span class="o">.</span><span class="n">devices</span><span class="o">.</span><span class="n">flat</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cluster_gpus</span><span class="p">():</span>
+    <span class="n">gpus_in_node</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span><span class="p">[</span><span class="s2">&quot;Resources&quot;</span><span class="p">][</span><span class="s2">&quot;GPU&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ray</span><span class="o">.</span><span class="n">nodes</span><span class="p">()</span> <span class="k">if</span> <span class="n">n</span><span class="p">[</span><span class="s2">&quot;Alive&quot;</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">gpus_in_node</span><span class="p">)),</span> <span class="nb">int</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">gpus_in_node</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">split_mesh_shape</span><span class="p">(</span>
+    <span class="n">mesh_shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">max_gpus_in_node</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Partitions the mesh_shape into a prefix `pref` and the largest suffix `suff`</span>
+<span class="sd">    such that `mesh_shape == (*pref, *suff) and np.prod(suff) &lt;= max_gpus_in_node`.</span>
+<span class="sd">    Raises an `AssertionError` if `mesh_shape[-1] &gt; max_gpus_in_node`.</span>
+
+<span class="sd">    &gt;&gt;&gt; split_mesh_shape((5, 2), 3)</span>
+<span class="sd">    ((5,), (2,))</span>
+<span class="sd">    &gt;&gt;&gt; split_mesh_shape((4, 2, 2), 4)</span>
+<span class="sd">    ((4,), (2, 2))</span>
+<span class="sd">    &gt;&gt;&gt; split_mesh_shape((2, 1, 8), 16)</span>
+<span class="sd">    ((), (2, 1, 8))</span>
+<span class="sd">    &gt;&gt;&gt; split_mesh_shape((1, 1, 4), 2)</span>
+<span class="sd">    Traceback (most recent call last):</span>
+<span class="sd">        ...</span>
+<span class="sd">    AssertionError: mesh_shape[-1]=4 &gt; max_gpus_in_node=2</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">mesh_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">max_gpus_in_node</span><span class="p">:</span>
+        <span class="c1"># TODO: maybe allow the innermost dimension to span multiple</span>
+        <span class="c1">#  nodes</span>
+        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mesh_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">=}</span><span class="s2"> &gt; </span><span class="si">{</span><span class="n">max_gpus_in_node</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">process_submesh_start_idx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mesh_shape</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="p">(</span>
+        <span class="n">process_submesh_start_idx</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;=</span> <span class="mi">0</span>
+        <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">mesh_shape</span><span class="p">[</span><span class="n">process_submesh_start_idx</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:])</span> <span class="o">&lt;=</span> <span class="n">max_gpus_in_node</span>
+    <span class="p">):</span>
+        <span class="n">process_submesh_start_idx</span> <span class="o">-=</span> <span class="mi">1</span>
+
+    <span class="k">return</span> <span class="n">mesh_shape</span><span class="p">[:</span><span class="n">process_submesh_start_idx</span><span class="p">],</span> <span class="n">mesh_shape</span><span class="p">[</span>
+        <span class="n">process_submesh_start_idx</span><span class="p">:</span>
+    <span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_distributed_client</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">DistributedRuntimeClient</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">jax._src.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">global_state</span>
+
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">global_state</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="n">DistributedRuntimeClient</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">global_state</span><span class="o">.</span><span class="n">client</span>
+
+
+<span class="n">local_comms</span> <span class="o">=</span> <span class="p">{}</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">UniqueDevices</span><span class="p">(</span><span class="nb">tuple</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Device</span><span class="p">,</span> <span class="o">...</span><span class="p">]):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="n">unique</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">unique</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">id</span><span class="p">))</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ranks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">OrderedDict</span><span class="p">((</span><span class="n">d</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">leader</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">key</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">id</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_nccl_id</span><span class="p">(</span><span class="n">devs</span><span class="p">:</span> <span class="n">UniqueDevices</span><span class="p">):</span>
+    <span class="n">TIMEOUT</span> <span class="o">=</span> <span class="mi">240_000</span>  <span class="c1"># FIXME: make it an argument</span>
+    <span class="k">if</span> <span class="n">devs</span><span class="o">.</span><span class="n">leader</span><span class="o">.</span><span class="n">process_index</span> <span class="o">==</span> <span class="n">jax</span><span class="o">.</span><span class="n">process_index</span><span class="p">():</span>
+        <span class="n">nccl_id</span> <span class="o">=</span> <span class="n">nccl_get_unique_id</span><span class="p">()</span>
+        <span class="n">get_distributed_client</span><span class="p">()</span><span class="o">.</span><span class="n">key_value_set_bytes</span><span class="p">(</span><span class="n">devs</span><span class="o">.</span><span class="n">key</span><span class="p">,</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">nccl_id</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">nccl_id</span> <span class="o">=</span> <span class="n">get_distributed_client</span><span class="p">()</span><span class="o">.</span><span class="n">blocking_key_value_get_bytes</span><span class="p">(</span>
+            <span class="n">devs</span><span class="o">.</span><span class="n">key</span><span class="p">,</span> <span class="n">TIMEOUT</span>
+        <span class="p">)</span>
+        <span class="n">nccl_id</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">nccl_id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">nccl_id</span>
+
+
+<div class="viewcode-block" id="MpmdMesh">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.MpmdMesh">[docs]</a>
+<span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MpmdMesh</span><span class="p">:</span>
+    <span class="n">jax_mesh</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span>
+    <span class="n">mpmd_axis_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">store</span><span class="p">:</span> <span class="n">Store</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">Store</span><span class="p">)</span>
+    <span class="n">dime</span><span class="p">:</span> <span class="n">Dime</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">field</span><span class="p">(</span>
+        <span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">Dime</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">client</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">mesh_stack</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="s2">&quot;MpmdMesh&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">MpmdMesh</span><span class="o">.</span><span class="n">mesh_stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">traceback</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mesh_stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">strict</span><span class="p">:</span>
+            <span class="n">mpmd_idx_by_process</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]()</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">_flat_devices_set</span><span class="p">:</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">mpmd_idx</span> <span class="o">:=</span> <span class="n">mpmd_idx_by_process</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">process_index</span><span class="p">))</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">device_coords</span><span class="p">[</span><span class="n">d</span><span class="p">][</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">]</span> <span class="o">!=</span> <span class="n">mpmd_idx</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span>
+                            <span class="sa">f</span><span class="s2">&quot;Process </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">process_index</span><span class="si">}</span><span class="s2"> found in two mpmd indices: </span><span class="si">{</span><span class="n">mpmd_idx</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">device_coords</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">mpmd_idx_by_process</span><span class="p">[</span><span class="n">d</span><span class="o">.</span><span class="n">process_index</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">device_coords</span><span class="p">[</span><span class="n">d</span><span class="p">][</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span>
+                    <span class="p">]</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">device_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Device</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]]:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="n">device</span><span class="p">:</span> <span class="n">coord</span> <span class="k">for</span> <span class="n">coord</span><span class="p">,</span> <span class="n">device</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">ndenumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">devices</span><span class="p">)</span>
+        <span class="p">}</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mpmd_dim</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis_name</span><span class="p">]</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mpmd_axis</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis_name</span><span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">my_mpmd_axis_index</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="n">local_devices</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">())</span>
+        <span class="n">my_devices_coord</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">device_coords</span><span class="p">[</span><span class="n">d</span><span class="p">][</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">_flat_devices_tuple</span>
+            <span class="k">if</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">local_devices</span>
+        <span class="p">}</span>
+        <span class="p">(</span><span class="n">mpmd_axis_index</span><span class="p">,)</span> <span class="o">=</span> <span class="n">my_devices_coord</span>
+        <span class="k">return</span> <span class="n">mpmd_axis_index</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">my_mpmd_group_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">devices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">),</span>
+                <span class="n">axis</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">lowering_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unstack</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">]:</span>
+        <span class="n">axis_names</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">]</span>
+            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span><span class="n">mpmd_group_devices</span><span class="p">,</span> <span class="n">axis_names</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">mpmd_group_devices</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">moveaxis</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">devices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">,</span> <span class="mi">0</span>
+            <span class="p">)</span>
+        <span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">remote_mesh_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">unstack</span><span class="p">[</span><span class="n">mpmd_index</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">mpmd_submesh</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;MpmdMesh&quot;</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mpmd_indices</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+        <span class="n">jax_mesh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">devices</span><span class="p">,</span> <span class="n">mpmd_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">MpmdMesh</span><span class="p">(</span><span class="n">jax_mesh</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpmd_axis_name</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_mpmd_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;MpmdMesh&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_mesh_computation</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">,</span>
+        <span class="n">serializeable_mesh_computation</span><span class="p">:</span> <span class="n">SerializeableMeshComputation</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="o">==</span> <span class="n">mpmd_idx</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">put_mesh_computation</span><span class="p">(</span>
+                <span class="n">uid</span><span class="p">,</span>
+                <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">to_mesh_executable</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span>
+                <span class="p">),</span>
+                <span class="n">serializeable_mesh_computation</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">establish_nccl_comms</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">gidss</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">UniqueGlobalDeviceIds</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">devices_by_id</span> <span class="o">=</span> <span class="p">{</span><span class="n">d</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">()}</span>
+        <span class="k">for</span> <span class="n">global_device_ids</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span> <span class="ow">in</span> <span class="n">gidss</span><span class="p">:</span>
+            <span class="n">devs</span> <span class="o">=</span> <span class="n">UniqueDevices</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">devices_by_id</span><span class="p">[</span><span class="n">did</span><span class="p">]</span> <span class="k">for</span> <span class="n">did</span> <span class="ow">in</span> <span class="n">global_device_ids</span><span class="p">))</span>
+            <span class="n">nccl_id</span> <span class="o">=</span> <span class="n">get_nccl_id</span><span class="p">(</span><span class="n">devs</span><span class="p">)</span>
+
+            <span class="n">comm_key</span> <span class="o">=</span> <span class="n">CommKeyWithNcclId</span><span class="p">(</span>
+                <span class="n">global_device_ids</span><span class="p">,</span> <span class="n">nccl_id</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dime</span><span class="o">.</span><span class="n">register_gpus</span><span class="p">(</span><span class="n">comm_key</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_tensors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arrays</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PutArg</span><span class="p">]):</span>
+        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">arrays</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">mpmd_idxs</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">put_array</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">uid</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">replicate</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span>
+            <span class="n">_identity_fn</span><span class="p">,</span>
+            <span class="n">out_shardings</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">PartitionSpec</span><span class="p">()</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;get_tensor&quot;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="o">==</span> <span class="n">mpmd_idx</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">replicate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">uid</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">uid</span><span class="p">:</span> <span class="n">UID</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="o">==</span> <span class="n">mpmd_idx</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">maybe_async_delete_array</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_instructions</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">in_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">instructions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Op</span><span class="p">],</span>
+        <span class="n">out_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">deletions</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">UID</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="o">==</span> <span class="n">mpmd_idx</span><span class="p">:</span>
+            <span class="n">execute_instructions</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">dime</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">,</span>
+                <span class="n">in_binding</span><span class="o">=</span><span class="n">in_binding</span><span class="p">,</span>
+                <span class="n">ops</span><span class="o">=</span><span class="n">instructions</span><span class="p">,</span>
+                <span class="n">out_binding</span><span class="o">=</span><span class="n">out_binding</span><span class="p">,</span>
+                <span class="n">deletions</span><span class="o">=</span><span class="n">deletions</span><span class="p">,</span>
+                <span class="n">local_mesh</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">blocking</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">Generator</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">generator</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">blocking_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">tree</span></div>
+
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">RemoteMpmdMesh</span><span class="p">:</span>
+    <span class="c1"># Context manager utilities</span>
+    <span class="n">_worker_mesh_stack</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="s2">&quot;RemoteMpmdMesh&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">_unrecoverable_failure</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unrecoverable_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">RemoteMpmdMesh</span><span class="o">.</span><span class="n">_unrecoverable_failure</span>
+
+    <span class="nd">@unrecoverable_failure</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unrecoverable_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">:</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">&quot;None boolean value received for `unrecoverable_failure`: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">RemoteMpmdMesh</span><span class="o">.</span><span class="n">_unrecoverable_failure</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_push_current_worker_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lowering_mesh</span><span class="p">()</span><span class="o">.</span><span class="fm">__enter__</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">traceback</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lowering_mesh</span><span class="p">()</span><span class="o">.</span><span class="fm">__exit__</span><span class="p">(</span><span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">traceback</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pop_current_worker_mesh</span><span class="p">()</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">current_worker_mesh</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;RemoteMpmdMesh&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_worker_mesh_stack</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_worker_mesh_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_push_current_worker_mesh</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">worker_mesh</span><span class="p">:</span> <span class="s2">&quot;RemoteMpmdMesh&quot;</span><span class="p">):</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_worker_mesh_stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">worker_mesh</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pop_current_worker_mesh</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;RemoteMpmdMesh&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_worker_mesh_stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">pp</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">mesh_shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+        <span class="n">mesh_axis_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">import_modules</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+        <span class="n">event_sync_before_delete</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">target_config</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">_env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="k">assert</span> <span class="n">pp</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mesh_shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">mesh_shape</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span>
+            <span class="n">mesh_axis_names</span>
+        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">mesh_shape</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">mesh_axis_names</span><span class="p">)</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">sz</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">mesh_axis_names</span><span class="p">,</span> <span class="n">mesh_shape</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="n">sz</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">=</span><span class="si">{</span><span class="n">sz</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="k">if</span> <span class="n">xla_bridge</span><span class="o">.</span><span class="n">backends_are_initialized</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">RemoteMpmdMesh</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> must be called before any JAX computations are executed.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Initialize ray if it hasn&#39;t been initialized</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ray</span><span class="o">.</span><span class="n">is_initialized</span><span class="p">():</span>
+            <span class="n">ray</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="s2">&quot;auto&quot;</span><span class="p">)</span>
+
+        <span class="n">max_gpus_in_node</span><span class="p">,</span> <span class="n">tot_gpus</span> <span class="o">=</span> <span class="n">get_cluster_gpus</span><span class="p">()</span>
+        <span class="n">local_device_count</span> <span class="o">=</span> <span class="n">cuda_versions</span><span class="o">.</span><span class="n">cuda_device_count</span><span class="p">()</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Detected </span><span class="si">{</span><span class="n">local_device_count</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">_process_mesh_shape</span><span class="p">,</span> <span class="n">device_mesh_shape</span> <span class="o">=</span> <span class="n">split_mesh_shape</span><span class="p">(</span>
+            <span class="n">mesh_shape</span><span class="p">,</span> <span class="n">max_gpus_in_node</span>
+        <span class="p">)</span>
+
+        <span class="n">process_mesh_shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">pp</span><span class="p">,</span> <span class="o">*</span><span class="n">_process_mesh_shape</span><span class="p">)</span>
+        <span class="n">num_processes</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">process_mesh_shape</span><span class="p">))</span>
+        <span class="n">gpus_per_process</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">device_mesh_shape</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">full_mesh_shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">*</span><span class="n">process_mesh_shape</span><span class="p">,</span> <span class="o">*</span><span class="n">device_mesh_shape</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">target_config</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">topo</span> <span class="o">=</span> <span class="n">topologies</span><span class="o">.</span><span class="n">get_topology_desc</span><span class="p">(</span>
+                <span class="s2">&quot;topo&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
+                <span class="n">target_config</span><span class="o">=</span><span class="n">target_config</span><span class="p">,</span>
+                <span class="n">topology</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">num_processes</span><span class="si">}</span><span class="s2">x1x</span><span class="si">{</span><span class="n">gpus_per_process</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">topo</span><span class="o">.</span><span class="n">devices</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">pp</span><span class="p">,</span> <span class="o">*</span><span class="n">mesh_shape</span><span class="p">)),</span>
+                <span class="p">(</span><span class="s2">&quot;jaxpp_pp&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">mesh_axis_names</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Running with AOT compilation mesh. No `.workers`.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="n">num_processes</span> <span class="o">*</span> <span class="n">gpus_per_process</span> <span class="o">&gt;</span> <span class="n">tot_gpus</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Mesh requires </span><span class="si">{</span><span class="n">num_processes</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">gpus_per_process</span><span class="si">}</span><span class="s2"> GPUs but &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;only </span><span class="si">{</span><span class="n">tot_gpus</span><span class="si">}</span><span class="s2"> found available in the cluster&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">num_processes</span> <span class="o">&gt;</span> <span class="n">pp</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Multi-host SPMD detected. This feature is experimental&quot;</span><span class="p">)</span>
+
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">Ctx</span><span class="p">(</span>
+            <span class="n">coordinator_address</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ray</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">get_node_ip_address</span><span class="p">()</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">portpicker</span><span class="o">.</span><span class="n">pick_unused_port</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">num_processes</span><span class="o">=</span><span class="n">num_processes</span><span class="p">,</span>
+            <span class="n">gpus_per_process</span><span class="o">=</span><span class="n">gpus_per_process</span><span class="p">,</span>
+            <span class="n">import_modules</span><span class="o">=</span><span class="n">import_modules</span><span class="p">,</span>
+            <span class="n">mesh_shape</span><span class="o">=</span><span class="p">(</span><span class="n">pp</span><span class="p">,</span> <span class="o">*</span><span class="n">mesh_shape</span><span class="p">),</span>
+            <span class="n">mesh_axis_names</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;jaxpp_pp&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">mesh_axis_names</span><span class="p">),</span>
+            <span class="n">log_level</span><span class="o">=</span><span class="n">logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">(),</span>
+            <span class="n">event_sync_before_delete</span><span class="o">=</span><span class="n">event_sync_before_delete</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">env_vars</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;JAX_COMPILER_DETAILED_LOGGING_MIN_OPS&quot;</span><span class="p">:</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">env_vars</span> <span class="o">=</span> <span class="p">{</span><span class="n">v</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">env_vars</span><span class="p">[</span><span class="n">v</span><span class="p">])</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">env_vars</span><span class="p">}</span>
+
+        <span class="k">if</span> <span class="n">logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">:</span>
+            <span class="n">env_vars</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="c1"># &quot;NCCL_DEBUG&quot;: &quot;INFO&quot;,</span>
+                    <span class="s2">&quot;TF_CPP_MIN_LOG_LEVEL&quot;</span><span class="p">:</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">_env</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">env_vars</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">_env</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Environment variables: </span><span class="si">{</span><span class="n">env_vars</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">workers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">coords</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+            <span class="n">it</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">process_mesh_shape</span><span class="p">))</span>
+        <span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">ray</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span>
+                    <span class="n">num_cpus</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                    <span class="n">num_gpus</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">gpus_per_process</span><span class="p">,</span>
+                    <span class="n">runtime_env</span><span class="o">=</span><span class="n">RuntimeEnv</span><span class="p">(</span><span class="n">env_vars</span><span class="o">=</span><span class="n">env_vars</span><span class="p">),</span>
+                <span class="p">)(</span><span class="n">GPUWorker</span><span class="p">)</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;mock_num_gpu_processes&quot;</span><span class="p">,</span> <span class="n">num_processes</span><span class="p">)</span>
+
+        <span class="n">jax_cuda_visible_devices</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;jax_cuda_visible_devices&quot;</span><span class="p">)</span>
+        <span class="n">os_environ</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="s2">&quot;jax_cuda_visible_devices&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">gpus_per_process</span><span class="p">)),</span>
+            <span class="p">)</span>
+            <span class="c1"># The driver might be sharing GPUs with some worker.</span>
+            <span class="c1"># Here we make sure that it uses the least amount of memory</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;XLA_PYTHON_CLIENT_ALLOCATOR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;platform&quot;</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;XLA_PYTHON_CLIENT_PREALLOCATE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;0&quot;</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span> <span class="o">=</span> <span class="n">initialize_backend</span><span class="p">(</span><span class="n">ctx</span><span class="p">)</span>
+
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">os_environ</span><span class="p">)</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_cuda_visible_devices&quot;</span><span class="p">,</span> <span class="n">jax_cuda_visible_devices</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">devices_by_id</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">GlobalDeviceId</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Device</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">d</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="o">.</span><span class="n">devices</span><span class="o">.</span><span class="n">flat</span><span class="p">}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mpmd_dim</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="s2">&quot;jaxpp_pp&quot;</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_mpmd_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MpmdMesh</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="p">,</span> <span class="s2">&quot;jaxpp_pp&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">remote_mesh_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="o">.</span><span class="n">devices</span><span class="p">[</span><span class="n">mpmd_idx</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="o">.</span><span class="n">axis_names</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">lowering_mesh</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh_at</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_mesh_computation</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">uid</span><span class="p">,</span>
+        <span class="n">serializeable_mesh_computation</span><span class="p">:</span> <span class="n">SerializeableMeshComputation</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">remote_mesh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh_at</span><span class="p">(</span><span class="n">mpmd_idx</span><span class="o">=</span><span class="n">mpmd_idx</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">mesh_process_ids</span><span class="p">(</span><span class="n">remote_mesh</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">put_mesh_computation</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span>
+                <span class="n">uid</span><span class="p">,</span> <span class="n">serializeable_mesh_computation</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">put_tensors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arrays</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PutArg</span><span class="p">]):</span>
+        <span class="n">arrays</span> <span class="o">=</span> <span class="n">ray</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">arrays</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">put_tensors</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">arrays</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">mesh_process_ids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh</span><span class="p">)</span>
+        <span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">uid</span><span class="p">):</span>
+        <span class="n">process_ids</span> <span class="o">=</span> <span class="n">mesh_process_ids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh_at</span><span class="p">(</span><span class="n">mpmd_idx</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">delete</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">uid</span><span class="p">)</span> <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">process_ids</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">uid</span><span class="p">):</span>
+        <span class="n">pids</span> <span class="o">=</span> <span class="n">mesh_process_ids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh_at</span><span class="p">(</span><span class="n">mpmd_idx</span><span class="p">))</span>
+        <span class="n">p0</span> <span class="o">=</span> <span class="n">pids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">p0</span><span class="p">]</span><span class="o">.</span><span class="n">mpmd_group_allgather</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">uid</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">pids</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">mpmd_group_allgather</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">uid</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_instructions</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">in_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">instructions</span><span class="p">,</span>
+        <span class="n">out_binding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Bind</span><span class="p">],</span>
+        <span class="n">deletions</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">UID</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="p">):</span>
+        <span class="n">process_ids</span> <span class="o">=</span> <span class="n">mesh_process_ids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_mesh_at</span><span class="p">(</span><span class="n">mpmd_idx</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">execute_instructions</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span>
+                <span class="n">in_binding</span><span class="p">,</span> <span class="n">instructions</span><span class="p">,</span> <span class="n">out_binding</span><span class="p">,</span> <span class="n">deletions</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">process_ids</span>
+        <span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">establish_nccl_comm</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">global_device_ids</span><span class="p">:</span> <span class="n">UniqueGlobalDeviceIds</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">):</span>
+        <span class="n">nccl_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">devices_by_id</span><span class="p">[</span><span class="n">global_device_ids</span><span class="o">.</span><span class="n">primary</span><span class="p">]</span><span class="o">.</span><span class="n">process_index</span>
+                <span class="p">]</span><span class="o">.</span><span class="n">communicator_nccl_id</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">global_device_ids</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">comm_key</span> <span class="o">=</span> <span class="n">CommKeyWithNcclId</span><span class="p">(</span><span class="n">global_device_ids</span><span class="p">,</span> <span class="n">nccl_id</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span><span class="p">)</span>
+
+        <span class="n">pids</span> <span class="o">=</span> <span class="n">process_ids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">devices_by_id</span><span class="p">[</span><span class="n">gid</span><span class="p">]</span> <span class="k">for</span> <span class="n">gid</span> <span class="ow">in</span> <span class="n">global_device_ids</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">[</span><span class="n">pid</span><span class="p">]</span><span class="o">.</span><span class="n">register_gpus</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="n">comm_key</span><span class="p">)</span> <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">pids</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">establish_nccl_comms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gidss</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">UniqueGlobalDeviceIds</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">establish_nccl_comm</span><span class="p">(</span><span class="n">gids</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">gids</span><span class="p">,</span> <span class="n">nccl_collnet_enable</span> <span class="ow">in</span> <span class="n">gidss</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">start_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">profiler_trace_path</span><span class="p">):</span>
+        <span class="n">futures</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">):</span>
+            <span class="n">futures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">w</span><span class="o">.</span><span class="n">start_trace</span><span class="o">.</span><span class="n">remote</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">profiler_trace_path</span><span class="si">}</span><span class="s2">/process-</span><span class="si">{</span><span class="n">node_id</span><span class="si">:</span><span class="s2">06</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span><span class="n">futures</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_profiler_trace_path</span> <span class="o">=</span> <span class="n">profiler_trace_path</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">merge_multihost_xplanes</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">_profiler_trace_path</span> <span class="o">:=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_profiler_trace_path&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">futures</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">stop_trace</span><span class="o">.</span><span class="n">remote</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span><span class="n">futures</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">merge_multihost_xplanes</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+                        <span class="c1"># Usage: merge_multihost_xplanes(pp_dim, mesh_shape, xplane_files)</span>
+                        <span class="p">[</span>
+                            <span class="sa">f</span><span class="s2">&quot;merge_multihost_xplanes 1 </span><span class="si">{</span><span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">full_mesh_shape</span><span class="p">))</span><span class="si">}</span><span class="s2"> $(find * -iname &#39;*.xplane.pb&#39;)&quot;</span>
+                        <span class="p">],</span>
+                        <span class="n">shell</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                        <span class="n">cwd</span><span class="o">=</span><span class="n">_profiler_trace_path</span><span class="p">,</span>
+                        <span class="n">check</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_profiler_trace_path</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s2">&quot;stop_trace called without calling `start_trace`&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">memory_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">futs</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">memory_stats</span><span class="o">.</span><span class="n">remote</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span><span class="n">futs</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">RemoteMpmdMesh</span><span class="o">.</span><span class="n">_unrecoverable_failure</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">memory_stats</span><span class="p">()</span>
+                <span class="n">futs</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">shutdown</span><span class="o">.</span><span class="n">remote</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">]</span>
+                <span class="n">dist_shutdown</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span><span class="n">futs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="c1"># Developer note:</span>
+            <span class="c1"># More efficient to ask for forgiveness (only during shutdown)</span>
+            <span class="c1"># Than to perform a check at every single iteration</span>
+            <span class="k">pass</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">blocking</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">generator</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[],</span> <span class="n">Generator</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fut</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">generator</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">blocking_tree</span><span class="p">(</span><span class="n">fut</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">blocking_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tree</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">leaves</span><span class="p">,</span> <span class="n">tree</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_flatten</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_unflatten</span><span class="p">(</span><span class="n">tree</span><span class="p">,</span> <span class="n">ray</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">leaves</span><span class="p">))</span>
+
+        <span class="k">except</span> <span class="n">RayError</span><span class="p">:</span>
+            <span class="n">ray</span><span class="o">.</span><span class="n">shutdown</span><span class="p">()</span>
+            <span class="n">RemoteMpmdMesh</span><span class="o">.</span><span class="n">_unrecoverable_failure</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">raise</span>
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/">Privacy Policy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/">Manage My Privacy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/preferences/start/">Do Not Sell or Share My Data</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/">Terms of Service</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/accessibility/">Accessibility</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/company-policies/">Corporate Policies</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/product-security/">Product Security</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/contact/">Contact</a>
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2022-2025, NVIDIA CORPORATION. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
