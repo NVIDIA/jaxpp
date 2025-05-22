@@ -170,7 +170,11 @@ default_op = (Concat(), Add)
 
 
 def treduce(
-    fun: Callable[[X], Y], xs: X, schedule: BaseSchedule, operation=default_op
+    fun: Callable[[X], Y],
+    xs: X,
+    schedule: BaseSchedule,
+    axis: int = 0,
+    operation=default_op,
 ) -> Y:
     """Temporally reduces a sequence of inputs with a pipelined schedule.
 
@@ -183,10 +187,10 @@ def treduce(
         def treduce(fun, xs, operation=(Concat(), Add())):
           # xs has shape (T, ...)
           state = tree_map(lambda a, op: op.state(len(xs), a),
-                           fun(xs[0]), operation)
-          for i in range(len(xs)):
+                           fun(jnp.take(xs[0], 0, axis=axis)), operation)
+          for i in range(1, len(xs)):
             state = tree_map(lambda op, s, v: op.update(s, v, i),
-                             operation, state, fun(xs[i]))
+                             operation, state, fun(jnp.take(xs[i], i, axis=axis)))
           return state
 
     Unlike a vanilla reduce, the execution of the loop body may be
@@ -202,6 +206,10 @@ def treduce(
         that is reduced over.
       schedule: A :class:`~jaxpp.schedules.BaseSchedule` specifying how loop
         iterations should overlap.
+      axis: Integer specifying which axis of every leaf array in ``xs``
+        represents the micro-batch dimension.
+        At iteration ``i`` the function gathers the slice at index ``i`` along
+        this axis and feeds it to ``fun``.
       operation: A PyTree of :class:`~.Op` objects (default: ``default_op``,
         i.e., ``(Concat(), Add)``) describing how the per-timestep values are
         aggregated. Each leaf :class:`~.Op` object defines ``state``
@@ -223,10 +231,12 @@ def treduce(
 
     @functools.wraps(fun)
     def wrap(i):
-        e = jax.tree.map(lambda x: x[i], xs)
+        e = jax.tree.map(lambda x: jnp.take(x, i, axis=axis), xs)
         return fun(e)
 
-    return treduce_i(wrap, first_batch_shape[0], schedule=schedule, operation=operation)
+    return treduce_i(
+        wrap, first_batch_shape[axis], schedule=schedule, operation=operation
+    )
 
 
 def treduce_i(
@@ -241,7 +251,7 @@ def treduce_i(
         def treduce_i(fun, length, operation):
           state = tree_map(lambda a, op: op.state(length, a),
                            fun(0), operation)
-          for i in range(length):
+          for i in range(1, length):
             state = tree_map(lambda op, s, v: op.update(s, v, i),
                              operation, state, fun(i))
           return state
