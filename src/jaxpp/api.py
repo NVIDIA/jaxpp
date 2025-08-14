@@ -22,7 +22,13 @@ from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_rev, mpmd_jit_with_loop
 from jaxpp.jax_primitives import add_multi_p
 from jaxpp.mesh import MpmdMesh, RemoteMpmdMesh
 from jaxpp.pipelining import pipeline_enter_stage
-from jaxpp.schedules import BaseSchedule, Eager1F1B, Interleaved1F1B, Std1F1B
+from jaxpp.schedules import (
+    BaseSchedule,
+    Eager1F1B,
+    Interleaved1F1B,
+    Std1F1B,
+    ZeroBubble,
+)
 from jaxpp.training import Add, Concat, Max, treduce, treduce_i
 
 

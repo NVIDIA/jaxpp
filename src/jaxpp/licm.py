@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import enum
+import functools
 import itertools as it
 from collections.abc import Callable
 from typing import Any, Iterable, Sequence, TypeVar
@@ -26,7 +27,8 @@ import jax.numpy as jnp
 from jax._src.ad_checkpoint import remat_p
 
 from jaxpp.jax_primitives import dax_pscan_p
-from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, substitute
+from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, var_is_duplicate
+from jaxpp.jaxpr_utils import gensym as mk_gensym
 from jaxpp.utils import CtxVar, array_bytes
 
 T = TypeVar("T")
@@ -156,6 +158,100 @@ def partial_eval_eqns(
     return known_eqns, unknown_eqns
 
 
+def inline_eqns(
+    eqns: list[jcore.JaxprEqn],
+    env: dict[jcore.Var, jcore.Atom],
+    result_binding: dict[jcore.Var, jcore.Var],
+):
+    env = dict(env)
+    gensym = mk_gensym()
+    res_eqns = []
+    for eqn in eqns:
+        invars = [
+            env[invar] if not isinstance(invar, jcore.Literal) else invar
+            for invar in eqn.invars
+        ]
+        outvars = [
+            r if (r := result_binding.get(outvar)) is not None else gensym(outvar.aval)
+            for outvar in eqn.outvars
+        ]
+        res_eqns.append(eqn.replace(invars=invars, outvars=outvars))
+        env.update(zip(eqn.outvars, outvars))
+    return res_eqns
+
+
+def cpy_eqn(invar, as_):
+    return jcore.new_jaxpr_eqn(
+        invars=[invar],
+        outvars=[as_],
+        primitive=jax.lax.copy_p,
+        params={},
+        effects=frozenset({}),
+    )
+
+
+def inline_jaxpr(
+    jaxpr: jcore.Jaxpr,
+    consts: list[jcore.Atom],
+    args: list[jcore.Atom],
+    results: list[jcore.Var],
+) -> list[jcore.JaxprEqn]:
+    """
+    Returns new jaxpr.eqns that can be inlined into other contexts
+    where `args` where passed for `jaxpr.invars` and the results
+    were bound to `results`.
+    It does so by rebinding the variables in the equations to their names in the
+    calling context, and freshens the other variables so they don't clash with
+    existing ones in such calling context.
+    """
+    assert len(results) == len(set(results))
+    jaxpr = pe.convert_constvars_jaxpr(jaxpr)
+
+    jaxpr_invars = {v: idx for idx, v in enumerate(jaxpr.invars)}
+
+    outvar_forwards_invar = list[int | None]()
+    for outvar in jaxpr.outvars:
+        invar_idx = None
+        if not isinstance(outvar, jcore.Literal):
+            invar_idx = jaxpr_invars.get(invar_idx)
+        outvar_forwards_invar.append(invar_idx)
+
+    env = dict(zip(jaxpr.invars, consts + args, strict=True))
+
+    copy_eqns = []
+    duplicate_idx = var_is_duplicate(jaxpr.outvars)
+
+    result_binding = dict[jcore.Var, jcore.Var]()
+    for outvar, invar_idx, dup_idx, r in zip(
+        jaxpr.outvars, outvar_forwards_invar, duplicate_idx, results, strict=True
+    ):
+        # An output can be a
+        # (1) Literal
+        if isinstance(outvar, jcore.Literal):
+            # Bind it under the name `r` in the calling context.
+            eqn = cpy_eqn(outvar, as_=r)
+            copy_eqns.append(eqn)
+        # (2) The input jaxpr.invars[invar_idx]
+        elif invar_idx is not None:
+            # In the calling context it means that args[invar_idx]
+            # is just renamed into `r`
+            eqn = cpy_eqn(args[invar_idx], as_=r)
+            copy_eqns.append(eqn)
+        # (3) The same output jaxpr.outvars[dup_idx] returned multiple times
+        elif dup_idx is not None:
+            # In the calling context, `results[dup_idx]` is returned more than
+            # once under different names. We must copy it for the new names.
+            eqn = cpy_eqn(results[dup_idx], as_=r)
+            copy_eqns.append(eqn)
+        # (4) Defined by an equation
+        else:
+            assert outvar not in result_binding
+            result_binding[outvar] = r
+
+    eqns = inline_eqns(jaxpr.eqns, env, result_binding)
+    return eqns + copy_eqns
+
+
 def partial_eval_jaxpr(
     jaxpr: jcore.Jaxpr, known_invars: Iterable[bool], memory_scarce: bool = False
 ) -> tuple[
@@ -176,10 +272,9 @@ def partial_eval_jaxpr(
         new_known_eqns = list[jcore.JaxprEqn]()
         for eqn in known_eqns:
             if eqn.primitive is remat_p:
-                j = eqn.params["jaxpr"]
-                sub = dict(zip(j.invars, eqn.invars))
-                sub.update(zip(j.outvars, eqn.outvars))
-                new_known_eqns.extend(substitute(j.eqns, sub))
+                j: jcore.Jaxpr = eqn.params["jaxpr"]
+                eqns = inline_jaxpr(j, j.constvars, eqn.invars, results=eqn.outvars)
+                new_known_eqns.extend(eqns)
             else:
                 new_known_eqns.append(eqn)
         known_eqns = new_known_eqns
@@ -218,6 +313,15 @@ def partial_eval_jaxpr(
         unknown_eqns = known_to_unknown[::-1] + unknown_eqns
         known_eqns = true_known[::-1]
 
+    return make_unzipped_jaxprs(jaxpr, known_invars, known_eqns, unknown_eqns)
+
+
+def make_unzipped_jaxprs(
+    jaxpr: jcore.Jaxpr,
+    known_invars: Iterable[bool],
+    known_eqns: list[jcore.JaxprEqn],
+    unknown_eqns: list[jcore.JaxprEqn],
+):
     unknown_free, unknown_defined = eqns_free_vars(unknown_eqns, ordered=True)
     known_free, known_defined = eqns_free_vars(known_eqns, ordered=True)
 
@@ -326,22 +430,16 @@ def pe_rule_default(eqn: jcore.JaxprEqn, in_vals: list[PartialValue]):
     return [(PartialValue.KNOWN, eqn)]
 
 
-def pe_rule_remat(
-    eqn: jcore.JaxprEqn, in_vals: list[PartialValue]
-) -> PartialEvalRuleResult:
-    jaxpr: jcore.Jaxpr = eqn.params["jaxpr"]
-    in_known = [v == PartialValue.KNOWN for v in in_vals]
-    known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, residual_avals = (
-        partial_eval_jaxpr(jaxpr, in_known)
-    )
-
-    if known_jaxpr is None:
-        return [(PartialValue.UNKNOWN, eqn)]
-
-    if unknown_jaxpr is None:
-        return [(PartialValue.KNOWN, eqn)]
-
-    gensym = jcore.gensym()
+def make_unzipped_application(
+    eqn,
+    in_known,
+    known_jaxpr,
+    unknown_jaxpr,
+    unknown_in_idx,
+    out_is_unknown,
+    residual_avals,
+):
+    gensym = mk_gensym()
     residual_outvars = [gensym(aval) for aval in residual_avals]
 
     _, known_invars = ju.partition_list(in_known, eqn.invars)
@@ -359,6 +457,33 @@ def pe_rule_remat(
         invars=residual_outvars + [eqn.invars[in_idx] for in_idx in unknown_in_idx],
         outvars=unknown_outvars,
         effects=unknown_jaxpr.effects,
+    )
+    return known_eqn, unknown_eqn
+
+
+def pe_rule_remat(
+    eqn: jcore.JaxprEqn, in_vals: list[PartialValue]
+) -> PartialEvalRuleResult:
+    jaxpr: jcore.Jaxpr = eqn.params["jaxpr"]
+    in_known = [v == PartialValue.KNOWN for v in in_vals]
+    known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, residual_avals = (
+        partial_eval_jaxpr(jaxpr, in_known)
+    )
+
+    if known_jaxpr is None:
+        return [(PartialValue.UNKNOWN, eqn)]
+
+    if unknown_jaxpr is None:
+        return [(PartialValue.KNOWN, eqn)]
+
+    known_eqn, unknown_eqn = make_unzipped_application(
+        eqn,
+        in_known,
+        known_jaxpr,
+        unknown_jaxpr,
+        unknown_in_idx,
+        out_is_unknown,
+        residual_avals,
     )
 
     assert all(invar in eqn.invars for invar in known_eqn.invars)
@@ -416,13 +541,16 @@ class CommonSubexpressionEliminationTrace(pe.DynamicJaxprTrace):
             Sequence[pe.DynamicJaxprTracer] | pe.DynamicJaxprTracer,
         ]()
 
-    def default_process_primitive(self, primitive, tracers, params):
+    def default_process_primitive(self, primitive, tracers, params, source_info=None):
+        super_fn = super().default_process_primitive
+        if jax.__version_info__ > (0, 6, 1):
+            super_fn = functools.partial(super_fn, source_info=source_info)
         if primitive is dax_pscan_p:
             with jcore.set_current_trace(self):
                 return partial_eval_loop(
                     # NOTE: passing `super()` to avoid infinite recursion when `process_pscan`
                     #  will `dax_pscan_p.bind` the licmed loop
-                    super().default_process_primitive,
+                    super_fn,
                     primitive,
                     tracers,
                     params,
@@ -443,7 +571,7 @@ class CommonSubexpressionEliminationTrace(pe.DynamicJaxprTrace):
             except TypeError:
                 key = None
 
-        out_tracers = super().default_process_primitive(primitive, tracers, params)
+        out_tracers = super_fn(primitive, tracers, params)
         if key is not None:
             assert key not in self.equation_recipe_to_tracers_cache
             self.equation_recipe_to_tracers_cache[key] = out_tracers
@@ -466,6 +594,14 @@ def hoist_and_cse_pscan_invariant_equations(
         out_tracers = jcore.eval_jaxpr(
             jaxpr, (), *(trace.new_arg(a.aval, **new_arg_kwargs) for a in jaxpr.invars)
         )
-    new_jaxpr, consts, _ = trace.to_jaxpr(out_tracers, jaxpr.debug_info)
+
+    additional_args = ()
+    if jax.__version_info__ > (0, 6, 1):
+        from jax._src import source_info_util
+
+        additional_args = (source_info_util.current(),)
+    new_jaxpr, consts, _ = trace.to_jaxpr(
+        out_tracers, jaxpr.debug_info, *additional_args
+    )
     assert len(consts) == 0
     return new_jaxpr

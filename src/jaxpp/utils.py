@@ -63,7 +63,7 @@ class BoolCtxVar(CtxVar[bool]):
     @property
     def value(self) -> T:
         if self.env_key is not None and (vs := os.getenv(self.env_key)) is not None:
-            if v := parse_bool(vs):
+            if (v := parse_bool(vs)) is not None:
                 return v
             else:
                 logger.warning(f"Unsupported flag value {self.env_key}={vs}")

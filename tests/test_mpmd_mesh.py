@@ -15,7 +15,6 @@
 
 import unittest
 
-import jax
 import jax.experimental.topologies as topologies
 import numpy as np
 from jax.sharding import Mesh
@@ -54,10 +53,9 @@ device_description_str: "NVIDIA H100 80GB HBM3"
 """
 
 
-class TestPutArg(unittest.TestCase):
+class TestMpmdMesh(unittest.TestCase):
     def setUp(self):
         """Reset and Set up the logger instance before each test."""
-        jax.config
         topo = topologies.get_topology_desc(
             "topo",
             "cuda",
@@ -66,25 +64,23 @@ class TestPutArg(unittest.TestCase):
         )
         self.devices = topo.devices
 
-    def test_putarg_initialization(self):
+    def test_mpmd_mesh_unstack(self):
         mesh = MpmdMesh(
             Mesh(
                 np.array(self.devices).reshape((4, 2, 1, 2, 1)),
                 ("stage", "data", "sequence", "tensor", "expert"),
             ),
             "stage",
-            strict=False,
         )
 
         assert mesh.mpmd_axis == 0
-
         assert mesh.device_coords[self.devices[0]] == (0, 0, 0, 0, 0)
         assert mesh.device_coords[self.devices[1]] == (0, 0, 0, 1, 0)
 
-        expected_shape = (2, 1, 2, 1)
+        expected_shape = (1, 2, 1, 2, 1)
         meshes = mesh.unstack
         for idx, m in enumerate(meshes):
-            assert m.axis_names == ("data", "sequence", "tensor", "expert")
+            assert m.axis_names == ("stage", "data", "sequence", "tensor", "expert")
             assert m.devices.shape == expected_shape
             start_idx = idx * np.prod(expected_shape)
             assert (

@@ -88,27 +88,24 @@ batching.primitive_batchers[pipeline_yield_p] = pipeline_yield_batcher
 mlir.register_lowering(pipeline_yield_p, lambda ctx, *args, **kwargs: args)
 
 
-def pipeline_yield_jvp(primals, tangents, **kwargs):
-    return pipeline_yield_p.bind(*primals, **kwargs), pipeline_yield_p.bind(
-        *tangents, **kwargs
-    )
-
-
-def pipeline_yield_transpose(ts, *prims, **kwargs):
+def pipeline_yield_transpose(ts, **kwargs):
     assert kwargs["task_type"] == TaskType.FWD
+    ts = [ad.instantiate_zeros(t) for t in ts]
     return pipeline_yield_p.bind(
         *ts,
-        **{
-            **kwargs,
-            "task_type": TaskType.BWD,
-            "from_stage_id": kwargs["to_stage_id"],
-            "to_stage_id": kwargs["from_stage_id"],
-        },
+        **(
+            kwargs
+            | {
+                "task_type": TaskType.BWD,
+                "from_stage_id": kwargs["to_stage_id"],
+                "to_stage_id": kwargs["from_stage_id"],
+            }
+        ),
     )
 
 
-ad.primitive_jvps[pipeline_yield_p] = pipeline_yield_jvp
-ad.primitive_transposes[pipeline_yield_p] = pipeline_yield_transpose
+ad.deflinear(pipeline_yield_p, pipeline_yield_transpose)
+
 mlir.register_lowering(pipeline_yield_p, lambda ctx, *args, **kwargs: args)
 
 
@@ -339,9 +336,10 @@ lowering_rule: mlir.LoweringRule = partial(task_lower, name="task_call")
 mlir.register_lowering(task_p, lowering_rule)
 mlir.register_lowering(task_p, lowering_rule, platform="cpu")
 
+# FIXME: use closed_call_transpose below
 ad.primitive_transposes[task_p] = partial(ad.call_transpose, task_p)
 ad.call_transpose_param_updaters[task_p] = _task_transpose_update_params
-pe.dce_rules[task_p] = pe.dce_jaxpr_call_rule
+pe.dce_rules[task_p] = pe.dce_jaxpr_closed_call_rule
 pe.dce_rules[dax_pscan_p] = dce_jaxpr_dax_pscan
 
 

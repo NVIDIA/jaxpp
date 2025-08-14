@@ -17,8 +17,16 @@ import os
 from collections.abc import Sequence
 from typing import Iterable, Mapping
 
+import jax
 import jax._src.core as jcore
 import jax._src.util as ju
+from jax._src.ad_checkpoint import remat_p
+
+
+def gensym(suffix=""):
+    if jax.__version_info__ > (0, 6, 1):
+        return jcore.Var
+    return jcore.gensym(suffix)
 
 
 def check_jaxpr(jaxpr: jcore.Jaxpr):
@@ -31,8 +39,69 @@ def nonlit(atoms: Iterable[jcore.Atom]) -> list[jcore.Var]:
     return [v for v in atoms if isinstance(v, jcore.Var)]
 
 
+def var_is_duplicate(invars: Iterable[jcore.Atom]) -> list[int | None]:
+    existing_index = dict[jcore.Var, int]()
+    replace_with_orig_idx = []
+    for invar_idx, invar in enumerate(invars):
+        idx = None
+        if isinstance(invar, jcore.Var):
+            idx = existing_index.get(invar)
+            if idx is None:
+                existing_index[invar] = invar_idx
+        replace_with_orig_idx.append(idx)
+    return replace_with_orig_idx
+
+
+def partition_remat(
+    eqn: jcore.JaxprEqn, outvar_is_used: Sequence[bool]
+) -> tuple[jcore.JaxprEqn, jcore.JaxprEqn]:
+    from jaxpp.licm import make_unzipped_application, make_unzipped_jaxprs
+
+    dependencies_eqns, deferred_eqns, dependencies_free = partition_eqns(
+        eqn.params["jaxpr"].eqns,
+        {
+            outvar
+            for outvar, used in zip(
+                eqn.params["jaxpr"].outvars, outvar_is_used, strict=True
+            )
+            if used
+        },
+        memory_scarce=True,
+    )
+
+    is_dependencies_in = [
+        invar in dependencies_free for invar in eqn.params["jaxpr"].invars
+    ]
+
+    (
+        dependencies_jaxpr,
+        deferred_jaxpr,
+        deferred_in_idx,
+        out_is_deferred,
+        residual_avals,
+    ) = make_unzipped_jaxprs(
+        eqn.params["jaxpr"],
+        known_invars=is_dependencies_in,
+        known_eqns=dependencies_eqns,
+        unknown_eqns=deferred_eqns,
+    )
+
+    return make_unzipped_application(
+        eqn,
+        is_dependencies_in,
+        dependencies_jaxpr,
+        deferred_jaxpr,
+        deferred_in_idx,
+        out_is_deferred,
+        residual_avals,
+    )
+
+
 def partition_eqns(
-    eqns: Sequence[jcore.JaxprEqn], tgt_vars: Iterable[jcore.Var]
+    eqns: Sequence[jcore.JaxprEqn],
+    tgt_vars: Iterable[jcore.Var],
+    is_partial_bwd=False,
+    memory_scarce=False,
 ) -> tuple[list[jcore.JaxprEqn], list[jcore.JaxprEqn]]:
     """
     Partition `eqns` into two parts:
@@ -44,13 +113,55 @@ def partition_eqns(
     rev_scheduled_eqns = []
     for eqn_idx in reversed(range(len(eqns))):
         eqn = eqns[eqn_idx]
-        if any(outvar in used_vars for outvar in eqn.outvars):
-            mut_eqns[eqn_idx] = None
-            rev_scheduled_eqns.append(eqn)
-            used_vars.update(nonlit(eqn.invars))
-    return list(reversed(rev_scheduled_eqns)), [
-        eqn for eqn in mut_eqns if eqn is not None
-    ]
+        outvar_is_used = [outvar in used_vars for outvar in eqn.outvars]
+        if any(outvar_is_used):
+            if eqn.primitive == remat_p and is_partial_bwd:
+                dependencies_eqn, deferred_eqn = partition_remat(eqn, outvar_is_used)
+
+                mut_eqns[eqn_idx] = deferred_eqn
+                rev_scheduled_eqns.append(dependencies_eqn)
+                used_vars.update(nonlit(dependencies_eqn.invars))
+            else:
+                mut_eqns[eqn_idx] = None
+                rev_scheduled_eqns.append(eqn)
+                used_vars.update(nonlit(eqn.invars))
+    dependencies = list(reversed(rev_scheduled_eqns))
+
+    def get_total_size(vars: jcore.Var):
+        return sum([var.aval.dtype.itemsize * var.aval.size for var in vars])
+
+    if memory_scarce and len(dependencies) > 0 and any(eqn for eqn in mut_eqns):
+        # `defs_in_deferred` tracks vars that are defined locally in deferred eqns.
+        # Any var in `defs_in_deferred` is not from dependencies or from global invars.
+        # For example, in the example below, `a` is moved to dependencies and is not
+        # added to `defs_in_deferred`. However, `d` is not moved to dependencies because
+        # dot_general is blacklisted and `d` is added to `defs_in_deferred`.
+        # Any eqn that depends on `d` won't be moved to dependencies.
+        #   a = mul b c
+        #   d = dot_general a e
+        #   ...
+        defs_in_deferred = set[jcore.Var]()
+        blacklisted_primitives = (jax.lax.dot_general_p, remat_p)
+        for eqn_idx in range(len(mut_eqns)):
+            eqn = mut_eqns[eqn_idx]
+            if eqn is None:
+                continue
+            if eqn.primitive in blacklisted_primitives or any(
+                invar in defs_in_deferred for invar in nonlit(eqn.invars)
+            ):
+                defs_in_deferred.update(nonlit(eqn.outvars))
+                continue
+            invars_size = get_total_size(eqn.invars)
+            outvars_size = get_total_size(eqn.outvars)
+            if outvars_size <= invars_size:
+                dependencies.append(eqn)
+                used_vars.update(nonlit(eqn.invars))
+                used_vars.update(nonlit(eqn.outvars))
+                mut_eqns[eqn_idx] = None
+            else:
+                defs_in_deferred.update(nonlit(eqn.outvars))
+    deferred = [eqn for eqn in mut_eqns if eqn is not None]
+    return dependencies, deferred, used_vars
 
 
 def schedule_dependencies(
@@ -62,7 +173,7 @@ def schedule_dependencies(
     i.e. equations in `dependencies` define `eqns[tgt_eqn_idx].invars`.
     The relative order of the `deferred` equations is left unchanged.
     """
-    dependencies, deferred = partition_eqns(
+    dependencies, deferred, _ = partition_eqns(
         eqns[: tgt_eqn_idx + 1], eqns[tgt_eqn_idx].outvars
     )
     return dependencies, (deferred + eqns[tgt_eqn_idx + 1 :])
@@ -83,11 +194,11 @@ def eqns_free_vars(
 def jaxpr_from_eqns(
     eqns: list[jcore.JaxprEqn], outputs_needed: set[jcore.Var]
 ) -> jcore.Jaxpr:
-    free, defined = eqns_free_vars(eqns)
+    free, defined = eqns_free_vars(eqns, ordered=True)
     jaxpr = jcore.Jaxpr(
         constvars=(),
-        invars=sorted(free, key=lambda v: v.count),
-        outvars=sorted(defined & outputs_needed, key=lambda v: v.count),
+        invars=list(free),
+        outvars=[d for d in defined if d in outputs_needed],
         eqns=eqns,
         effects=jcore.join_effects(*(eqn.effects for eqn in eqns)),
     )

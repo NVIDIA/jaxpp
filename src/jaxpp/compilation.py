@@ -163,18 +163,20 @@ def pjit_lower(
     lowering_parameters: mlir.LoweringParameters,
     pgle_profiler: profiler.PGLEProfiler | None,
 ):
-    args = dict(
-        jaxpr=jaxpr,
-        in_shardings=in_shardings,
-        out_shardings=out_shardings,
-        in_layouts=in_layouts,
-        out_layouts=out_layouts,
-        donated_invars=donated_invars,
-        ctx_mesh=ctx_mesh,
-        name=name,
-        keep_unused=keep_unused,
-        inline=inline,
-        compiler_options_kvs=compiler_options_kvs,
+    args = (
+        jaxpr,
+        in_shardings,
+        out_shardings,
+        in_layouts,
+        out_layouts,
+        donated_invars,
+        ctx_mesh,
+        name,
+        keep_unused,
+        inline,
+        compiler_options_kvs,
+    )
+    kwargs = dict(
         lowering_platforms=lowering_platforms,
         lowering_parameters=lowering_parameters,
         pgle_profiler=pgle_profiler,
@@ -182,7 +184,8 @@ def pjit_lower(
     if jax.__version_info__ < (0, 5, 3):
         from jax._src.mesh import ResourceEnv
 
-        args = dict(
+        args = ()
+        kwargs = dict(
             jaxpr=jaxpr,
             in_shardings=in_shardings,
             out_shardings=out_shardings,
@@ -199,7 +202,7 @@ def pjit_lower(
             pgle_profiler=pgle_profiler,
         )
 
-    return _pjit_lower(**args)
+    return _pjit_lower(*args, **kwargs)
 
 
 class LoweringCache:

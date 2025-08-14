@@ -34,8 +34,6 @@ from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import BaseSchedule
 from jaxpp.utils import log_elapsed_time
 
-MUBATCH_AXIS = 1
-
 
 Carry = TypeVar("Carry")
 X = TypeVar("X")
@@ -226,7 +224,7 @@ def treduce(
     """
     flat_batch = jax.tree_util.tree_leaves(xs)
     first_batch_shape = flat_batch[0].shape
-    if any(a.shape[0] != first_batch_shape[0] for a in flat_batch):
+    if any(a.shape[axis] != first_batch_shape[axis] for a in flat_batch):
         raise AssertionError("Leading dimensions differing among xs")
 
     @functools.wraps(fun)

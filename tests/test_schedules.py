@@ -27,6 +27,7 @@ import jaxpp.schedules
         {"ScheduleCls": jaxpp.schedules.Std1F1B},
         {"ScheduleCls": jaxpp.schedules.Eager1F1B},
         {"ScheduleCls": jaxpp.schedules.Interleaved1F1B, "mpmd_dim": 1},
+        {"ScheduleCls": jaxpp.schedules.ZeroBubble},
     ]
 )
 class TestSchedules(unittest.TestCase):
@@ -37,7 +38,7 @@ class TestSchedules(unittest.TestCase):
     ScheduleCls: type | None = None
     mpmd_dim: int | None = None
     num_stages: int = 2
-    n_mubatches: int = 3
+    n_mubatches: int = 4
 
     def get_schedule(
         self, num_stages: int, mpmd_dim: int | None = None
@@ -80,6 +81,11 @@ class TestSchedules(unittest.TestCase):
 
         with pytest.raises(ValueError, match="can not be evenly divided by"):
             _ = self.get_schedule(num_stages=2, mpmd_dim=3)
+
+
+def test_i1f1b_mod_assertion():
+    with pytest.raises(ValueError) as exc:
+        jaxpp.schedules.Interleaved1F1B(num_stages=8, mpmd_dim=4).tasks(1)
 
 
 if __name__ == "__main__":

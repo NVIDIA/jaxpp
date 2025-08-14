@@ -601,14 +601,9 @@ def get_nccl_id(devs: UniqueDevices):
 
 
 @dataclasses.dataclass(frozen=True)
-class MpmdMesh:
+class MpmdMeshBase:
     jax_mesh: jax.sharding.Mesh
     mpmd_axis_name: str
-    store: Store = dataclasses.field(default_factory=Store)
-    dime: Dime = dataclasses.field(
-        default_factory=lambda: Dime(jax.local_devices()[0].client)
-    )
-    strict: bool = True
     mesh_stack: ClassVar[list["MpmdMesh"]] = []
 
     def __enter__(self):
@@ -619,18 +614,22 @@ class MpmdMesh:
         self.mesh_stack.pop()
 
     def __post_init__(self):
-        if self.strict:
-            mpmd_idx_by_process = dict[int, int]()
-            for d in self.jax_mesh._flat_devices_set:
-                if (mpmd_idx := mpmd_idx_by_process.get(d.process_index)) is not None:
-                    if self.device_coords[d][self.mpmd_axis] != mpmd_idx:
-                        raise AssertionError(
-                            f"Process {d.process_index} found in two mpmd indices: {mpmd_idx} {self.device_coords[d]}"
-                        )
-                else:
-                    mpmd_idx_by_process[d.process_index] = self.device_coords[d][
-                        self.mpmd_axis
-                    ]
+        if not self.jax_mesh.is_multi_process:
+            return
+
+        mpmd_idx_by_process = dict[int, int]()
+        for d in self.jax_mesh._flat_devices_set:
+            if (mpmd_idx := mpmd_idx_by_process.get(d.process_index)) is not None:
+                if self.device_coords[d][self.mpmd_axis] != mpmd_idx:
+                    raise AssertionError(
+                        f"Process {d.process_index} found in two mpmd indices: "
+                        f"{mpmd_idx} {self.device_coords[d][self.mpmd_axis]}"
+                        f"{jax.local_devices()=} {self.device_coords}"
+                    )
+            else:
+                mpmd_idx_by_process[d.process_index] = self.device_coords[d][
+                    self.mpmd_axis
+                ]
 
     @cached_property
     def device_coords(self) -> Mapping[jax.Device, tuple[int, ...]]:
@@ -645,6 +644,27 @@ class MpmdMesh:
     @cached_property
     def mpmd_axis(self) -> int:
         return self.jax_mesh.axis_names.index(self.mpmd_axis_name)
+
+    @cached_property
+    def unstack(self) -> list[jax.sharding.Mesh]:
+        return [
+            jax.sharding.Mesh(mpmd_group_devices, self.jax_mesh.axis_names)
+            for mpmd_group_devices in np.split(
+                self.jax_mesh.devices, self.mpmd_dim, self.mpmd_axis
+            )
+        ]
+
+    @property
+    def mpmd_idx_for_mesh(self) -> Mapping[jax.sharding.Mesh, int]:
+        return {mesh: idx for idx, mesh in enumerate(self.unstack)}
+
+
+@dataclasses.dataclass(frozen=True)
+class MpmdMesh(MpmdMeshBase):
+    store: Store = dataclasses.field(default_factory=Store)
+    dime: Dime = dataclasses.field(
+        default_factory=lambda: Dime(jax.local_devices()[0].client)
+    )
 
     @cached_property
     def my_mpmd_axis_index(self) -> int:
@@ -668,20 +688,9 @@ class MpmdMesh:
         )
 
     def lowering_mesh(self) -> jax.sharding.Mesh:
+        if not self.jax_mesh.is_multi_process:
+            return self.mpmd_submesh([0]).jax_mesh
         return self.my_mpmd_group_mesh
-
-    @cached_property
-    def unstack(self) -> list[jax.sharding.Mesh]:
-        axis_names = (
-            self.jax_mesh.axis_names[: self.mpmd_axis]
-            + self.jax_mesh.axis_names[self.mpmd_axis + 1 :]
-        )
-        return [
-            jax.sharding.Mesh(mpmd_group_devices, axis_names)
-            for mpmd_group_devices in np.moveaxis(
-                self.jax_mesh.devices, self.mpmd_axis, 0
-            )
-        ]
 
     def remote_mesh_at(self, mpmd_index: int) -> jax.sharding.Mesh:
         return self.unstack[mpmd_index]
@@ -960,6 +969,10 @@ class RemoteMpmdMesh:
     @property
     def as_mpmd_mesh(self):
         return MpmdMesh(self.remote_mesh, "jaxpp_pp")
+
+    @cached_property
+    def unstack(self) -> list[jax.sharding.Mesh]:
+        return self.as_mpmd_mesh.unstack
 
     def remote_mesh_at(self, mpmd_idx: int) -> jax.sharding.Mesh:
         return jax.sharding.Mesh(

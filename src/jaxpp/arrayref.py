@@ -57,13 +57,17 @@ class ArrayRef:
         return f"ArrayRef(mpmd_idxs={self.mpmd_idxs}, uid={self.uid}, aval={self.aval})"
 
     def __del__(self):
-        # We need to delete the array on the remote mesh only under
-        # the remote single-controller runtime
-        if isinstance(self.mesh, MpmdMesh):
-            return
-
         if sys.is_finalizing():
             return
+
+        # We need to delete the array on the remote mesh only under
+        # the remote single-controller runtime. We still have to remove
+        # its reference in the store.
+        if isinstance(self.mesh, MpmdMesh):
+            if self.mesh.my_mpmd_axis_index in self.mpmd_idxs and not self.deleted:
+                self.mesh.store.pop_array(self.uid)
+                return
+
         # TODO: use one single remote call per worker
         try:
             if not self.deleted:
