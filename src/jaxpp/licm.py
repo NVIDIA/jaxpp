@@ -16,8 +16,9 @@
 import enum
 import functools
 import itertools as it
+from collections import defaultdict
 from collections.abc import Callable
-from typing import Any, Iterable, Sequence, TypeVar
+from typing import Any, Iterable, Mapping, Sequence, TypeVar
 
 import jax
 import jax._src.core as jcore
@@ -29,7 +30,7 @@ from jax._src.ad_checkpoint import remat_p
 from jaxpp.jax_primitives import dax_pscan_p
 from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, var_is_duplicate
 from jaxpp.jaxpr_utils import gensym as mk_gensym
-from jaxpp.utils import CtxVar, array_bytes
+from jaxpp.utils import OverwriteableVar, array_bytes
 
 T = TypeVar("T")
 
@@ -40,8 +41,11 @@ def freeze_if_set(v: Any):
     return v
 
 
-def hashable_params(params: dict[str, Any]):
-    return tuple((k, freeze_if_set(v)) for k, v in params.items())
+def hashable_params(params: dict[str, Any], exclude: set[str] | None = None):
+    if exclude is None:
+        exclude = set()
+
+    return tuple((k, freeze_if_set(v)) for k, v in params.items() if k not in exclude)
 
 
 def schedule(
@@ -88,7 +92,7 @@ PartialEvalRuleResult = list[tuple[PartialValue, jcore.JaxprEqn]]
 PartialEvalRule = Callable[[jcore.JaxprEqn, list[PartialValue]], PartialEvalRuleResult]
 
 
-partial_eval_custom_rules = CtxVar(dict[jcore.Primitive, PartialEvalRule]())
+partial_eval_custom_rules = OverwriteableVar(dict[jcore.Primitive, PartialEvalRule]())
 
 
 def partial_eval_eqns(
@@ -158,13 +162,24 @@ def partial_eval_eqns(
     return known_eqns, unknown_eqns
 
 
+class KeyDefaultDict(defaultdict):
+    def __missing__(self, key):
+        if self.default_factory:
+            dict.__setitem__(self, key, self.default_factory(key))
+            return self[key]
+        else:
+            defaultdict.__missing__(self, key)
+
+
 def inline_eqns(
     eqns: list[jcore.JaxprEqn],
     env: dict[jcore.Var, jcore.Atom],
-    result_binding: dict[jcore.Var, jcore.Var],
+    result_binding: Mapping | None = None,
 ):
+    if result_binding is None:
+        result_binding = {}
+
     env = dict(env)
-    gensym = mk_gensym()
     res_eqns = []
     for eqn in eqns:
         invars = [
@@ -172,11 +187,13 @@ def inline_eqns(
             for invar in eqn.invars
         ]
         outvars = [
-            r if (r := result_binding.get(outvar)) is not None else gensym(outvar.aval)
+            r if (r := result_binding.get(outvar)) is not None else outvar
             for outvar in eqn.outvars
         ]
         res_eqns.append(eqn.replace(invars=invars, outvars=outvars))
-        env.update(zip(eqn.outvars, outvars))
+        for eqn_outvar, outvar in zip(eqn.outvars, outvars):
+            assert eqn_outvar not in env
+            env[eqn_outvar] = outvar
     return res_eqns
 
 
@@ -188,6 +205,52 @@ def cpy_eqn(invar, as_):
         params={},
         effects=frozenset({}),
     )
+
+
+def outvar_normalization(jaxpr: jcore.Jaxpr):
+    assert len(jaxpr.constvars) == 0
+
+    jaxpr_invars = {v: idx for idx, v in enumerate(jaxpr.invars)}
+
+    outvar_forwards_invar = list[int | None]()
+    for outvar in jaxpr.outvars:
+        invar_idx = None
+        if not isinstance(outvar, jcore.Literal):
+            invar_idx = jaxpr_invars.get(outvar)
+        outvar_forwards_invar.append(invar_idx)
+
+    duplicate_idx = var_is_duplicate(jaxpr.outvars, mark_first=True)
+
+    gensym = mk_gensym()
+    copy_eqns = list[jcore.JaxprEqn]()
+    outvars = list[jcore.Atom]()
+    for outvar, invar_idx, dup_idx in zip(
+        jaxpr.outvars, outvar_forwards_invar, duplicate_idx, strict=True
+    ):
+        # An output can be a
+        # (1) Literal
+        if isinstance(outvar, jcore.Literal):
+            # Bind it under the name `r`
+            new_outvar = gensym(outvar.aval)
+            eqn = cpy_eqn(outvar, as_=new_outvar)
+            copy_eqns.append(eqn)
+        # (2) The input jaxpr.invars[invar_idx]
+        elif invar_idx is not None:
+            new_outvar = gensym(outvar.aval)
+            eqn = cpy_eqn(jaxpr.invars[invar_idx], as_=new_outvar)
+            copy_eqns.append(eqn)
+
+        # (3) The same output jaxpr.outvars[dup_idx] returned multiple times
+        elif dup_idx is not None:
+            # `results[dup_idx]` is returned more than once under different names
+            new_outvar = gensym(outvar.aval)
+            eqn = cpy_eqn(jaxpr.outvars[dup_idx], as_=new_outvar)
+            copy_eqns.append(eqn)
+        else:
+            new_outvar = outvar
+
+        outvars.append(new_outvar)
+    return jaxpr.replace(eqns=jaxpr.eqns + copy_eqns, outvars=outvars)
 
 
 def inline_jaxpr(
@@ -248,7 +311,10 @@ def inline_jaxpr(
             assert outvar not in result_binding
             result_binding[outvar] = r
 
-    eqns = inline_eqns(jaxpr.eqns, env, result_binding)
+    gensym = mk_gensym()
+    eqns = inline_eqns(
+        jaxpr.eqns, env, KeyDefaultDict(lambda v: gensym(v.aval), result_binding)
+    )
     return eqns + copy_eqns
 
 

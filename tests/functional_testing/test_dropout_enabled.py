@@ -33,7 +33,6 @@ import jaxpp.api
 import jaxpp.schedules
 from jaxpp.mesh import MpmdMesh
 
-XLA_GPU_MEM_FRACTION = 0.4
 TENSOR_SHAPE = (10, 100)
 
 
@@ -55,7 +54,7 @@ class DropoutEnabledModel(nn.Module):
                 # Set the dropout layer with a `rate` of 50%.
                 # When the `deterministic` flag is `True`, dropout is turned off.
                 x = nn.Dropout(rate=0.5, deterministic=not training)(x)
-
+        x = jaxpp.api.pipeline_enter_stage(x)
         return x
 
     @staticmethod
@@ -143,7 +142,7 @@ class FlaxModelExecutionTest(unittest.TestCase):
             model_state, loss = train_step(model_state, x, y)
 
             # Test API is functional - No timing test
-            loss.block_until_ready()  # Forced Resync to allow accurate timing
+            loss.to_mpmd_local_array.block_until_ready()  # Forced Resync to allow accurate timing
 
             print(f"[Step {step_id+1:02d}] Train Loss: {loss:.3f}")
 

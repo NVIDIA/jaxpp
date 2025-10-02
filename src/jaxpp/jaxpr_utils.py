@@ -15,7 +15,7 @@
 
 import os
 from collections.abc import Sequence
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping, NamedTuple
 
 import jax
 import jax._src.core as jcore
@@ -23,7 +23,7 @@ import jax._src.util as ju
 from jax._src.ad_checkpoint import remat_p
 
 
-def gensym(suffix=""):
+def gensym(suffix="") -> Callable[[jcore.AbstractValue], jcore.Var]:
     if jax.__version_info__ > (0, 6, 1):
         return jcore.Var
     return jcore.gensym(suffix)
@@ -39,7 +39,9 @@ def nonlit(atoms: Iterable[jcore.Atom]) -> list[jcore.Var]:
     return [v for v in atoms if isinstance(v, jcore.Var)]
 
 
-def var_is_duplicate(invars: Iterable[jcore.Atom]) -> list[int | None]:
+def var_is_duplicate(
+    invars: Iterable[jcore.Atom], mark_first: bool = False
+) -> list[int | None]:
     existing_index = dict[jcore.Var, int]()
     replace_with_orig_idx = []
     for invar_idx, invar in enumerate(invars):
@@ -48,6 +50,9 @@ def var_is_duplicate(invars: Iterable[jcore.Atom]) -> list[int | None]:
             idx = existing_index.get(invar)
             if idx is None:
                 existing_index[invar] = invar_idx
+            elif mark_first:
+                replace_with_orig_idx[idx] = idx
+
         replace_with_orig_idx.append(idx)
     return replace_with_orig_idx
 
@@ -102,7 +107,7 @@ def partition_eqns(
     tgt_vars: Iterable[jcore.Var],
     is_partial_bwd=False,
     memory_scarce=False,
-) -> tuple[list[jcore.JaxprEqn], list[jcore.JaxprEqn]]:
+) -> tuple[list[jcore.JaxprEqn], list[jcore.JaxprEqn], set[jcore.Var]]:
     """
     Partition `eqns` into two parts:
     - the first part of equations is scheduled based on target vars
@@ -189,6 +194,38 @@ def eqns_free_vars(
         free.update(invar for invar in nonlit(eqn.invars) if invar not in defined)
         defined.update(eqn.outvars)
     return (free, defined)
+
+
+class UseSite(NamedTuple):
+    eqn_idx: int
+    invar_idx: int
+
+
+class DefSite(NamedTuple):
+    eqn_idx: int
+    outvar_idx: int
+
+
+def defs_and_uses(
+    eqns: Iterable[jcore.JaxprEqn],
+) -> tuple[dict[jcore.Var, DefSite], dict[jcore.Var, list[UseSite]]]:
+    uses = dict[jcore.Var, list[UseSite]]()
+    defined = dict[jcore.Var, DefSite]()
+    for eqn_idx, eqn in enumerate(eqns):
+        for invar_idx, invar in enumerate(nonlit(eqn.invars)):
+            if invar not in uses:
+                uses[invar] = []
+            uses[invar].append(UseSite(eqn_idx, invar_idx))
+        for outvar_idx, outvar in enumerate(eqn.outvars):
+            assert outvar not in defined
+            defined[outvar] = DefSite(eqn_idx, outvar_idx)
+    return (defined, uses)
+
+
+def defs_and_free_uses(eqns: Iterable[jcore.JaxprEqn]):
+    defs, uses = defs_and_uses(eqns)
+    free_uses = {v: _ for v, _ in uses.items() if v not in defs}
+    return defs, free_uses
 
 
 def jaxpr_from_eqns(

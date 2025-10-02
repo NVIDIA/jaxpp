@@ -15,7 +15,7 @@
 
 import argparse
 import multiprocessing as mp
-import os
+import sys
 from contextlib import contextmanager
 from functools import partial
 
@@ -54,13 +54,13 @@ class JaxPPBasicBertModel(JaxBasicBertModel):
         stage_id = 0
 
         for i, layer in enumerate(self.layers):
-            # Mark that we are entering a new stage at every layer
-            if i > 0 and i % num_layers_per_stage == 0 and stage_id < self.args.pp:
-                hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
-                stage_id += 1
-
             outs = layer(hidden_states, None, None)
             hidden_states = outs[0]
+            # Mark the end of a stage
+            if i > 0 and i % num_layers_per_stage == 0:
+                hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
+                stage_id += 1
+        hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
         return hidden_states
 
 
@@ -131,37 +131,21 @@ def main(args, process_id=None):
     layers.
     Each pipeline-parallel rank uses a (1, 1) mesh, for a total of 1 device per rank.
     """
-    xla_python_client_mem_fraction = ".4"
 
-    if args.enable_multicontroller:
-        assert process_id is not None
-        jax.distributed.initialize(
-            "localhost:1234",
-            num_processes=args.pp,
-            process_id=process_id,
-            local_device_ids=(process_id,),
-        )
-        jaxpp_mesh = jaxpp.MpmdMesh(
-            jax.sharding.Mesh(
-                np.array(jax.devices()).reshape((len(jax.devices()), 1, 1)),
-                ("stages", "data", "model"),
-            ),
-            "stages",
-        )
-    else:
-        jaxpp_mesh = jaxpp.RemoteMpmdMesh(
-            args.pp,
-            (1, 1),
-            ("data", "model"),
-            _env={"XLA_PYTHON_CLIENT_MEM_FRACTION": xla_python_client_mem_fraction},
-        )
-
-        # Normally, when using JaxPP, the driver process should set the default device
-        # to the cpu as shown in the line below.
-        # jax.config.update("jax_default_device", jax.local_devices(backend="cpu")[0])
-        # For this test _only_, we instead decide to set `XLA_PYTHON_CLIENT_MEM_FRACTION`
-        # to a sensible fraction so that the driver can use the same GPU as the worker.
-        os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = xla_python_client_mem_fraction
+    assert process_id is not None
+    jax.distributed.initialize(
+        "localhost:1234",
+        num_processes=args.pp,
+        process_id=process_id,
+        local_device_ids=(process_id,),
+    )
+    jaxpp_mesh = jaxpp.MpmdMesh(
+        jax.sharding.Mesh(
+            np.array(jax.devices()).reshape((len(jax.devices()), 1, 1)),
+            ("stages", "data", "model"),
+        ),
+        "stages",
+    )
 
     args.dtype = jax.numpy.dtype(args.dtype)
 
@@ -203,7 +187,7 @@ def main(args, process_id=None):
     # =========================== 1st step of inference =========================== #
 
     jaxpp_opt_state, jaxpp_params, jaxpp_loss, jaxpp_preds = jaxpp_train_step_fn(
-        opt_state_jaxpp, params_jaxpp, hidden_states
+        opt_state_jaxpp, params_jaxpp, batch=hidden_states
     )
     print(f"Done first step JAXPP, loss: {np.array(jaxpp_loss)}")
 
@@ -219,13 +203,11 @@ def main(args, process_id=None):
     rtol = atol = 1e-3 if args.dtype == jnp.float32 else 1e-2
 
     def is_close(a, b):
-        if args.enable_multicontroller:
-            return True
         return np.isclose(a, b, rtol=rtol, atol=atol).all()
 
     with assert_context("OPT State"):
         opt_state_allclose = jax.tree_util.tree_map(
-            lambda state_a, state_b: is_close(state_a, state_b._value),
+            lambda state_a, state_b: is_close(state_a, state_b.to_mpmd_local_array),
             jax_opt_state,
             jaxpp_opt_state,
         )
@@ -243,7 +225,7 @@ def main(args, process_id=None):
 
     with assert_context("Params"):
         new_params_allclose = jax.tree_util.tree_map(
-            lambda params_a, params_b: is_close(params_a, params_b._value),
+            lambda params_a, params_b: is_close(params_a, params_b.to_mpmd_local_array),
             jax_params,
             jaxpp_params,
         )
@@ -260,10 +242,10 @@ def main(args, process_id=None):
             raise AssertionError("Params Validation Error")
 
     with assert_context("Loss"):
-        is_close(jax_loss, jaxpp_loss._value)
+        is_close(jax_loss, jaxpp_loss.to_mpmd_local_array)
 
     with assert_context("Prediction"):
-        is_close(jax_preds, jaxpp_preds._value)
+        is_close(jax_preds, jaxpp_preds.to_mpmd_local_array)
 
     # =============================== TRAINING =============================== #
 
@@ -277,21 +259,21 @@ def main(args, process_id=None):
         )
 
         jaxpp_opt_state, jaxpp_params, jaxpp_loss, jaxpp_preds = jaxpp_train_step_fn(
-            jaxpp_opt_state, jaxpp_params, hidden_states
+            jaxpp_opt_state, jaxpp_params, batch=hidden_states
         )
 
         if step == 0 or (step + 1) % 10 == 0:
             print(
                 f"\n[{step + 1:04}/{args.train_steps:04}]:"
                 f"\n\t- JAX Loss:   {np.array(jax_loss).sum()}"
-                f"\n\t- JAXPP Loss: {jaxpp_loss._value.sum()}"
+                f"\n\t- JAXPP Loss: {jaxpp_loss.to_mpmd_local_array.sum()}"
             )
 
         # Adapting the tolerance is necessary due to small differences
         # building up over time and leading to a progressive drift.
         rtol = atol = 1e-4 if args.dtype == jnp.float32 else 5e-4
 
-        is_close(jax_loss, jaxpp_loss._value)
+        is_close(jax_loss, jaxpp_loss.to_mpmd_local_array)
 
     print("\nSUCCESS !")
 
@@ -331,30 +313,24 @@ if __name__ == "__main__":
             return False
         raise ValueError("Not a valid boolean string")
 
-    parser.add_argument(
-        "--enable_multicontroller",
-        type=parse_bool,
-        help="Use multicontroller mesh instead of single-controller Ray based one",
-        default="True",
-    )
-
     args = parser.parse_args()
 
     assert args.pp > 0, "Expected at least one worker."
     assert args.num_ubatches > 0, "Expected at least one microbatch."
     assert args.train_steps <= 500, "Training Steps over 500 has not been tested."
+    if args.pp == 1:
+        main(args, 0)
+        exit(0)
 
-    if args.enable_multicontroller:
-        processes = []
-        for i in range(args.pp):
-            p = mp.Process(target=main, args=(args, i))
-            processes.append(p)
-            p.start()
+    processes = []
+    exitcode = 0
+    for i in range(args.pp):
+        p = mp.Process(target=main, args=(args, i))
+        processes.append(p)
+        p.start()
 
-        for p in processes:
-            p.join()
-    else:
-        if os.environ.get("RAY_ADDRESS") is None:
-            print("RAY_ADDRESS is not set. Defaulting to RAY_ADDRESS='local'")
-            os.environ["RAY_ADDRESS"] = "local"
-        main(args)
+    for p in processes:
+        p.join()
+        if p.exitcode != 0:
+            exitcode = p.exitcode
+    sys.exit(exitcode)

@@ -20,6 +20,7 @@ from parameterized import parameterized_class
 
 import jaxpp
 import jaxpp.schedules
+from jaxpp.schedules import DualPipeV
 
 
 @parameterized_class(
@@ -69,23 +70,47 @@ class TestSchedules(unittest.TestCase):
             _ = self.get_schedule(num_stages=-1, mpmd_dim=self.mpmd_dim)
 
     def test_negative_mpmd_dim(self):
-        if not issubclass(self.ScheduleCls, jaxpp.schedules.Base_MPMD_DIM_Schedule):
+        if not issubclass(self.ScheduleCls, jaxpp.schedules.InterleavedBaseSchedule):
             self.skipTest("Doesn't use `mpmd_dim` argument")
 
         with pytest.raises(ValueError, match="The argument `mpmd_dim` must be `>= 0"):
             _ = self.get_schedule(num_stages=self.num_stages, mpmd_dim=-1)
 
     def test_mismatch_num_stages_and_mpmd_dim(self):
-        if not issubclass(self.ScheduleCls, jaxpp.schedules.Base_MPMD_DIM_Schedule):
+        if not issubclass(self.ScheduleCls, jaxpp.schedules.InterleavedBaseSchedule):
             self.skipTest("Doesn't use `mpmd_dim` argument")
 
         with pytest.raises(ValueError, match="can not be evenly divided by"):
             _ = self.get_schedule(num_stages=2, mpmd_dim=3)
 
 
-def test_i1f1b_mod_assertion():
+def test_validate_dualpipev_num_stages_less():
     with pytest.raises(ValueError) as exc:
-        jaxpp.schedules.Interleaved1F1B(num_stages=8, mpmd_dim=4).tasks(1)
+        DualPipeV(num_stages=4, mpmd_dim=4)
+
+    assert (
+        f"{DualPipeV.__name__} only supports 2 * mpmd_dim stages, self.num_stages=4"
+        f" requested with self.mpmd_dim=4"
+    ) in str(exc.value)
+
+
+def test_validate_dualpipev_num_stages_more():
+    with pytest.raises(ValueError) as exc:
+        DualPipeV(num_stages=12, mpmd_dim=4)
+
+    assert (
+        f"{DualPipeV.__name__} only supports 2 * mpmd_dim stages, self.num_stages=12"
+        f" requested with self.mpmd_dim=4"
+    ) in str(exc.value)
+
+
+def test_validate_dualpipev_n_mubatches():
+    with pytest.raises(ValueError) as exc:
+        DualPipeV(num_stages=6, mpmd_dim=3).tasks(5)
+
+    assert f"{DualPipeV.__name__} requires n_mubatches=5 >= self.num_stages=6" in str(
+        exc.value
+    )
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
+RUN rm -rf jaxpp
 COPY --chown=$USER_UID:$USER_GID . jaxpp
 
-RUN pip install --no-cache-dir -r jaxpp/examples/requirements.txt
+RUN uv pip install --no-cache-dir -r jaxpp/examples/requirements.txt

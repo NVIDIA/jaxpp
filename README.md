@@ -7,12 +7,14 @@ and decorators `@mpmd_jit_with_loop`.
 JaxPP automatically splits JAX computations into multiple SPMD modules that
 are independently jitted and dispatched to different devices.
 
-It supports the default JAX multi-controller runtime and an experimental remote
-single-controller runtime built with [Ray](https://github.com/ray-project/ray).
-
 
 # Status
 JaxPP is under active development, and its APIs are currently unstable and subject to change.
+
+## Changelog
+
+* [Aug 19, 2025] Users must now add a final `pipeline_enter_stage` to mark the last
+  stage as well.
 
 # Contacts
 
@@ -58,15 +60,14 @@ class ManualStagesModel(nn.Module):
         num_layers_per_stage = self.config.num_hidden_layers // self.pipeline_parallelism
         stage_id = 0
         for i, layer in enumerate(self.layers):
+            outs = layer(hidden_states, None, None)
+            hidden_states = outs[0]
+
             # Mark that we are entering a new stage
-            if (
-                i > 0 and i % num_layers_per_stage == 0 and stage_id < self.pipeline_parallelism
-            ):
+            if (i + 1) % num_layers_per_stage == 0:
                 hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
                 stage_id += 1
 
-            outs = layer(hidden_states, None, None)
-            hidden_states = outs[0]
         return hidden_states
 ```
 
@@ -115,12 +116,12 @@ JaxPP provides Docker containers for development and testing. The build process 
 
 ## Building the Base Image
 
-The base image contains all the core dependencies and is built using CUDA 12.6:
+The base image contains all the core dependencies and is built using CUDA 12.8:
 
 ```bash
 docker build --force-rm=true \
   -f scripts/docker/Dockerfile.base \
-  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:12.9.0-devel-ubuntu22.04 \
+  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04 \
   -t jaxpp-base .
 ```
 

@@ -1,23 +1,28 @@
+import dataclasses
+from contextlib import contextmanager
 from functools import partial
+from typing import Mapping
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.extend import core as jcore
 from jax.scipy.special import logsumexp
 
+from jaxpp import env_vars
 from jaxpp.api import BaseSchedule, pipeline_enter_stage, treduce
 from jaxpp.core import (
     cluster_jaxpr,
     infer_shardings2,
-    jaxpp_debug_skip_propagation,
-    mpmdify,
+    maybe_unroll_loop,
     strip_inspect_sharding_eqns,
     wrap_into_tasks,
 )
 from jaxpp.jax_primitives import dax_pscan_p
-from jaxpp.schedules import Eager1F1B, Interleaved1F1B, Std1F1B
+from jaxpp.mesh import MpmdMesh
 from jaxpp.pipelining import yield_scope
+from jaxpp.schedules import DualPipeV, Eager1F1B, Interleaved1F1B, Std1F1B, ZeroBubble
 
 
 def named_computation(fun, name):
@@ -36,7 +41,7 @@ def predict(params, X):
 
     # per-example predictions
     activations = X
-    layer_0_activations = None
+    layer_1_inputs = None
     for layer, (w, b) in enumerate(params):
 
         def stage(activations):
@@ -44,22 +49,18 @@ def predict(params, X):
             activations = relu(outputs)
             return activations
 
+        activations = named_computation(stage, f"stage_{layer}")(activations)
         if layer == 0:
-            layer_0_activations = activations
-
-        if layer != len(params) - 1:
-            activations = named_computation(stage, f"stage_{layer}")(activations)
-        else:
-            activations = stage(activations)
+            layer_1_inputs = activations
 
     logits = activations
-    return logits - logsumexp(logits), layer_0_activations
+    return logits - logsumexp(logits), layer_1_inputs
 
 
 @jax.value_and_grad
 def grads(params, data):
     X, Y = data
-    preds, layer_0_activations = predict(params, X)
+    preds, layer_1_inputs = predict(params, X)
     return jnp.mean((preds - Y) ** 2)
 
 
@@ -108,13 +109,31 @@ def get_scheduled_jaxpr(
     wrapped_cjaxpr, in_mpmd_refs, out_mpmd_defs = wrap_into_tasks(
         cjaxpr, used_invars=(True,) * len(cjaxpr.in_avals), mpmd_dim=mpmd_dim
     )
-    with jaxpp_debug_skip_propagation.set(skip_propagation):
+    with env_vars.jaxpp_debug_skip_propagation.set(skip_propagation):
         infer_shardings2(
             wrapped_cjaxpr, [replicated_sharding] * len(cjaxpr.in_avals), stage_mesh
         )
         wrapped_cjaxpr = strip_inspect_sharding_eqns(wrapped_cjaxpr)
 
-    return mpmdify(wrapped_cjaxpr, mpmd_dim)
+    return maybe_unroll_loop(wrapped_cjaxpr)
+
+
+@dataclasses.dataclass(frozen=True)
+class MpmdMeshLike:
+    jax_mesh: jax.sharding.Mesh
+    mpmd_dim: int
+
+    @property
+    def unstack(self) -> Mapping[int, jax.sharding.Mesh]:
+        return {mpmd_idx: self.jax_mesh for mpmd_idx in range(self.mpmd_dim)}
+
+
+@contextmanager
+def cleanup(fn):
+    try:
+        yield
+    finally:
+        fn()
 
 
 @pytest.mark.parametrize(
@@ -124,10 +143,15 @@ def get_scheduled_jaxpr(
         (2, 2, 4, Std1F1B(num_stages=2)),
         (3, 3, 5, Eager1F1B(num_stages=3)),
         (1, 1, 1, Interleaved1F1B(num_stages=1, mpmd_dim=1)),
+        (4, 8, 1, Interleaved1F1B(num_stages=8, mpmd_dim=4)),
         (2, 4, 12, Interleaved1F1B(num_stages=4, mpmd_dim=2)),
+        (4, 4, 4, ZeroBubble(num_stages=4)),
+        (4, 4, 8, ZeroBubble(num_stages=4)),
+        (3, 6, 6, DualPipeV(num_stages=6, mpmd_dim=3)),
+        (3, 6, 10, DualPipeV(num_stages=6, mpmd_dim=3)),
     ],
 )
-def test_transformations_succeed(
+def test_equivalence_scheduled(
     mpmd_dim: int,
     num_stages: int,
     n_mubatches: int,
@@ -156,9 +180,41 @@ def test_transformations_succeed(
         skip_propagation=skip_propagation,
     )
 
+    MpmdMesh.mesh_stack.append(MpmdMeshLike(stage_mesh, mpmd_dim))
+    with cleanup(lambda: MpmdMesh.mesh_stack.pop()):
+        flat_args = jax.tree_util.tree_leaves((params, X, Y))
+        transformed_res = jcore.jaxpr_as_fun(scheduled_jaxpr)(*flat_args)
+        plain_res = jax.tree_util.tree_leaves(total_grads_fn(*(params, X, Y)))
+        for l, r in zip(plain_res, transformed_res):
+            assert jnp.all(l == r)
+
+
+@pytest.mark.parametrize(
+    "mpmd_dim,num_stages,n_mubatches,schedule",
+    [
+        (8, 8 * 6, 64, Interleaved1F1B(num_stages=8 * 6, mpmd_dim=8)),
+        (8, 16, 18, DualPipeV(num_stages=16, mpmd_dim=8)),
+    ],
+)
+def test_transformations_dont_fail(
+    mpmd_dim: int, num_stages: int, n_mubatches: int, schedule: BaseSchedule
+):
+    total_grads_fn, (params, X, Y), stage_mesh, replicated_sharding = setup(
+        num_stages, n_mubatches, schedule
+    )
+
+    cjaxpr = total_grads_fn.trace(params, X, Y).jaxpr
+    scheduled_jaxpr = get_scheduled_jaxpr(
+        cjaxpr,
+        mpmd_dim,
+        stage_mesh,
+        replicated_sharding,
+        skip_propagation=True,
+    )
+
 
 def test_skip_propagation_false():
-    test_transformations_succeed(
+    test_equivalence_scheduled(
         *(3, 3, 5, Eager1F1B(num_stages=3)), skip_propagation=False
     )
 
@@ -181,7 +237,7 @@ def test_inference(num_stages: int):
         cjaxpr.jaxpr,
         num_stages,
         is_partial_bwd=False,
-        mpmd_dim=num_stages,
+        get_mpmd_idx=lambda _: _,
         is_loop=False,
     )
 
@@ -194,7 +250,7 @@ def test_inference_opening_not_triggered(num_stages: int):
     )
 
     def _fun(params, X):
-        preds, layer_0_activations = predict(params, X)
+        preds, layer_1_inputs = predict(params, X)
         return preds + params[1][1]
 
     jitted = jax.jit(_fun)
@@ -205,18 +261,16 @@ def test_inference_opening_not_triggered(num_stages: int):
         cjaxpr.jaxpr,
         num_stages,
         is_partial_bwd=False,
-        mpmd_dim=num_stages,
+        get_mpmd_idx=lambda _: _,
         is_loop=False,
     )
 
 
-# FIXME(#41)
-def test_bug_transformation_fails_without_after_loop():
-    with pytest.raises(AssertionError) as exc:
-        test_transformations_succeed(
-            *(3, 3, 5, Eager1F1B(num_stages=3)), skip_apply_grads=True
-        )
-    assert "Unsupported empty after_loop" in str(exc.value)
+# NOTE(#41)
+def test_transformation_succeeds_without_after_loop():
+    test_equivalence_scheduled(
+        *(3, 3, 5, Eager1F1B(num_stages=3)), skip_apply_grads=True
+    )
 
 
 # NOTE(#42)
@@ -228,8 +282,8 @@ def test_inference(num_stages: int):
     )
 
     def _fun(params, X):
-        preds, layer_0_activations = predict(params, X)
-        return layer_0_activations + params[1][1]
+        preds, layer_1_inputs = predict(params, X)
+        return layer_1_inputs + params[1][1]
 
     jitted = jax.jit(_fun)
     with yield_scope():
@@ -239,7 +293,7 @@ def test_inference(num_stages: int):
         cjaxpr.jaxpr,
         num_stages,
         is_partial_bwd=False,
-        mpmd_dim=num_stages,
+        get_mpmd_idx=lambda _: _,
         is_loop=False,
     )
 
@@ -252,11 +306,11 @@ def test_inference_complex(num_stages: int):
     )
 
     def _fun(params, X):
-        preds, layer_1_activations = predict(params, X)
+        preds, layer_1_inputs = predict(params, X)
         neg = preds < 0
-        zeros = jnp.zeros_like(layer_1_activations)
-        twice = layer_1_activations * 2
-        _ = jax.lax.cond(neg.any(), lambda: layer_1_activations, lambda: twice + zeros)
+        zeros = jnp.zeros_like(layer_1_inputs)
+        twice = layer_1_inputs * 2
+        _ = jax.lax.cond(neg.any(), lambda: layer_1_inputs, lambda: twice + zeros)
         return _ + params[0][1]
 
     jitted = jax.jit(_fun)
@@ -267,8 +321,6 @@ def test_inference_complex(num_stages: int):
         cjaxpr.jaxpr,
         num_stages,
         is_partial_bwd=False,
-        mpmd_dim=num_stages,
+        get_mpmd_idx=lambda _: _,
         is_loop=False,
     )
-    assert len(_.eqns) == num_stages + 1, (len(_.eqns), num_stages + 1)
-

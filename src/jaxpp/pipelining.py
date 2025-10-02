@@ -35,6 +35,7 @@ def yield_scope(enabled: bool = True):
         _current_stage = prev_stage
 
 
+# TODO(from,to)
 def pipeline_enter_stage(anchor: Any, name: str | None = None) -> Any:
     global _current_stage
     if _current_stage is None:

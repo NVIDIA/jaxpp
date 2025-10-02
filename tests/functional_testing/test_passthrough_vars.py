@@ -49,6 +49,7 @@ class ModelWithPassthrough(nn.Module):
         for _ in range(self.n_layers):
             out = nn.Dense(self.dense_dim)(out)
 
+        out = jaxpp.api.pipeline_enter_stage(out)
         return out + y, x, y
 
     @staticmethod
@@ -127,7 +128,7 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
             state, loss = train_step(state, (x, y), targets)
 
             # Test API is functional - No timing test
-            loss.block_until_ready()  # Forced Resync to allow accurate timing
+            loss.to_mpmd_local_array.block_until_ready()  # Forced Resync to allow accurate timing
 
             print(f"[Step {step_id+1:02d}] Train Loss: {loss:.3f}")
 
@@ -136,7 +137,7 @@ class FlaxModelWithPassthroughExecutionTest(unittest.TestCase):
         y_infer = jax.random.uniform(jax.random.fold_in(data_key, 2), TENSOR_SHAPE)
 
         logits, x_out, y_out = state.apply_fn(
-            {"params": jax.tree.map(lambda a: a._value, state.params)},
+            {"params": jax.tree.map(lambda a: a.to_mpmd_local_array, state.params)},
             x=x_infer,
             y=y_infer,
         )

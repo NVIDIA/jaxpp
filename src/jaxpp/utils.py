@@ -14,37 +14,75 @@
 # limitations under the License.
 
 import contextlib
+import functools
 import logging
 import os
 import time
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from typing import Generic, TypeVar
 
 import jax
+from jax._src.sharding_impls import UnspecifiedValue
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 
-class CtxVar(Generic[T]):
-    def __init__(self, default_value: T | None = None):
-        self._value = default_value
+class OverwriteableVar(Generic[T]):
+    MISSING = object()
 
-    @property
-    def value(self) -> T:
-        assert self._value is not None
-        return self._value
+    def __init__(self, default_value: T | None = None):
+        self.default_value = default_value
+        self._set_value = OverwriteableVar.MISSING
+
+    def __bool__(self):
+        raise ValueError("Variable used as truthy value")
 
     @contextlib.contextmanager
     def set(self, to: T):
-        prev = self._value
-        self._value = to
+        prev_value = self._set_value
+        self._set_value = to
         try:
             yield
         finally:
-            self._value = prev
+            self._set_value = prev_value
+
+    @property
+    def value(self):
+        if self._set_value is not OverwriteableVar.MISSING:
+            return self._set_value
+        assert self.default_value
+        return self.default_value
+
+
+class EnvVar(ABC, Generic[T], OverwriteableVar[T]):
+    def __init__(self, env_key: str, default_value: T | None = None):
+        super().__init__(default_value)
+        self.default_value = default_value
+        self.env_key = env_key
+
+    @functools.cached_property
+    def value(self) -> T:
+        if self._set_value is not OverwriteableVar.MISSING:
+            return self._set_value
+
+        set_v = os.getenv(self.env_key)
+
+        if set_v is None:
+            assert self.default_value is not None
+            return self.default_value
+
+        parsed_v = self.parse(set_v)
+        if parsed_v is None:
+            raise ValueError(f"Unsupported value {self.env_key}={set_v}")
+
+        return parsed_v
+
+    @abstractmethod
+    def parse(self, value: str) -> T | None: ...
 
 
 def parse_bool(s):
@@ -55,26 +93,29 @@ def parse_bool(s):
     return None
 
 
-class BoolCtxVar(CtxVar[bool]):
-    def __init__(self, default_value=False, env_key: str | None = None):
-        super().__init__(default_value)
-        self.env_key = env_key
+class BoolEnvVar(EnvVar[bool]):
+    def parse(self, value: str) -> bool | None:
+        return parse_bool(value)
 
-    @property
-    def value(self) -> T:
-        if self.env_key is not None and (vs := os.getenv(self.env_key)) is not None:
-            if (v := parse_bool(vs)) is not None:
-                return v
-            else:
-                logger.warning(f"Unsupported flag value {self.env_key}={vs}")
-        return super().value
+
+class StrEnvVar(EnvVar[str]):
+    def parse(self, value: str) -> str | None:
+        return value
+
+
+class IntEnvVar(EnvVar[int]):
+    def parse(self, value: str) -> int | None:
+        try:
+            return int(value)
+        except ValueError:
+            pass
 
 
 def unzip_multi(xs, arity=2):
     if len(xs) == 0:
         return [[] for _ in range(arity)]
     assert all(len(xs_arr) == arity for xs_arr in xs)
-    return jax.util.safe_map(list, jax.util.safe_zip(*xs))
+    return jax._src.util.safe_map(list, jax._src.util.safe_zip(*xs))
 
 
 _T = TypeVar("_T")
@@ -105,27 +146,6 @@ class _Sentinel:
 
 
 SENTINEL = _Sentinel()
-
-
-class RichDict(dict[_Key, _T], Generic[_Key, _T]):
-    def get_or_else(self, k: _Key, f: Callable[[], _T]) -> _T:
-        maybe_res = self.get(k, SENTINEL)
-        if isinstance(maybe_res, _Sentinel):
-            return f()
-        return maybe_res
-
-    def get_or_else_update(self, k: _Key, f: Callable[[], _T]) -> _T:
-        maybe_res = self.get(k, SENTINEL)
-        if isinstance(maybe_res, _Sentinel):
-            res = f()
-            self[k] = res
-            return res
-        return maybe_res
-
-    def set_or_raise_if_present(self, k: _Key, v: _T) -> None:
-        if k in self:
-            raise KeyError(f"Key `{k}` already present with value: `{self[k]}`")
-        self[k] = v
 
 
 @contextlib.contextmanager
@@ -173,3 +193,25 @@ def format_bytes(n_bytes: int) -> str:
 
 def hbytes(avals: Iterable[jax.Array]) -> str:
     return format_bytes(array_bytes(avals))
+
+
+def get_named_sharding(a: jax.Array):
+    assert isinstance(a.sharding, jax.sharding.NamedSharding)
+    return a.sharding
+
+
+def updated_named_sharding_mesh(
+    shardings: Iterable[jax.sharding.NamedSharding | UnspecifiedValue | None], new_mesh
+):
+    res = []
+    for s in shardings:
+        if s is None or isinstance(s, UnspecifiedValue):
+            res.append(s)
+            continue
+
+        assert isinstance(s, jax.sharding.NamedSharding)
+        new_sharding = s
+        if not isinstance(s.mesh, jax.sharding.AbstractMesh):
+            new_sharding = jax.sharding.NamedSharding(new_mesh, s.spec)
+        res.append(new_sharding)
+    return res

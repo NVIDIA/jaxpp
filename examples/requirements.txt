@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-transformers==4.52.4
+transformers==4.56.1
 flax==0.10.2
 pandas==2.2.2
 pyarrow==16.1.0

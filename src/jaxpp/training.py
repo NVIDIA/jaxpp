@@ -34,20 +34,9 @@ from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import BaseSchedule
 from jaxpp.utils import log_elapsed_time
 
-
 Carry = TypeVar("Carry")
 X = TypeVar("X")
 Y = TypeVar("Y")
-
-
-def pscan(
-    f: Callable[[Carry, X], tuple[Carry, Y]],
-    init: Carry,
-    xs: X | None = None,
-    length: int | None = None,
-    schedule: BaseSchedule = None,
-):
-    pass
 
 
 def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
@@ -174,7 +163,7 @@ def treduce(
     axis: int = 0,
     operation=default_op,
 ) -> Y:
-    """Temporally reduces a sequence of inputs with a pipelined schedule.
+    r"""Temporally reduces a sequence of inputs with a pipelined schedule.
 
     This function behaves like the functional-programming primitive
     ``reduce`` applied along the leading (time / micro-batch) axis of
@@ -240,7 +229,7 @@ def treduce(
 def treduce_i(
     fun: Callable[[int], Y], length: int, schedule: BaseSchedule, operation=default_op
 ) -> Y:
-    """Lower-level helper for :func:`~.treduce` that takes an explicit ``length``.
+    r"""Lower-level helper for :func:`~.treduce` that takes an explicit ``length``.
 
     Instead of slicing from a pre-materialised batch this variant invokes
     ``fun(i)`` directly for each ``0 <= i < length`` and reduces the returned

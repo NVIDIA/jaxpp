@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import time
 import unittest
 from collections import OrderedDict
@@ -22,6 +23,13 @@ import pytest
 from parameterized import parameterized, parameterized_class
 
 from jaxpp import utils
+from jaxpp.utils import (
+    BoolEnvVar,
+    IntEnvVar,
+    OverwriteableVar,
+    StrEnvVar,
+    parse_bool,
+)
 
 
 class TestUnzipMulti(unittest.TestCase):
@@ -88,51 +96,6 @@ class TestPartition(unittest.TestCase):
         assert result == ([1, 3, 5], [-2, -4])
 
 
-class TestRichDict(unittest.TestCase):
-    """
-    Tests for the `RichDict` class.
-    """
-
-    def setUp(self):
-        """Set up a `RichDict` instance for testing."""
-        self.rd = utils.RichDict()
-
-    def test_get_or_else_key_exists(self):
-        """Test `get_or_else` returns the existing value if the key exists."""
-        self.rd["a"] = 1
-        result = self.rd.get_or_else("a", lambda: 2)
-        assert result == 1
-
-    def test_get_or_else_key_missing(self):
-        """Test `get_or_else` returns the default value if the key is missing."""
-        result = self.rd.get_or_else("a", lambda: 2)
-        assert result == 2
-
-    def test_get_or_else_update_key_exists(self):
-        """Test `get_or_else_update` returns the existing value if the key exists."""
-        self.rd["a"] = 1
-        result = self.rd.get_or_else_update("a", lambda: 2)
-        assert result == 1
-
-    def test_get_or_else_update_key_missing(self):
-        """Test `get_or_else_update` updates and returns the new value if the key is
-        missing."""
-        result = self.rd.get_or_else_update("a", lambda: 2)
-        assert result == 2
-        assert self.rd["a"] == 2
-
-    def test_set_or_raise_if_present_key_absent(self):
-        """Test `set_or_raise_if_present` sets the value if the key is absent."""
-        self.rd.set_or_raise_if_present("a", 1)
-        assert self.rd["a"] == 1
-
-    def test_set_or_raise_if_present_key_present(self):
-        """Test `set_or_raise_if_present` raises a ValueError if the key is present."""
-        self.rd["a"] = 1
-        with pytest.raises(KeyError, match="already present with value"):
-            self.rd.set_or_raise_if_present("a", 2)
-
-
 @parameterized_class(
     [
         {"message": "hello_world"},
@@ -193,6 +156,134 @@ class TestLogElapsedTime(unittest.TestCase):
                 "test_event", msg=self.message, unit="invalid_unit"
             ):
                 pass
+
+
+class TestOverwriteableVar:
+    def test_default_value_initialization(self):
+        var_with_default = OverwriteableVar(default_value="default")
+        assert var_with_default.value == "default"
+
+        var_without_default = OverwriteableVar()
+        with pytest.raises(AssertionError):
+            _ = var_without_default.value
+
+    def test_context_manager_behavior(self):
+        var = OverwriteableVar(default_value="default")
+
+        with var.set("new_value"):
+            assert var.value == "new_value"
+        assert var.value == "default"
+
+        with var.set("first"):
+            with var.set("second"):
+                assert var.value == "second"
+            assert var.value == "first"
+        assert var.value == "default"
+
+        try:
+            with var.set("temporary"):
+                raise ValueError("Test exception")
+        except ValueError:
+            pass
+        assert var.value == "default"
+
+
+@pytest.mark.parametrize(
+    "input_value,expected",
+    [
+        ("true", True),
+        ("True", True),
+        ("TRUE", True),
+        ("1", True),
+        ("t", True),
+        ("T", True),
+        ("y", True),
+        ("Y", True),
+        ("yes", True),
+        ("YES", True),
+        ("false", False),
+        ("False", False),
+        ("FALSE", False),
+        ("0", False),
+        ("f", False),
+        ("F", False),
+        ("n", False),
+        ("N", False),
+        ("no", False),
+        ("NO", False),
+        ("maybe", None),
+        ("invalid", None),
+        ("2", None),
+        ("", None),
+    ],
+)
+def test_parse_bool(input_value, expected):
+    assert parse_bool(input_value) is expected
+
+
+class TestEnvVarClasses:
+    @pytest.mark.parametrize(
+        "var_class,env_value,expected_value,default_value",
+        [
+            (BoolEnvVar, "true", True, False),
+            (BoolEnvVar, "false", False, True),
+            (StrEnvVar, "test_string", "test_string", "default"),
+            (StrEnvVar, "", "", "default"),
+            (IntEnvVar, "123", 123, 42),
+            (IntEnvVar, "-456", -456, 42),
+            (IntEnvVar, "0", 0, 42),
+        ],
+    )
+    def test_env_var_with_valid_values(
+        self, var_class, env_value, expected_value, default_value
+    ):
+        with patch.dict(os.environ, {"TEST_VAR": env_value}):
+            var = var_class("TEST_VAR", default_value=default_value)
+            assert var.value == expected_value
+
+    @pytest.mark.parametrize(
+        "var_class,default_value",
+        [
+            (BoolEnvVar, True),
+            (StrEnvVar, "default"),
+            (IntEnvVar, 42),
+        ],
+    )
+    def test_env_var_with_default_no_env(self, var_class, default_value):
+        with patch.dict(os.environ, {}, clear=True):
+            var = var_class("TEST_VAR", default_value=default_value)
+            assert var.value == default_value
+
+    @pytest.mark.parametrize(
+        "var_class,invalid_env_value",
+        [
+            (BoolEnvVar, "invalid"),
+            (IntEnvVar, "not_a_number"),
+            (IntEnvVar, "3.14"),
+        ],
+    )
+    def test_env_var_with_invalid_values(self, var_class, invalid_env_value):
+        with patch.dict(os.environ, {"TEST_VAR": invalid_env_value}):
+            var = var_class("TEST_VAR", default_value="dummy")
+            with pytest.raises(ValueError, match="Unsupported value TEST_VAR.*"):
+                _ = var.value
+
+    def test_env_var_no_default_no_env(self):
+        with patch.dict(os.environ, {}, clear=True):
+            var = BoolEnvVar("TEST_VAR")
+            with pytest.raises(AssertionError):
+                _ = var.value
+
+    def test_env_var_caching(self):
+        with patch.dict(os.environ, {"TEST_VAR": "true"}):
+            var = BoolEnvVar("TEST_VAR")
+
+            value1 = var.value
+            assert value1 is True
+
+            os.environ["TEST_VAR"] = "false"
+            value2 = var.value
+            assert value2 is True
 
 
 if __name__ == "__main__":
