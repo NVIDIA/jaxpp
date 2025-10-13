@@ -11,11 +11,14 @@ from jax.extend import core as jcore
 from jax.scipy.special import logsumexp
 
 from jaxpp import env_vars
-from jaxpp.api import BaseSchedule, pipeline_enter_stage, treduce
+from jaxpp.api import Add, BaseSchedule, Concat, pipeline_enter_stage, treduce
 from jaxpp.core import (
     cluster_jaxpr,
+    common_passes,
+    fixup_multidefs,
     infer_shardings2,
     maybe_unroll_loop,
+    outvar_normalization,
     strip_inspect_sharding_eqns,
     wrap_into_tasks,
 )
@@ -211,6 +214,42 @@ def test_transformations_dont_fail(
         replicated_sharding,
         skip_propagation=True,
     )
+
+
+def test_literal_via_constant_folding():
+    """Test if constant folding or other optimizations might introduce literals."""
+    num_stages = 1
+    n_mubatches = 2
+    schedule = Std1F1B(num_stages=1)
+    (params, X, Y), stage_mesh, replicated_sharding = get_context(
+        num_stages, n_mubatches
+    )
+
+    def grads_with_constant_output(params, data):
+        loss, grad = grads(params, data)
+        identity = jnp.array(1.0)
+        return (loss, grad, identity)
+
+    custom_op = (Concat(), Add, Add)
+
+    total_grads_fn = jax.jit(
+        lambda params, X, Y: treduce(
+            partial(grads_with_constant_output, params),
+            (X, Y),
+            schedule=schedule,
+            operation=custom_op,
+        )
+    )
+
+    cjaxpr = total_grads_fn.trace(params, X, Y).jaxpr
+    with env_vars.jaxpp_conservative_loop_clustering.set(False):
+        scheduled_jaxpr = get_scheduled_jaxpr(
+            cjaxpr,
+            1,
+            stage_mesh,
+            replicated_sharding,
+            skip_propagation=True,
+        )
 
 
 def test_skip_propagation_false():

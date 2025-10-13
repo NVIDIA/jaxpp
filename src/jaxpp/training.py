@@ -22,9 +22,12 @@ import jax
 import jax._src.core as jcore
 import jax.api_util as jau
 import jax.extend.linear_util as lu
-import jax.numpy as jnp
 import numpy as np
 from jax._src import dtypes
+
+# TODO: maybe use custom definition of `tree_broadcast` and
+#  improve error message if it cannot be broadcasted
+from jax._src.custom_transpose import tree_broadcast
 from jax.interpreters import ad
 from jax.interpreters import partial_eval as pe
 
@@ -128,6 +131,7 @@ class Concat:
     axis: int = 0
 
     def state(self, n: int, a: jax.ShapeDtypeStruct) -> jax.Array:
+        assert n > 0
         shape = a.shape[: self.axis] + (n,) + a.shape[self.axis :]
         return jax.numpy.zeros(shape, dtype=a.dtype)
 
@@ -218,12 +222,18 @@ def treduce(
 
     @functools.wraps(fun)
     def wrap(i):
-        e = jax.tree.map(lambda x: jnp.take(x, i, axis=axis), xs)
+        e = jax.tree.map(lambda x: jax.numpy.take(x, i, axis=axis), xs)
         return fun(e)
 
     return treduce_i(
         wrap, first_batch_shape[axis], schedule=schedule, operation=operation
     )
+
+
+def copy_if_scalar(x: jax.Array) -> jax.Array:
+    if x.ndim == 0:
+        return jax.numpy.array(x, copy=True)
+    return x
 
 
 def treduce_i(
@@ -264,25 +274,19 @@ def treduce_i(
       structure as ``Y``.
     """
     with log_elapsed_time("jaxpr/first_loop_tracing"), yield_scope():
-        body_args = jcore.ShapedArray((), dtype=jnp.int32)
-        vmapped_jaxpr, loop_out_shapes = jax.make_jaxpr(fun, return_shape=True)(
-            body_args
-        )
-
-    # TODO: maybe use custom definition of `tree_broadcast` and
-    #  improve error message if it cannot be broadcasted
-    from jax._src.custom_transpose import tree_broadcast
+        body_args = jcore.ShapedArray((), dtype=jax.numpy.int32)
+        body_jaxpr, loop_out_shapes = jax.make_jaxpr(fun, return_shape=True)(body_args)
 
     operation = tree_broadcast(jax.tree_util.tree_structure(loop_out_shapes), operation)
 
     def state(op: Op, a):
-        return op.state(length, a)
+        return copy_if_scalar(op.state(length, a))
 
     loop_state = jax.tree_util.tree_map(state, operation, loop_out_shapes)
 
     def _fun(mubatch_idx, loop_state):
         def update(op: Op, state, update):
-            return op.update(state, update, mubatch_idx)
+            return copy_if_scalar(op.update(state, update, mubatch_idx))
 
         return (
             mubatch_idx + 1,
@@ -293,8 +297,8 @@ def treduce_i(
                 jax.tree.unflatten(
                     jax.tree.structure(loop_out_shapes),
                     jcore.eval_jaxpr(
-                        vmapped_jaxpr.jaxpr,
-                        vmapped_jaxpr.consts,
+                        body_jaxpr.jaxpr,
+                        body_jaxpr.consts,
                         mubatch_idx,
                         propagate_source_info=False,
                     ),
@@ -303,10 +307,10 @@ def treduce_i(
         )
 
     debug_info = jau.debug_info(treduce_i.__name__, fun, (body_args,), {})
-    wrapped_vmapped_fun = lu.wrap_init(_fun, debug_info=debug_info)
+    wrapped_body_fun = lu.wrap_init(_fun, debug_info=debug_info)
     with log_elapsed_time("jaxpr/second_loop_tracing"), yield_scope():
         loop_output = pscan_wrapped(
-            wrapped_vmapped_fun, loop_state, length=length, schedule=schedule
+            wrapped_body_fun, loop_state, length=length, schedule=schedule
         )
 
     return loop_output
