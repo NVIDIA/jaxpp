@@ -3179,7 +3179,7 @@ class TraceableFunction:
             p.out_tree,
             flat_out_shardings,
             mpmd_dim=self.mpmd_mesh.mpmd_dim,
-            name=self.fun.__name__,
+            name=p.params["name"],
         )
 
         return GlobalMpmdFunction(
@@ -3201,7 +3201,7 @@ class TraceableFunction:
                 in_mpmd_defs=in_mpmd_defs,
                 out_mpmd_defs=out_mpmd_defs,
             ),
-            name=self.fun.__name__,  # FIXME: use name from `pjit_info` or `params`
+            name=p.params["name"],
         )
 
 
@@ -3545,9 +3545,11 @@ class GlobalMpmdFunction:
                 continue
 
             if isinstance(arg, jax.Array):
-                if not arg._committed:
-                    continue
-                mpmd_idx = self.mpmd_mesh.mpmd_idx_for_mesh.get(arg.sharding.mesh)
+                mpmd_idx = (
+                    self.mpmd_mesh.mpmd_idx_for_mesh.get(arg.sharding.mesh)
+                    if isinstance(arg.sharding, jax.sharding.NamedSharding)
+                    else None
+                )
                 if (
                     mpmd_idx is None
                     or mpmd_idx not in expected_mpmd_idx
@@ -3562,7 +3564,8 @@ class GlobalMpmdFunction:
 
                     for mpmd_idx in expected_mpmd_idx:
                         (sh,) = updated_named_sharding_mesh(
-                            (arg.sharding,), self.mpmd_mesh.unstack[mpmd_idx]
+                            (self.in_info.in_shardings[i],),
+                            self.mpmd_mesh.unstack[mpmd_idx],
                         )
                         values[mpmd_idx] = jax.device_put(arg, sh)
 
@@ -3694,6 +3697,8 @@ def mpmd_jit_with_loop(
     *,
     in_shardings=None,
     out_shardings=None,
+    in_specs=None,
+    out_specs=None,
     static_argnums: int | Sequence[int] | None = None,
     static_argnames: str | Iterable[str] | None = None,
     donate_argnums: int | Sequence[int] | None = None,
@@ -3701,12 +3706,18 @@ def mpmd_jit_with_loop(
     abstracted_axes: Any | None = None,
     compiler_options: dict[str, Any] | None = None,
 ) -> TraceableFunction:
+    if in_specs is not None and in_shardings is not None:
+        raise ValueError("Can't pass both in_shardings and in_specs")
+
+    if out_specs is not None and out_shardings is not None:
+        raise ValueError("Can't pass both out_shardings and out_specs")
+
     return _mpmd_jit(
         fun=fun,
         mpmd_mesh=mpmd_mesh,
         strategy=FunctionWithLoop(),
-        in_shardings=in_shardings,
-        out_shardings=out_shardings,
+        in_shardings=in_shardings or in_specs,
+        out_shardings=out_shardings or out_specs,
         static_argnums=static_argnums,
         static_argnames=static_argnames,
         donate_argnums=donate_argnums,

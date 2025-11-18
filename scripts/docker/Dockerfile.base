@@ -21,6 +21,8 @@ FROM ${CUDA_BASE_IMAGE} AS base
 ARG USERNAME=jaxpp-dev
 ARG USER_UID=1001
 ARG USER_GID=$USER_UID
+# set by docker buildx, e.g., linux/amd64 or linux/arm64
+ARG TARGETARCH
 
 # Necessary to build documentation and avoid locale error
 ENV LC_ALL=C
@@ -48,9 +50,6 @@ RUN chown -R $USER_UID:$USER_GID /workdir
 
 USER $USERNAME
 SHELL ["/bin/bash", "--login", "-c"]
-
-
-
 
 # RUN pip install -U pip wheel setuptools
 

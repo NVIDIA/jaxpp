@@ -160,6 +160,11 @@ class MpmdArray:
         assert self.is_partially_addressable, "Array is not partially addressable"
         return format(self.to_mpmd_local_array, format_spec)
 
+    def block_until_ready(self):
+        for arr in self._partially_addressable_arrays.values():
+            arr.block_until_ready()
+        return self
+
 
 jcore.pytype_aval_mappings[MpmdArray] = jarray._get_aval_array
 
