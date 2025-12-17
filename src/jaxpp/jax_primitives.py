@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import logging
-from contextlib import contextmanager
 from functools import partial
 from typing import Callable, Optional, ParamSpec, Sequence, TypedDict, TypeVar, cast
 
@@ -31,11 +30,11 @@ else:
 from jax.interpreters import ad, batching, mlir
 from jax.interpreters import partial_eval as pe
 
-from jaxpp.array import MpmdArray
+from jaxpp.array import MpmdArray, logically_stacked
 from jaxpp.dime2 import send_or_recv
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import TaskType
-from jaxpp.utils import get_named_sharding, updated_named_sharding_mesh
+from jaxpp.utils import get_named_sharding, print_memstats, updated_named_sharding_mesh
 
 logger = logging.getLogger(__name__)
 
@@ -95,22 +94,6 @@ mlir.register_lowering(
 
 def all_reduce_fn(arrs):
     return tuple(a.sum(0) for a in arrs)
-
-
-def logically_stacked(a: jax.Array, comm_mesh: jax.sharding.Mesh, axis_name: str):
-    spec = a.sharding.spec
-    assert axis_name not in spec
-    exp = jax.numpy.expand_dims(a, 0)
-    in_sharding = jax.sharding.NamedSharding(
-        comm_mesh,
-        jax.sharding.PartitionSpec(axis_name, *spec),
-    )
-    ga = jax.make_array_from_single_device_arrays(
-        (comm_mesh.shape[axis_name], *a.shape),
-        in_sharding,
-        [s.data for s in exp.addressable_shards],
-    )
-    return ga
 
 
 def all_reduce(
@@ -231,36 +214,6 @@ class _LifetimeEndEffect(effects.Effect):
 
 
 LifetimeEndEffect = _LifetimeEndEffect()
-
-
-@contextmanager
-def print_memstats(label: str, enabled: bool = False):
-    if not enabled:
-        yield
-        return
-    print(f"\nBefore: {label}:")
-    for d in jax.local_devices():
-        stats = d.memory_stats()
-        used = stats["bytes_in_use"] / 2**30
-        limit = stats["bytes_limit"] / 2**30
-        peak_size = stats["peak_bytes_in_use"] / 2**30
-        print(
-            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
-            flush=True,
-        )
-
-    yield
-
-    print(f"\nAfter: {label}:")
-    for d in jax.local_devices():
-        stats = d.memory_stats()
-        used = stats["bytes_in_use"] / 2**30
-        limit = stats["bytes_limit"] / 2**30
-        peak_size = stats["peak_bytes_in_use"] / 2**30
-        print(
-            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
-            flush=True,
-        )
 
 
 @send_done_p.def_effectful_abstract_eval
@@ -544,11 +497,6 @@ def callable_task(prim: jcore.Primitive, **params):
 
 def apply_task(prim: jcore.Primitive, *args, **params):
     with params["ctx_mesh"]:
-        if jax.__version_info__ < (0, 5, 3):
-            from jax._src.mesh import ResourceEnv
-
-            params["resource_env"] = ResourceEnv(physical_mesh=params["ctx_mesh"])
-            del params["ctx_mesh"]
         return callable_task(prim, **params)(*args)
 
 

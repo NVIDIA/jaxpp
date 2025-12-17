@@ -17,7 +17,12 @@
 # ruff: noqa: F401
 
 from jaxpp import __version__
-from jaxpp.array import MpmdArray, _to_global_jax_array
+from jaxpp.array import (
+    MpmdArray,
+    _to_global_jax_array,
+    mpmd_to_spmd_reshard,
+    spmd_to_mpmd_reshard,
+)
 from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_rev, mpmd_jit_with_loop
 from jaxpp.jax_primitives import add_multi_p
 from jaxpp.mesh import MpmdMesh

@@ -1,5 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+#!/bin/bash
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.8.1"
+set -e
 
-from jaxpp import api as api  # noqa: PLC0414
+pytest --ignore tests/test_mpmd_array.py
+pytest tests/test_mpmd_array.py
+
+
+if [ $(nvidia-smi -L | wc -l) -ge 8 ]; then
+    N_PROCS=2 N_GPUS=4 COMMAND="python -u tests/test_reshard_utils.py" ./scripts/local_mc.sh
+    N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
+fi

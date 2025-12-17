@@ -215,3 +215,33 @@ def updated_named_sharding_mesh(
             new_sharding = jax.sharding.NamedSharding(new_mesh, s.spec)
         res.append(new_sharding)
     return res
+
+
+@contextlib.contextmanager
+def print_memstats(label: str, enabled: bool = False):
+    if not enabled:
+        yield
+        return
+    print(f"\nBefore: {label}:")
+    for d in jax.local_devices():
+        stats = d.memory_stats()
+        used = stats["bytes_in_use"] / 2**30
+        limit = stats["bytes_limit"] / 2**30
+        peak_size = stats["peak_bytes_in_use"] / 2**30
+        print(
+            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
+            flush=True,
+        )
+
+    yield
+
+    print(f"\nAfter: {label}:")
+    for d in jax.local_devices():
+        stats = d.memory_stats()
+        used = stats["bytes_in_use"] / 2**30
+        limit = stats["bytes_limit"] / 2**30
+        peak_size = stats["peak_bytes_in_use"] / 2**30
+        print(
+            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
+            flush=True,
+        )

@@ -6,27 +6,38 @@ from collections.abc import Sequence
 from functools import cached_property, partial
 from typing import Any, Callable
 
-import cupy
 import jax
 import jax.numpy as jnp
-from cupy.cuda import nccl
+from jax._src.dlpack import to_dlpack
+from jax._src.lib import _jax
+
+from jaxpp import env_vars
+from jaxpp.dlpack import capsule_name, dlpack_nccl_args
 
 if jax.__version_info__ < (0, 7, 2):
     from jax._src.op_shardings import are_op_shardings_equal as are_hlo_shardings_equal
 else:
     from jax._src.op_shardings import are_hlo_shardings_equal
 
-from jaxpp import env_vars
-from jaxpp.dlpack import capsule_name, dlpack_nccl_args
 
-if jax.__version_info__ > (0, 6, 0):
-    from jax._src.lib import _jax
+# Lazy imports for cupy to avoid pulling in pytest at module load time
+# (cupy unconditionally imports pytest via its testing module)
+class _LazyDeps:
+    @cached_property
+    def cupy(self):
+        import cupy
 
-    DistributedRuntimeClient = _jax.DistributedRuntimeClient
-else:
-    import jaxlib.xla_extension as xe
+        return cupy
 
-    DistributedRuntimeClient = xe.DistributedRuntimeClient
+    @cached_property
+    def nccl(self):
+        from cupy.cuda import nccl
+
+        return nccl
+
+
+_lazy = _LazyDeps()
+DistributedRuntimeClient = _jax.DistributedRuntimeClient
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +80,7 @@ def get_distributed_client() -> DistributedRuntimeClient:
 def get_nccl_id(devs: UniqueDevices):
     TIMEOUT = 240_000  # FIXME: make it an argument
     if devs.leader.process_index == jax.process_index():
-        nccl_id = nccl.get_unique_id()
+        nccl_id = _lazy.nccl.get_unique_id()
         get_distributed_client().key_value_set_bytes(devs.key, pickle.dumps(nccl_id))
     else:
         nccl_id = get_distributed_client().blocking_key_value_get_bytes(
@@ -88,6 +99,8 @@ def get_or_create_comm(devs: UniqueDevices):
     if comm is None:
         logger.info(f"Creating communicator {devs=}")
         nccl_id = get_nccl_id(devs)
+        nccl = _lazy.nccl
+        cupy = _lazy.cupy
 
         nccl.groupStart()
         for d in devs:
@@ -111,6 +124,7 @@ def get_or_create_stream(
     if stream is None:
         assert local_dev.process_index == jax.process_index()
         logger.info(f"Creating stream for {key=} {is_send=}")
+        cupy = _lazy.cupy
         with cupy.cuda.Device(local_dev.local_hardware_id):
             stream = cupy.cuda.Stream(non_blocking=True)
         local_streams[key] = stream
@@ -159,7 +173,7 @@ def _get_shard_ops_and_keep_alives(
         shard = shards_by_device[x_device]
         stream = stream_per_local_device[x_device]
 
-        dlpack = jax.dlpack.to_dlpack(shard.data, stream=stream.ptr)
+        dlpack = to_dlpack(shard.data, stream=stream.ptr)
         cpy_arrays.append(dlpack)
         data_ptr, count, dtype = dlpack_nccl_args(dlpack)
 
@@ -177,7 +191,7 @@ def _get_shard_ops_and_keep_alives(
 
         operations.append(
             (
-                cupy.cuda.Device(x_device.local_hardware_id),
+                _lazy.cupy.cuda.Device(x_device.local_hardware_id),
                 op,
                 (
                     data_ptr.value,
@@ -222,6 +236,7 @@ def _make_future_array(
     sharding = x.sharding
 
     def enqueue_wait():
+        cupy = _lazy.cupy
         jax_single_arrays = []
         local_device_assignment = [
             d
@@ -292,6 +307,8 @@ def send_or_recv(
         operations.append(ops)
         keep_alives.append(kas)
 
+    nccl = _lazy.nccl
+    cupy = _lazy.cupy
     nccl.groupStart()
     for shard_ops in operations:
         for cpy_dev, op, args in shard_ops:

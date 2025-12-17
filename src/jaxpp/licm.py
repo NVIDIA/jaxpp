@@ -25,10 +25,11 @@ import jax._src.core as jcore
 import jax._src.util as ju
 import jax.interpreters.partial_eval as pe
 import jax.numpy as jnp
+from jax._src import source_info_util
 from jax._src.ad_checkpoint import remat_p
 
 from jaxpp.jax_primitives import dax_pscan_p
-from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, var_is_duplicate
+from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, substitute, var_is_duplicate
 from jaxpp.jaxpr_utils import gensym as mk_gensym
 from jaxpp.utils import OverwriteableVar, array_bytes
 
@@ -651,23 +652,68 @@ def hoist_and_cse_pscan_invariant_equations(
     trace = CommonSubexpressionEliminationTrace(
         jaxpr.debug_info, cross_remat=cross_remat
     )
-    new_arg_kwargs = {}
-    if jax.__version_info__ > (0, 6, 0):
-        from jax._src import source_info_util
 
-        new_arg_kwargs = dict(source_info=source_info_util.current())
     with jcore.set_current_trace(trace):
         out_tracers = jcore.eval_jaxpr(
-            jaxpr, (), *(trace.new_arg(a.aval, **new_arg_kwargs) for a in jaxpr.invars)
+            jaxpr,
+            (),
+            *(
+                trace.new_arg(a.aval, source_info=source_info_util.current())
+                for a in jaxpr.invars
+            ),
         )
 
     additional_args = ()
     if jax.__version_info__ > (0, 6, 1):
-        from jax._src import source_info_util
+        source_info = source_info_util.current()
+        additional_args = (source_info,)
+        if jax.__version_info__ >= (0, 8, 0):
+            out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
 
-        additional_args = (source_info_util.current(),)
-    new_jaxpr, consts, _ = trace.to_jaxpr(
+    new_jaxpr, consts, *_ = trace.to_jaxpr(
         out_tracers, jaxpr.debug_info, *additional_args
     )
     assert len(consts) == 0
-    return new_jaxpr
+    return remove_duplicate_consts_invars(new_jaxpr)
+
+
+def remove_duplicate_consts_invars(jaxpr: jcore.Jaxpr):
+    from jaxpp.core import get_one_loop_eqn_idx, unwrap_closed
+
+    loop_eqn_idx = get_one_loop_eqn_idx(jaxpr)
+    loop_eqn = jaxpr.eqns[loop_eqn_idx]
+
+    duplicate_idx = var_is_duplicate(loop_eqn.invars)
+    assert not any(
+        duplicate_idx[loop_eqn.params["n_consts"] :]
+    ), "Unexpected duplicate in loop carried state"
+
+    kept_invars, duplicate_invars = ju.partition_list(
+        [_ is not None for _ in duplicate_idx], loop_eqn.invars
+    )
+    new_loop_eqn = loop_eqn.replace(
+        invars=kept_invars,
+        params=loop_eqn.params
+        | {
+            "jaxpr": unwrap_closed(
+                lambda jaxpr: remove_duplicate_invars(jaxpr, duplicate_idx)
+            )(loop_eqn.params["jaxpr"]),
+            "n_consts": loop_eqn.params["n_consts"] - len(duplicate_invars),
+        },
+    )
+
+    return jaxpr.replace(
+        eqns=jaxpr.eqns[:loop_eqn_idx] + [new_loop_eqn] + jaxpr.eqns[loop_eqn_idx + 1 :]
+    )
+
+
+def remove_duplicate_invars(jaxpr: jcore.Jaxpr, duplicate_idx: list[int | None]):
+    sub = dict[jcore.Var, jcore.Var]()
+    kept_invars = []
+    for invar, dup_idx in zip(jaxpr.invars, duplicate_idx, strict=True):
+        if dup_idx is not None:
+            sub[invar] = jaxpr.invars[dup_idx]
+        else:
+            kept_invars.append(invar)
+
+    return jaxpr.replace(invars=kept_invars, eqns=substitute(jaxpr.eqns, sub))

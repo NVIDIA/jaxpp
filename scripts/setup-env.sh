@@ -19,4 +19,5 @@ uv venv --python 3.12 "${VIRTUAL_ENV}"
 uv pip install pip wheel setuptools
 
 uv pip install --no-cache-dir -e "${jaxpp_pip_path}"
-uv pip install --no-build-isolation transformer-engine[jax]==2.1.0
+uv pip install --no-cache-dir pybind11
+uv pip install --no-build-isolation transformer-engine[jax]==2.8.0

@@ -41,6 +41,7 @@ import jax
 import jax._src.core as jcore
 import jax._src.util as ju
 import jax.interpreters.partial_eval as pe
+from jax._src import source_info_util
 from jax._src.ad_checkpoint import remat_p
 from jax._src.debugging import inspect_sharding_p
 
@@ -53,6 +54,7 @@ if jax.__version_info__ < (0, 7, 2):
 else:
     from jax._src.op_shardings import are_hlo_shardings_equal
 from jax._src.pjit import _infer_params, _parse_jit_arguments
+from jax._src.shard_map import shard_map_p
 from jax._src.tree_util import equality_errors_pytreedef
 from jax._src.util import weakref_lru_cache
 from jax.interpreters.ad import add_jaxvals_p as add_any_p
@@ -110,11 +112,6 @@ from jaxpp.utils import (
     log_elapsed_time,
     updated_named_sharding_mesh,
 )
-
-if jax.__version_info__ < (0, 6, 1):
-    from jax.experimental.shard_map import shard_map_p
-else:
-    from jax._src.shard_map import shard_map_p
 
 logger = logging.getLogger(__name__)
 
@@ -223,12 +220,7 @@ class AllReduceRewriteTrace(jcore.Trace, Generic[SubTrace]):
         self.parent_trace = parent_trace
 
     def new_arg(self, aval, mpmd_defs):
-        if jax.__version_info__ > (0, 6, 0):
-            from jax._src import source_info_util
-
-            val = self.parent_trace.new_arg(aval, source_info_util.current())
-        else:
-            val = self.parent_trace.new_arg(aval)
+        val = self.parent_trace.new_arg(aval, source_info_util.current())
         return AllReduceRewriteTracer(self, val, mpmd_defs)
 
     def call_parent(self, primitive, tracers, params, *, placement=None):
@@ -333,7 +325,7 @@ def propagate_and_rewrite_adds(
     ]
 
     with jcore.set_current_trace(mpmd_trace):
-        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers, propagate_source_info=False)
+        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers, propagate_source_info=True)
 
     additional_args = ()
     if jax.__version_info__ > (0, 6, 1):
@@ -1142,6 +1134,7 @@ def cluster_jaxpr(
         if rem != 0:
             raise AssertionError(
                 f"Expected even number of stages, {len(clusters)} found"
+                f"\n{clustered_jaxpr.pretty_print(use_color=False)}"
             )
     else:
         inferred_num_stages = len(clusters)
@@ -1417,7 +1410,7 @@ def get_one_loop_eqn_idx(
     loop_eqn_idxs = [idx for idx, e in enumerate(eqns) if e.primitive is dax_pscan_p]
     if len(loop_eqn_idxs) != 1:
         raise AssertionError(
-            "Expected 1 loop at the top level but {len(loop_eqn_idxs)} found."
+            f"Expected 1 loop at the top level but {len(loop_eqn_idxs)} found."
         )
     return loop_eqn_idxs[0]
 
@@ -1723,6 +1716,12 @@ def loop_placement_by_clusters(
 @unwrap_closed
 def loop_passes(jaxpr: jcore.Jaxpr) -> jcore.Jaxpr:
     if env_vars.jaxpp_enable_licm.value:
+        loop_eqn_idxs = [
+            idx for idx, e in enumerate(jaxpr.eqns) if e.primitive is dax_pscan_p
+        ]
+        if len(loop_eqn_idxs) == 0:
+            return jaxpr
+
         logger.info("Running LICM")
         jaxpr = hoist_and_cse_pscan_invariant_equations(jaxpr, cross_remat=True)
     check_jaxpr(jaxpr)
@@ -2624,11 +2623,10 @@ def deduplicate_outvars(
     outvar_def = []
     replicas = [0]
     new_result_paths = []
-    for outvar, name_in_mpmd_idx, rpath in zip(
-        jaxpr.outvars,
-        defined_in_mpmd_idx_as,
-        jaxpr.debug_info.result_paths,
-        strict=True,
+    result_paths = jaxpr.debug_info.result_paths
+
+    for i, (outvar, name_in_mpmd_idx) in enumerate(
+        zip(jaxpr.outvars, defined_in_mpmd_idx_as, strict=True)
     ):
         if isinstance(outvar, jcore.Literal):
             raise NotImplementedError()
@@ -2638,12 +2636,17 @@ def deduplicate_outvars(
 
         outvar_def.extend(mpmd_idxs)
         copy_outvars.extend(vs)
-        new_result_paths.extend([rpath] * len(mpmd_idxs))
+
+        if result_paths is not None:
+            new_result_paths.extend([result_paths[i]] * len(mpmd_idxs))
+
         replicas.append(len(copy_outvars))
 
     return jaxpr.replace(
         outvars=copy_outvars,
-        debug_info=jaxpr.debug_info._replace(result_paths=tuple(new_result_paths)),
+        debug_info=jaxpr.debug_info._replace(
+            result_paths=tuple(new_result_paths) if result_paths is not None else None
+        ),
     ), MpmdDefs(outvar_def, replicas)
 
 
@@ -3621,7 +3624,10 @@ class GlobalMpmdFunction:
         )
         dump_jaxpr(with_transfers, name=f"{self.name}.global", ctx=pp_ctx)
 
-        if not self.mpmd_mesh.jax_mesh.is_multi_process:
+        if (
+            not env_vars.jaxpp_debug_force_mpmdify.value
+            and not self.mpmd_mesh.jax_mesh.is_multi_process
+        ):
             with_transfers = bind_meshes(with_transfers, self.mpmd_mesh)
             # jaxprs = scalarize(with_transfers, self.mpmd_mesh)
             return dataclasses.replace(
@@ -3667,9 +3673,12 @@ def _mpmd_jit(
     static_argnames: str | Iterable[str] | None = None,
     donate_argnums: int | Sequence[int] | None = None,
     donate_argnames: str | Iterable[str] | None = None,
-    abstracted_axes: Any | None = None,
     compiler_options: dict[str, Any] | None = None,
 ) -> TraceableFunction:
+    add_kwargs = {}
+    if jax.__version_info__ <= (0, 8, 1):
+        add_kwargs = {"abstracted_axes": None}
+
     pjit_info = _parse_jit_arguments(
         fun=fun,
         in_shardings=in_shardings,
@@ -3680,11 +3689,11 @@ def _mpmd_jit(
         static_argnames=static_argnames,
         device=None,
         backend=None,
-        abstracted_axes=abstracted_axes,
         keep_unused=True,
         inline=False,
         compiler_options=compiler_options,
         use_resource_env=True,  # FIXME
+        **add_kwargs,
     )
     return TraceableFunction(
         fun=fun, mpmd_mesh=mpmd_mesh, pjit_info=pjit_info, strategy=strategy
@@ -3703,7 +3712,6 @@ def mpmd_jit_with_loop(
     static_argnames: str | Iterable[str] | None = None,
     donate_argnums: int | Sequence[int] | None = None,
     donate_argnames: str | Iterable[str] | None = None,
-    abstracted_axes: Any | None = None,
     compiler_options: dict[str, Any] | None = None,
 ) -> TraceableFunction:
     if in_specs is not None and in_shardings is not None:
@@ -3722,7 +3730,6 @@ def mpmd_jit_with_loop(
         static_argnames=static_argnames,
         donate_argnums=donate_argnums,
         donate_argnames=donate_argnames,
-        abstracted_axes=abstracted_axes,
         compiler_options=compiler_options,
     )
 
@@ -3738,7 +3745,6 @@ def mpmd_jit_by_yield(
     static_argnames: str | Iterable[str] | None = None,
     donate_argnums: int | Sequence[int] | None = None,
     donate_argnames: str | Iterable[str] | None = None,
-    abstracted_axes: Any | None = None,
     compiler_options: dict[str, Any] | None = None,
 ):
     return _mpmd_jit(
@@ -3751,7 +3757,6 @@ def mpmd_jit_by_yield(
         static_argnames=static_argnames,
         donate_argnums=donate_argnums,
         donate_argnames=donate_argnames,
-        abstracted_axes=abstracted_axes,
         compiler_options=compiler_options,
     )
 
@@ -3767,7 +3772,6 @@ def mpmd_jit_rev(
     static_argnames: str | Iterable[str] | None = None,
     donate_argnums: int | Sequence[int] | None = None,
     donate_argnames: str | Iterable[str] | None = None,
-    abstracted_axes: Any | None = None,
     compiler_options: dict[str, Any] | None = None,
 ) -> TraceableFunction:
     return _mpmd_jit(
@@ -3780,6 +3784,5 @@ def mpmd_jit_rev(
         static_argnames=static_argnames,
         donate_argnums=donate_argnums,
         donate_argnames=donate_argnames,
-        abstracted_axes=abstracted_axes,
         compiler_options=compiler_options,
     )

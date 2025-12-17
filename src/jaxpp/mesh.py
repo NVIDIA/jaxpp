@@ -21,6 +21,8 @@ from typing import ClassVar
 import jax
 import numpy as np
 
+from jaxpp import env_vars
+
 
 @dataclasses.dataclass(frozen=True)
 class MpmdMesh:
@@ -42,21 +44,26 @@ class MpmdMesh:
         mpmd_idx_by_process = dict[int, int]()
         for d in self.jax_mesh._flat_devices_set:
             if (mpmd_idx := mpmd_idx_by_process.get(d.process_index)) is not None:
-                if self.device_coords[d][self.mpmd_axis] != mpmd_idx:
+                if self.device_mpmd_idx[d] != mpmd_idx:
                     raise AssertionError(
                         f"Process {d.process_index} found in two mpmd indices: "
                         f"{mpmd_idx} {self.device_coords[d][self.mpmd_axis]}"
                         f"{jax.local_devices()=} {self.device_coords}"
                     )
             else:
-                mpmd_idx_by_process[d.process_index] = self.device_coords[d][
-                    self.mpmd_axis
-                ]
+                mpmd_idx_by_process[d.process_index] = self.device_mpmd_idx[d]
 
     @cached_property
     def device_coords(self) -> Mapping[jax.Device, tuple[int, ...]]:
         return {
             device: coord for coord, device in np.ndenumerate(self.jax_mesh.devices)
+        }
+
+    @cached_property
+    def device_mpmd_idx(self) -> Mapping[jax.Device, int]:
+        return {
+            device: self.device_coords[device][self.mpmd_axis]
+            for device in self.jax_mesh.devices.flat
         }
 
     @cached_property
@@ -82,7 +89,10 @@ class MpmdMesh:
 
     @cached_property
     def my_mpmd_axis_index(self) -> int:
-        if not self.jax_mesh.is_multi_process:
+        if (
+            not env_vars.jaxpp_debug_force_mpmdify.value
+            and not self.jax_mesh.is_multi_process
+        ):
             raise ValueError(
                 "my_mpmd_axis_index is supported only in multi-process meshes"
             )

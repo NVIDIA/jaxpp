@@ -143,7 +143,7 @@ The container includes several test suites that can be run:
 1. **Unit Tests**:
 ```bash
 docker run --gpus=all --shm-size=10.24gb --ulimit memlock=-1 --ulimit stack=67108864 \
-  -e XLA_FLAGS='--xla_gpu_graph_level=0' --rm --workdir=/workdir/jaxpp jaxpp \
+  --rm --workdir=/workdir/jaxpp jaxpp \
   "python /workdir/jaxpp/examples/basic.py --dtype=float32 && \
    python /workdir/jaxpp/examples/basic.py --dtype=float16"
 ```
