@@ -1924,7 +1924,7 @@ def infer_donation(
     last_use = last_used(tasked_jaxpr)
 
     invar_is_donated = dict(zip(tasked_jaxpr.invars, donated_invars))
-    received_vars = set[jcore.Var]()
+    undonateable_vars = set[jcore.Var]()
 
     least_donation = dict[tuple[int, TaskType], Sequence[bool]]()
     new_eqns = []
@@ -1935,8 +1935,8 @@ def infer_donation(
         donation = tuple(
             is_last_use_for_invar[invar_idx]
             and invar_is_donated.get(invar, True)
-            # NOTE: we avoid donating received invars
-            and invar not in received_vars
+            # NOTE: we avoid donating sent and received invars
+            and invar not in undonateable_vars
             for invar_idx, invar in enumerate(task_eqn.invars)
         )
 
@@ -1952,10 +1952,10 @@ def infer_donation(
                 least_donation[task_eqn.params["task_info"]] = donation
         elif task_eqn.primitive is transfer_p:
             # NOTE: we avoid donating received invars.
-            # Variables that are sent are not donated because
-            #  send_done (below) extends their lifetime to the end of
-            # the program
-            received_vars.update(task_eqn.outvars)
+            # FIXME(#44): sent invars could be donated however jax_primitives.py impls
+            #  keep scoped holds on sent invars
+            undonateable_vars.update(task_eqn.invars)
+            undonateable_vars.update(task_eqn.outvars)
             new_eqns.append(task_eqn)
         elif task_eqn.primitive is add_multi_p:
             new_eqns.append(
