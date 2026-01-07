@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -65,26 +65,51 @@ class DLDevice(ctypes.Structure):
         ("device_id", ctypes.c_int),
     ]
 
-
+# https://github.com/dmlc/dlpack/blob/6ea9b3eb64c881f614cd4537f95f0e125a35555c/include/dlpack/dlpack.h#L141-L182
 class DLDataTypeCode(ctypes.c_uint8):
     """An integer that encodes the category of DLTensor elements' data type."""
     kDLInt = 0
     kDLUInt = 1
     kDLFloat = 2
-    kDLOpaquePointer = 3
+    kDLOpaqueHandle = 3
     kDLBfloat = 4
     kDLComplex = 5
     kDLBool = 6
+    # FP8 data types
+    kDLFloat8_e3m4 = 7
+    kDLFloat8_e4m3 = 8
+    kDLFloat8_e4m3b11fnuz = 9
+    kDLFloat8_e4m3fn = 10
+    kDLFloat8_e4m3fnuz = 11
+    kDLFloat8_e5m2 = 12
+    kDLFloat8_e5m2fnuz = 13
+    kDLFloat8_e8m0fnu = 14
+    # FP6 data types
+    kDLFloat6_e2m3fn = 15
+    kDLFloat6_e3m2fn = 16
+    # FP4 data types
+    kDLFloat4_e2m1fn = 17
 
     def __str__(self):
         return {
-            self.kDLBool: "bool",
             self.kDLInt: "int",
             self.kDLUInt: "uint",
             self.kDLFloat: "float",
+            self.kDLOpaqueHandle: "void_p",
             self.kDLBfloat: "bfloat",
             self.kDLComplex: "complex",
-            self.kDLOpaquePointer: "void_p"
+            self.kDLBool: "bool",
+            self.kDLFloat8_e3m4: "float8_e3m4",
+            self.kDLFloat8_e4m3: "float8_e4m3",
+            self.kDLFloat8_e4m3b11fnuz: "float8_e4m3b11fnuz",
+            self.kDLFloat8_e4m3fn: "float8_e4m3fn",
+            self.kDLFloat8_e4m3fnuz: "float8_e4m3fnuz",
+            self.kDLFloat8_e5m2: "float8_e5m2",
+            self.kDLFloat8_e5m2fnuz: "float8_e5m2fnuz",
+            self.kDLFloat8_e8m0fnu: "float8_e8m0fnu",
+            self.kDLFloat6_e2m3fn: "float6_e2m3fn",
+            self.kDLFloat6_e3m2fn: "float6_e3m2fn",
+            self.kDLFloat4_e2m1fn: "float4_e2m1fn",
         }[self.value]
 
 
@@ -112,11 +137,22 @@ class DLDataType(ctypes.Structure):
         "uint32": (DLDataTypeCode.kDLUInt, 32, 1),
         "uint64": (DLDataTypeCode.kDLUInt, 64, 1),
         "float16": (DLDataTypeCode.kDLFloat, 16, 1),
-        "bfloat16": (DLDataTypeCode.kDLBfloat, 16, 1),  # Added
+        "bfloat16": (DLDataTypeCode.kDLBfloat, 16, 1),
         "float32": (DLDataTypeCode.kDLFloat, 32, 1),
         "float64": (DLDataTypeCode.kDLFloat, 64, 1),
         "complex64": (DLDataTypeCode.kDLComplex, 64, 1),
-        "complex128": (DLDataTypeCode.kDLComplex, 128, 1)
+        "complex128": (DLDataTypeCode.kDLComplex, 128, 1),
+        # FP4 types
+        "float4_e2m1fn": (DLDataTypeCode.kDLFloat4_e2m1fn, 4, 1),
+        # FP8 types
+        "float8_e3m4": (DLDataTypeCode.kDLFloat8_e3m4, 8, 1),
+        "float8_e4m3": (DLDataTypeCode.kDLFloat8_e4m3, 8, 1),
+        "float8_e4m3b11fnuz": (DLDataTypeCode.kDLFloat8_e4m3b11fnuz, 8, 1),
+        "float8_e4m3fn": (DLDataTypeCode.kDLFloat8_e4m3fn, 8, 1),
+        "float8_e4m3fnuz": (DLDataTypeCode.kDLFloat8_e4m3fnuz, 8, 1),
+        "float8_e5m2": (DLDataTypeCode.kDLFloat8_e5m2, 8, 1),
+        "float8_e5m2fnuz": (DLDataTypeCode.kDLFloat8_e5m2fnuz, 8, 1),
+        "float8_e8m0fnu": (DLDataTypeCode.kDLFloat8_e8m0fnu, 8, 1),
     }
 
     REV_MAP = {v: k for k, v in TYPE_MAP.items()}
@@ -165,7 +201,7 @@ DLManagedTensorPtr = ctypes.POINTER(DLManagedTensor)
 
 
 class NcclDataType(ctypes.c_uint8):
-    # https://github.com/NVIDIA/nccl/blob/559b70f86c190a0d8f67f0d7a0f2c9810dd1e8c7/src/nccl.h.in#L190-L205C3
+    # https://github.com/NVIDIA/nccl/blob/1e0c869c39bb33f1034cb9920bd2a8a8406f04a3/src/nccl.h.in#L328-L341
     ncclInt8 = 0
     ncclUint8 = 1
     ncclInt32 = 2
@@ -176,6 +212,8 @@ class NcclDataType(ctypes.c_uint8):
     ncclFloat32 = 7
     ncclFloat64 = 8
     ncclBfloat16 = 9
+    ncclFloat8e4m3 = 10
+    ncclFloat8e5m2 = 11
 
     TYPE_MAP = {
         "bool": ncclUint8,
@@ -189,6 +227,8 @@ class NcclDataType(ctypes.c_uint8):
         "float32": ncclFloat32,
         "float64": ncclFloat64,
         "bfloat16": ncclBfloat16,
+        "float8_e4m3fn": ncclFloat8e4m3,
+        "float8_e5m2": ncclFloat8e5m2,
     }
 
 
@@ -219,9 +259,13 @@ def dlpack_nccl_args(dla) -> tuple[RawDataPointer, int, NcclDataType]:
         dltensor.dtype.bits,
         dltensor.dtype.lanes,
     )
+
+    if dtype_key not in DLDataType.REV_MAP:
+        raise ValueError(f"Unsupported dtype: {dtype_key}")
+
     dtype_name = DLDataType.REV_MAP[dtype_key]
-    return (
-        RawDataPointer(data_ptr),
-        nelems,
-        NcclDataType(NcclDataType.TYPE_MAP[dtype_name]),
-    )
+    if dtype_name not in NcclDataType.TYPE_MAP:
+        raise ValueError(f"Unsupported dtype: {dtype_name}")
+    nccl_dtype = NcclDataType.TYPE_MAP[dtype_name]
+
+    return RawDataPointer(data_ptr), nelems, NcclDataType(nccl_dtype)

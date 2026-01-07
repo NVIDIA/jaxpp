@@ -22,4 +22,5 @@ pytest tests/test_mpmd_array.py
 if [ $(nvidia-smi -L | wc -l) -ge 8 ]; then
     N_PROCS=2 N_GPUS=4 COMMAND="python -u tests/test_reshard_utils.py" ./scripts/local_mc.sh
     N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
+    N_PROCS=2 N_GPUS=4 COMMAND="python -u tests/test_dime2.py" ./scripts/local_mc.sh
 fi
