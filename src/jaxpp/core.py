@@ -1944,12 +1944,18 @@ def infer_donation(
             new_eqns.append(
                 task_eqn.replace(params=task_eqn.params | {"donate_invars": donation})
             )
-            if task_eqn.params[
-                "task_info"
-            ] is not None and donation <= least_donation.get(
-                task_eqn.params["task_info"], (True,) * len(donation)
-            ):
-                least_donation[task_eqn.params["task_info"]] = donation
+
+            task_info = task_eqn.params["task_info"]
+            if task_info is not None:
+                least_donation[task_info] = tuple(
+                    min(prev, curr)
+                    for prev, curr in zip(
+                        least_donation.get(task_info, (True,) * len(donation)),
+                        donation,
+                        strict=True,
+                    )
+                )
+
         elif task_eqn.primitive is transfer_p:
             # NOTE: we avoid donating received invars.
             # FIXME(#44): sent invars could be donated however jax_primitives.py impls
@@ -1970,8 +1976,7 @@ def infer_donation(
     #  microbatches will have the same `task_info`.
     #  Here, we set the donation to the least donation among all of the task's
     #  instantiations to minimize the compilation misses
-    minimize_compilation_misses = True
-    if minimize_compilation_misses:
+    if env_vars.jaxpp_share_donation.value:
         res = []
         for eqn in new_eqns:
             if eqn.primitive is task_p and eqn.params["task_info"] is not None:
