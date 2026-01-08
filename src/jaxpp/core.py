@@ -101,8 +101,8 @@ from jaxpp.mesh import MpmdMesh
 from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import FusedTask, Task, mk_task_name, preprocess_schedule_tasks
 from jaxpp.types import (
-    DistributedSharding,
     MpmdIdx,
+    MpmdSharding,
     TaskType,
     fresh_scalar_uid,
 )
@@ -3526,7 +3526,7 @@ class GlobalMpmdFunction:
         res = jax.tree_util.tree_unflatten(
             self.in_info.in_tree,
             [
-                DistributedSharding(mpmd_idxs, sharding)
+                MpmdSharding(mpmd_idxs, sharding)
                 for mpmd_idxs, sharding in zip(
                     self.in_info.in_mpmd_defs,
                     self.in_info.in_shardings,

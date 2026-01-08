@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ from parameterized import parameterized
 import jaxpp.distributed_utils as jppdu
 from jaxpp.array import filter_axes, mpmd_to_spmd_reshard, spmd_to_mpmd_reshard
 from jaxpp.mesh import MpmdMesh
-from jaxpp.types import DistributedSharding
+from jaxpp.types import MpmdSharding
 
 
 class ReshardUtilsTest(jppdu.JaxDistributedTest):
@@ -70,7 +70,7 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
         target_mesh_ids = {0}
         submesh = mpmd_mesh.mpmd_submesh(list(target_mesh_ids)).jax_mesh
         mpmd_target_sharding = jax.sharding.NamedSharding(submesh, spmd_pspec)
-        dist_sharding = DistributedSharding(
+        dist_sharding = MpmdSharding(
             mesh_ids=target_mesh_ids, sharding=mpmd_target_sharding
         )
 
@@ -121,13 +121,24 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
             )
             spmd_arrays.append(spmd_array)
 
-        target_mesh_ids = {0}
-        submesh = mpmd_mesh.mpmd_submesh(list(target_mesh_ids)).jax_mesh
-        mpmd_target_sharding = jax.sharding.NamedSharding(submesh, spmd_pspec)
+        # Create different target mesh_ids for each array:
+        # Array 0: {0}, Array 1: empty, Array 2: {1}, Array 3: {0, 1}
+        submesh_0 = mpmd_mesh.mpmd_submesh([0]).jax_mesh
+        submesh_1 = mpmd_mesh.mpmd_submesh([1]).jax_mesh
+        submesh_01 = mpmd_mesh.mpmd_submesh([0, 1]).jax_mesh
+
+        sharding_0 = jax.sharding.NamedSharding(submesh_0, spmd_pspec)
+        sharding_1 = jax.sharding.NamedSharding(submesh_1, spmd_pspec)
+        sharding_01 = jax.sharding.NamedSharding(submesh_01, spmd_pspec)
+
         dist_shardings = [
-            DistributedSharding(mesh_ids=target_mesh_ids, sharding=mpmd_target_sharding)
-            for _ in shapes
+            MpmdSharding(mesh_ids={0}, sharding=sharding_0),
+            MpmdSharding(mesh_ids=set(), sharding=sharding_0),
+            MpmdSharding(mesh_ids={1}, sharding=sharding_1),
+            MpmdSharding(mesh_ids={0, 1}, sharding=sharding_01),
         ]
+
+        addressable_by_process = [{0}, {0}, {1}, {0, 1}]
 
         # Leads to "single element" groups
         small_threshold = 1
@@ -141,7 +152,8 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
             self.assertTrue(arr.is_deleted())
 
         for i, (mpmd_array, global_data) in enumerate(zip(mpmd_arrays, global_datas)):
-            if process_index == 0:
+            should_be_addressable = process_index in addressable_by_process[i]
+            if should_be_addressable:
                 self.assertTrue(mpmd_array.is_partially_addressable)
                 local_arr = mpmd_array.to_mpmd_local_array
                 self.assertIsNotNone(local_arr)

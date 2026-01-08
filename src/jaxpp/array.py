@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@ import jax._src.core as jcore
 import numpy as np
 
 from jaxpp.mesh import MpmdMesh
-from jaxpp.types import DistributedSharding
+from jaxpp.types import MpmdSharding
 from jaxpp.utils import get_named_sharding
 
 
@@ -268,7 +268,7 @@ def _id(*xs):
 def _spmd_to_mpmd_reshard(
     mpmd_mesh: MpmdMesh,
     spmd_values: list[jax.Array],
-    dist_shardings: list[DistributedSharding],
+    dist_shardings: list[MpmdSharding],
     donate: list[bool] | None = None,
 ) -> list[MpmdArray]:
     if donate is None:
@@ -366,7 +366,7 @@ def _get_working_memory_threshold() -> int:
 
 def _build_mpmd_interleaved_order(
     arrays: list[jax.Array],
-    shardings: list[DistributedSharding],
+    shardings: list[MpmdSharding],
 ) -> list[int]:
     """Build array order interleaved by mpmd_idx, largest first within each idx."""
     by_mpmd_idx: dict[int, list[int]] = defaultdict(list)
@@ -414,6 +414,15 @@ def spmd_to_mpmd_reshard(
     """
     spmd_arrays_with_path, spmd_tree_def = jax.tree.flatten_with_path(spmd_arrays)
     mpmd_shardings_flat, mpmd_tree_def = jax.tree.flatten(mpmd_shardings)
+
+    # For unused arrays (len(dsh.mesh_ids) == 0), we default their placement
+    # to mpmd rank 0
+    mpmd_shardings_flat = [
+        MpmdSharding(mesh_ids={0}, sharding=dsh.sharding)
+        if len(dsh.mesh_ids) == 0
+        else dsh
+        for dsh in mpmd_shardings_flat
+    ]
 
     assert spmd_tree_def == mpmd_tree_def
 

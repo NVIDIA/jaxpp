@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@ from jax.sharding import NamedSharding
 
 PyTree = Any
 ArrayTree = jax.Array | Iterable["ArrayTree"] | Mapping[Any, "ArrayTree"]
-DistributedShardingPyTree = Any
+MpmdShardingPyTree = Any
 DLPackCapsule = Any
 
 
@@ -34,7 +34,8 @@ MpmdIdx = NewType("MpmdIdx", int)
 
 
 @dataclass(frozen=True)
-class DistributedSharding:
+class MpmdSharding:
+    # NOTE: mesh_ids can be empty for unused arrays
     mesh_ids: set[int]
     sharding: NamedSharding
 

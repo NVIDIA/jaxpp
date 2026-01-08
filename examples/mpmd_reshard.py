@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,12 +75,10 @@ def main():
         jaxpp.mpmd_jit_with_loop,
         mpmd_mesh=mpmd_mesh,
         # NOTE: `mpmd_mesh.lowering_mesh().shape["stage"] == 1`
-        in_shardings=tuple(_.update(mesh=mpmd_mesh.lowering_mesh()) for _ in shardings),
-        out_shardings=tuple(
-            _.update(mesh=mpmd_mesh.lowering_mesh()) for _ in shardings[:2]
-        ),
+        in_shardings=tuple(_.spec for _ in shardings) + (shardings[-1].spec,),
+        out_shardings=tuple(_.spec for _ in shardings[:2]),
     )
-    def accumulation_loop(W1, W2, x):
+    def accumulation_loop(W1, W2, x, unused):
         return jaxpp.treduce(
             functools.partial(forward_fn, (W1, W2)),
             x,
@@ -89,22 +87,25 @@ def main():
         )
 
     args_mpmd_shardings, kwargs_mpmd_shardings = accumulation_loop.trace_and_place(
-        W1, W2, x
+        W1,
+        W2,
+        x,
+        x,  # unused
     ).in_shardings
 
     print(args_mpmd_shardings)
     # NOTE: the partition specs of the shardings are the same as the one of the input shardings
     #  however the meshes is the one corresponding to the spmd mesh of this process
     # (
-    #   DistributedSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec(('stage', 'fsdp'), 'tensor'), memory_kind=device))
-    #   DistributedSharding(mesh_ids={1}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('tensor', ('stage', 'fsdp')), memory_kind=device)),
-    #   DistributedSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('fsdp', None, None), memory_kind=device))
+    #   MpmdSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec(('stage', 'fsdp'), 'tensor'), memory_kind=device))
+    #   MpmdSharding(mesh_ids={1}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('tensor', ('stage', 'fsdp')), memory_kind=device)),
+    #   MpmdSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('fsdp', None, None), memory_kind=device))
     # )
 
     # This reshard makes
-    _W1, _W2, _x = jaxpp.spmd_to_mpmd_reshard(
+    _W1, _W2, _x, _unused = jaxpp.spmd_to_mpmd_reshard(
         mpmd_mesh,
-        [W1, W2, x],
+        [W1, W2, x, x],
         list(args_mpmd_shardings),
     )
 
@@ -130,7 +131,7 @@ def main():
     if W2.is_partially_addressable:
         print(f"{W2.first_mpmd_replica.sharding=}")
 
-    dW1, dW2 = accumulation_loop(W1, W2, x)
+    dW1, dW2 = accumulation_loop(W1, W2, x, _unused)
 
     dW1, dW2 = jaxpp.mpmd_to_spmd_reshard(mpmd_mesh, [dW1, dW2], shardings[:2])
     print(f"{dW1.sharding=}")
