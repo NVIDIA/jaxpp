@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxpp.api import MpmdArray, MpmdMesh
+from jaxpp.types import MpmdSharding
 
 
 class TestMpmdArray(unittest.TestCase):
@@ -29,15 +30,16 @@ class TestMpmdArray(unittest.TestCase):
 
     def test_mpmd_non_replicated_array(self):
         # For non-replicated arrays
+        sharding_0 = MpmdSharding(
+            self.mpmd_mesh, frozenset({0}), self.array_at_submesh_0.sharding.spec
+        )
         mpmd_non_replicated_array1_p0 = MpmdArray(
-            [self.array_at_submesh_0], self.mpmd_mesh, frozenset({0})
+            [self.array_at_submesh_0], sharding_0
         )
         # The second process contains only the metadata, no physical arrays
         mpmd_non_replicated_array1_p1 = MpmdArray(
             [],
-            self.mpmd_mesh,
-            frozenset({0}),
-            spec=self.array_at_submesh_0.sharding.spec,
+            sharding_0,
             shape=self.array_at_submesh_0.shape,
             dtype=self.array_at_submesh_0.dtype,
         )
@@ -57,20 +59,21 @@ class TestMpmdArray(unittest.TestCase):
 
     def test_mpmd_replicated_array(self):
         # Multi-process case where the array is replicated across 0 and 2
+        sharding_0_2 = MpmdSharding(
+            self.mpmd_mesh, frozenset({0, 2}), self.array_at_submesh_0.sharding.spec
+        )
         mpmd_replicated_array2_p0 = MpmdArray(
-            [self.array_at_submesh_0], self.mpmd_mesh, frozenset({0, 2})
+            [self.array_at_submesh_0], sharding_0_2
         )
         # Process 1 contains only metadata, no physical arrays
         mpmd_replicated_array2_p1 = MpmdArray(
             [],
-            self.mpmd_mesh,
-            frozenset({0, 2}),
-            spec=self.array_at_submesh_0.sharding.spec,
+            sharding_0_2,
             shape=self.array_at_submesh_0.shape,
             dtype=self.array_at_submesh_0.dtype,
         )
         mpmd_replicated_array2_p2 = MpmdArray(
-            [self.array_at_submesh_2], self.mpmd_mesh, frozenset({0, 2})
+            [self.array_at_submesh_2], sharding_0_2
         )
         assert mpmd_replicated_array2_p0.is_mpmd_replicated
         assert mpmd_replicated_array2_p1.is_mpmd_replicated
@@ -99,10 +102,12 @@ class TestMpmdArray(unittest.TestCase):
 
     def test_single_process_case(self):
         # Single process case
+        sharding_0_2 = MpmdSharding(
+            self.mpmd_mesh, frozenset({0, 2}), self.array_at_submesh_0.sharding.spec
+        )
         mpmd_array = MpmdArray(
             [self.array_at_submesh_0, self.array_at_submesh_2],
-            self.mpmd_mesh,
-            frozenset({0, 2}),
+            sharding_0_2,
         )
         assert mpmd_array.is_mpmd_replicated
         assert mpmd_array.sharding.mesh == self.mpmd_mesh.mpmd_submesh([0, 2]).jax_mesh

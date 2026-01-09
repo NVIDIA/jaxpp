@@ -26,6 +26,34 @@ from jaxpp import env_vars
 
 @dataclasses.dataclass(frozen=True)
 class MpmdMesh:
+    """A JAX mesh partitioned into MPMD (Multiple Program Multiple Data) groups.
+
+    MpmdMesh wraps a standard JAX mesh and designates one axis as the "MPMD axis".
+    The mesh is conceptually split into multiple independent groups along this axis,
+    where each group can execute different computations (e.g., pipeline stages).
+
+    For example, with a mesh of shape {'mpmd': 4, 'data': 2, 'model': 2} and
+    mpmd_axis_name='mpmd', the mesh is split into 4 MPMD groups, each containing
+    4 devices (2 data x 2 model). Each group runs its own computation, and arrays
+    can be distributed across one or more groups.
+
+    Key concepts:
+        - MPMD group: A slice of the mesh along the MPMD axis. Each group
+          has an index from 0 to mpmd_dim - 1.
+        - Submesh: A subset of MPMD groups combined into a single mesh.
+          Used when arrays are replicated across multiple groups.
+        - Lowering mesh: The mesh used for XLA compilation, which is the
+          local process's MPMD group mesh in multi-process settings.
+
+    In multi-process execution, each process belongs to exactly one MPMD group.
+    Arrays may be replicated across multiple groups when needed as inputs by
+    multiple pipeline stages (common for constants and loop invariants).
+
+    Attributes:
+        jax_mesh: The underlying JAX mesh containing all devices.
+        mpmd_axis_name: Name of the axis used to partition into MPMD groups.
+    """
+
     jax_mesh: jax.sharding.Mesh
     mpmd_axis_name: str
     mesh_stack: ClassVar[list["MpmdMesh"]] = []

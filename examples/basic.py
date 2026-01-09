@@ -283,7 +283,6 @@ if __name__ == "__main__":
         prog="JAXPP",
         description="Example Usage: \n"
         "  python examples/basic.py --pp=2"
-        "  python examples/basic.py --pp=2 --multicontroller",
     )
 
     parser.add_argument(

@@ -33,6 +33,7 @@ from jax.interpreters import partial_eval as pe
 from jaxpp.array import MpmdArray, logically_stacked
 from jaxpp.dime2 import send_or_recv
 from jaxpp.mesh import MpmdMesh
+from jaxpp.types import MpmdSharding
 from jaxpp.types import TaskType
 from jaxpp.utils import get_named_sharding, print_memstats, updated_named_sharding_mesh
 
@@ -72,8 +73,7 @@ def add_multi_impl(
     _ = sum(jax.device_put(a, args[0].sharding) for a in args)
     return MpmdArray(
         [jax.device_put(_, s) for s in prev_shardings],
-        mpmd_mesh=mpmd_mesh,
-        mpmd_idxs=mpmd_idxs,
+        mpmd_sharding=MpmdSharding(mpmd_mesh, mpmd_idxs, prev_shardings[0].spec),
     )
 
 

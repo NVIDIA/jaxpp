@@ -3288,6 +3288,21 @@ class ScalarMpmdFunction:
         stripped = strip_inspect_sharding_eqns(self.local_jaxpr)
         return jcore.jaxpr_as_fun(stripped)
 
+    @cached_property
+    def in_shardings(self):
+        res = jax.tree_util.tree_unflatten(
+            self.in_info.in_tree,
+            [
+                MpmdSharding(self.mpmd_mesh, mpmd_idxs, sharding.spec)
+                for mpmd_idxs, sharding in zip(
+                    self.in_info.in_mpmd_defs,
+                    self.in_info.in_shardings,
+                    strict=True,
+                )
+            ][len(self.consts) :],
+        )
+        return res
+
     def _maybe_shard_inputs(self, flat_args: list[jax.Array]):
         local_args = []
         for arg_idx, (arg, mpmd_idxs) in enumerate(
@@ -3356,11 +3371,15 @@ class ScalarMpmdFunction:
         results = []
         local_idx = 0
         for global_idx, mpmd_idxs in enumerate(self.in_info.out_mpmd_defs):
+            mpmd_sharding = MpmdSharding(
+                self.mpmd_mesh,
+                mpmd_idxs,
+                self.in_info.out_shardings[global_idx].spec,
+            )
             if self.mpmd_mesh.my_mpmd_axis_index in mpmd_idxs:
                 out = MpmdArray(
                     partially_addressable_arrays=[outs[local_idx]],
-                    mpmd_mesh=self.mpmd_mesh,
-                    mpmd_idxs=frozenset(mpmd_idxs),
+                    mpmd_sharding=mpmd_sharding,
                 )
                 expected_aval = self.in_info.out_avals[global_idx]
                 assert expected_aval.shape == out.aval.shape and (
@@ -3371,10 +3390,8 @@ class ScalarMpmdFunction:
                 aval = self.in_info.out_avals[global_idx]
                 out = MpmdArray(
                     partially_addressable_arrays=[],
-                    mpmd_mesh=self.mpmd_mesh,
-                    mpmd_idxs=frozenset(mpmd_idxs),
+                    mpmd_sharding=mpmd_sharding,
                     shape=aval.shape,
-                    spec=self.in_info.out_shardings[global_idx].spec,
                     dtype=aval.dtype,
                 )
             results.append(out)
@@ -3526,7 +3543,7 @@ class GlobalMpmdFunction:
         res = jax.tree_util.tree_unflatten(
             self.in_info.in_tree,
             [
-                MpmdSharding(mpmd_idxs, sharding)
+                MpmdSharding(self.mpmd_mesh, mpmd_idxs, sharding.spec)
                 for mpmd_idxs, sharding in zip(
                     self.in_info.in_mpmd_defs,
                     self.in_info.in_shardings,
@@ -3581,8 +3598,11 @@ class GlobalMpmdFunction:
                     #   "deduplicate" jaxpr's invars in fixup_multidefs
                     flat_args[i] = MpmdArray(
                         values.values(),
-                        mpmd_mesh=self.mpmd_mesh,
-                        mpmd_idxs=frozenset(expected_mpmd_idx),
+                        mpmd_sharding=MpmdSharding(
+                            self.mpmd_mesh,
+                            expected_mpmd_idx,
+                            self.in_info.in_shardings[i].spec,
+                        ),
                     )
             elif isinstance(arg, MpmdArray):
                 assert set(arg._mpmd_idxs) == expected_mpmd_idx
@@ -3597,12 +3617,15 @@ class GlobalMpmdFunction:
 
         i = 0
         actual_outputs = list[MpmdArray]()
-        for out_mpmd_def in self.in_info.out_mpmd_defs:
+        for out_idx, out_mpmd_def in enumerate(self.in_info.out_mpmd_defs):
             actual_outputs.append(
                 MpmdArray(
                     outputs[i : i + len(out_mpmd_def)],
-                    mpmd_mesh=self.mpmd_mesh,
-                    mpmd_idxs=frozenset(out_mpmd_def),
+                    mpmd_sharding=MpmdSharding(
+                        self.mpmd_mesh,
+                        out_mpmd_def,
+                        self.in_info.out_shardings[out_idx].spec,
+                    ),
                 )
             )
             i += len(out_mpmd_def)

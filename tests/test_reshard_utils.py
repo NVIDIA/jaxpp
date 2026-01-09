@@ -27,6 +27,27 @@ from jaxpp.types import MpmdSharding
 
 
 class ReshardUtilsTest(jppdu.JaxDistributedTest):
+    def _check_mpmd_reshard_result(
+        self, mpmd_array, mpmd_mesh, mpmd_target_sharding, global_data
+    ):
+        process_index = jax.process_index()
+        if process_index == 0:
+            self.assertTrue(mpmd_array.is_partially_addressable)
+            local_arr = mpmd_array.to_mpmd_local_array
+            self.assertIsNotNone(local_arr)
+
+            np.testing.assert_array_equal(np.array(local_arr), global_data)
+            self.assertEqual(
+                local_arr.sharding,
+                filter_axes(mpmd_target_sharding, {mpmd_mesh.mpmd_axis_name}),
+            )
+        else:
+            self.assertFalse(mpmd_array.is_partially_addressable)
+            self.assertEqual(
+                mpmd_array._mpmd_local_sharding.spec,
+                filter_axes(mpmd_target_sharding, {mpmd_mesh.mpmd_axis_name}).spec,
+            )
+
     @parameterized.expand(
         [
             ("mpmd_data_None", P(("mpmd", "data"), None)),
@@ -37,7 +58,6 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
     )
     def test_spmd_to_mpmd_reshard(self, name, spmd_pspec):
         process_count = jax.process_count()
-        process_index = jax.process_index()
         local_device_count = jax.local_device_count()
 
         print(f"{local_device_count=}")
@@ -71,29 +91,15 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
         submesh = mpmd_mesh.mpmd_submesh(list(target_mesh_ids)).jax_mesh
         mpmd_target_sharding = jax.sharding.NamedSharding(submesh, spmd_pspec)
         dist_sharding = MpmdSharding(
-            mesh_ids=target_mesh_ids, sharding=mpmd_target_sharding
+            mpmd_mesh=mpmd_mesh, mesh_ids=target_mesh_ids, spec=spmd_pspec
         )
 
         [mpmd_array] = spmd_to_mpmd_reshard(mpmd_mesh, [spmd_array], [dist_sharding])
         self.assertTrue(spmd_array.is_deleted())
 
-        if process_index == 0:
-            self.assertTrue(mpmd_array.is_partially_addressable)
-            local_arr = mpmd_array.to_mpmd_local_array
-            self.assertIsNotNone(local_arr)
-            print(f"{local_arr.shape=}")
-
-            np.testing.assert_array_equal(np.array(local_arr), global_data)
-            self.assertEqual(
-                local_arr.sharding,
-                filter_axes(mpmd_target_sharding, {mpmd_mesh.mpmd_axis_name}),
-            )
-        else:
-            self.assertFalse(mpmd_array.is_partially_addressable)
-            self.assertEqual(
-                mpmd_array._mpmd_local_sharding.spec,
-                filter_axes(mpmd_target_sharding, {mpmd_mesh.mpmd_axis_name}).spec,
-            )
+        self._check_mpmd_reshard_result(
+            mpmd_array, mpmd_mesh, mpmd_target_sharding, global_data
+        )
 
         [_foo] = mpmd_to_spmd_reshard(mpmd_mesh, [mpmd_array], [spmd_sharding])
 
@@ -123,19 +129,11 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
 
         # Create different target mesh_ids for each array:
         # Array 0: {0}, Array 1: empty, Array 2: {1}, Array 3: {0, 1}
-        submesh_0 = mpmd_mesh.mpmd_submesh([0]).jax_mesh
-        submesh_1 = mpmd_mesh.mpmd_submesh([1]).jax_mesh
-        submesh_01 = mpmd_mesh.mpmd_submesh([0, 1]).jax_mesh
-
-        sharding_0 = jax.sharding.NamedSharding(submesh_0, spmd_pspec)
-        sharding_1 = jax.sharding.NamedSharding(submesh_1, spmd_pspec)
-        sharding_01 = jax.sharding.NamedSharding(submesh_01, spmd_pspec)
-
         dist_shardings = [
-            MpmdSharding(mesh_ids={0}, sharding=sharding_0),
-            MpmdSharding(mesh_ids=set(), sharding=sharding_0),
-            MpmdSharding(mesh_ids={1}, sharding=sharding_1),
-            MpmdSharding(mesh_ids={0, 1}, sharding=sharding_01),
+            MpmdSharding(mpmd_mesh=mpmd_mesh, mesh_ids={0}, spec=spmd_pspec),
+            MpmdSharding(mpmd_mesh=mpmd_mesh, mesh_ids=set(), spec=spmd_pspec),
+            MpmdSharding(mpmd_mesh=mpmd_mesh, mesh_ids={1}, spec=spmd_pspec),
+            MpmdSharding(mpmd_mesh=mpmd_mesh, mesh_ids={0, 1}, spec=spmd_pspec),
         ]
 
         addressable_by_process = [{0}, {0}, {1}, {0, 1}]
@@ -170,6 +168,69 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
 
         for i, (result_arr, global_data) in enumerate(zip(result_arrays, global_datas)):
             self.assertEqual(result_arr.shape, global_data.shape)
+
+    @parameterized.expand(
+        [
+            ("data_None", P("data", None)),
+            ("None_model", P(None, "model")),
+            ("model_data", P("model", "data")),
+            ("None_model_data", P(None, ("model", "data"))),
+        ]
+    )
+    def test_spmd_to_mpmd_reshard_different_mesh_shapes(self, name, spmd_pspec):
+        process_count = jax.process_count()
+        local_device_count = jax.local_device_count()
+
+        print(f"{local_device_count=}")
+        print(f"{spmd_pspec=}")
+
+        all_devices = np.array(jax.devices())
+
+        source_jax_mesh = jax.sharding.Mesh(
+            all_devices.reshape(1, 4, 2), ("mpmd", "data", "model")
+        )
+
+        target_jax_mesh = jax.sharding.Mesh(
+            all_devices.reshape(process_count, 2, -1), ("mpmd", "data", "model")
+        )
+        mpmd_mesh = MpmdMesh(target_jax_mesh, mpmd_axis_name="mpmd")
+
+        print(f"{source_jax_mesh.shape=}")
+        print(f"{target_jax_mesh.shape=}")
+        print(f"{mpmd_mesh.mpmd_dim=}")
+
+        global_shape = (8, 16)
+        global_data = np.arange(np.prod(global_shape), dtype=np.float32).reshape(
+            global_shape
+        )
+
+        source_spmd_sharding = jax.sharding.NamedSharding(source_jax_mesh, spmd_pspec)
+        print(f"{source_spmd_sharding.spec=}")
+
+        spmd_array = jax.make_array_from_callback(
+            global_shape, source_spmd_sharding, lambda idx: global_data[idx]
+        )
+
+        print(f"{spmd_array.shape=}")
+        print(f"{spmd_array.sharding=}")
+        print(f"{len(spmd_array.addressable_shards)=}")
+
+        target_mesh_ids = {0}
+        submesh = mpmd_mesh.mpmd_submesh(list(target_mesh_ids)).jax_mesh
+        mpmd_target_sharding = jax.sharding.NamedSharding(submesh, spmd_pspec)
+        dist_sharding = MpmdSharding(
+            mpmd_mesh=mpmd_mesh, mesh_ids=target_mesh_ids, spec=spmd_pspec
+        )
+
+        [mpmd_array] = spmd_to_mpmd_reshard(mpmd_mesh, [spmd_array], [dist_sharding])
+        self.assertTrue(spmd_array.is_deleted())
+
+        self._check_mpmd_reshard_result(
+            mpmd_array, mpmd_mesh, mpmd_target_sharding, global_data
+        )
+
+        target_spmd_sharding = jax.sharding.NamedSharding(target_jax_mesh, spmd_pspec)
+        [_foo] = mpmd_to_spmd_reshard(mpmd_mesh, [mpmd_array], [target_spmd_sharding])
 
 
 if __name__ == "__main__":

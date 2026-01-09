@@ -86,20 +86,21 @@ def main():
             operation=jaxpp.Add,
         )
 
-    args_mpmd_shardings, kwargs_mpmd_shardings = accumulation_loop.trace_and_place(
+    jitted_accumulation_loop = accumulation_loop.compile(
         W1,
         W2,
         x,
         x,  # unused
-    ).in_shardings
+    )
+    args_mpmd_shardings, kwargs_mpmd_shardings = jitted_accumulation_loop.in_shardings
 
     print(args_mpmd_shardings)
     # NOTE: the partition specs of the shardings are the same as the one of the input shardings
     #  however the meshes is the one corresponding to the spmd mesh of this process
     # (
-    #   MpmdSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec(('stage', 'fsdp'), 'tensor'), memory_kind=device))
-    #   MpmdSharding(mesh_ids={1}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('tensor', ('stage', 'fsdp')), memory_kind=device)),
-    #   MpmdSharding(mesh_ids={0}, sharding=NamedSharding(mesh=Mesh('stage': 1, 'fsdp': 2, 'tensor': 2, axis_types=(Auto, Auto, Auto)), spec=PartitionSpec('fsdp', None, None), memory_kind=device))
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=PartitionSpec(('stage', 'fsdp'), 'tensor')))
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={1}, spec=PartitionSpec('tensor', ('stage', 'fsdp'))),
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=PartitionSpec('fsdp', None, None))
     # )
 
     # This reshard makes
@@ -131,7 +132,7 @@ def main():
     if W2.is_partially_addressable:
         print(f"{W2.first_mpmd_replica.sharding=}")
 
-    dW1, dW2 = accumulation_loop(W1, W2, x, _unused)
+    dW1, dW2 = jitted_accumulation_loop(W1, W2, x, _unused)
 
     dW1, dW2 = jaxpp.mpmd_to_spmd_reshard(mpmd_mesh, [dW1, dW2], shardings[:2])
     print(f"{dW1.sharding=}")

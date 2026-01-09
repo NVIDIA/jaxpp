@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -198,6 +198,25 @@ def hbytes(avals: Iterable[jax.Array]) -> str:
 def get_named_sharding(a: jax.Array):
     assert isinstance(a.sharding, jax.sharding.NamedSharding)
     return a.sharding
+
+
+class _Missing:
+    pass
+
+
+_missing = _Missing()
+
+
+def update_named_sharding(
+    s: jax.sharding.NamedSharding,
+    spec: jax.sharding.PartitionSpec | _Missing = _missing,
+    mesh: jax.sharding.Mesh | jax.sharding.AbstractMesh | _Missing = _missing,
+) -> jax.sharding.NamedSharding:
+    if isinstance(spec, _Missing):
+        spec = s.spec
+    if isinstance(mesh, _Missing):
+        mesh = s.mesh
+    return jax.sharding.NamedSharding(mesh, spec)
 
 
 def updated_named_sharding_mesh(
