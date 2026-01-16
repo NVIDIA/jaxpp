@@ -23,8 +23,8 @@ from jaxpp.array import (
     mpmd_to_spmd_reshard,
     spmd_to_mpmd_reshard,
 )
-from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_rev, mpmd_jit_with_loop
-from jaxpp.jax_primitives import add_multi_p
+from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_with_loop
+from jaxpp.jax_primitives import add_multi_p, gather_multi_p
 from jaxpp.mesh import MpmdMesh
 from jaxpp.pipelining import pipeline_enter_stage
 from jaxpp.schedules import (
@@ -45,3 +45,10 @@ def cross_mpmd_all_reduce(*args):
             f"All arguments must have the same dtype, got {[a.dtype for a in args]}"
         )
     return add_multi_p.bind(*args)
+
+
+def cross_mpmd_stack(arrays, axis: int = 0):
+    import jax
+
+    expanded = [jax.numpy.expand_dims(a, axis=axis) for a in arrays]
+    return gather_multi_p.bind(*expanded, axis=axis)

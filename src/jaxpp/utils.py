@@ -21,10 +21,11 @@ import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, overload
 
 import jax
-from jax._src.sharding_impls import UnspecifiedValue
+
+from jaxpp import jax_compat as jc
 
 logger = logging.getLogger(__name__)
 
@@ -220,11 +221,12 @@ def update_named_sharding(
 
 
 def updated_named_sharding_mesh(
-    shardings: Iterable[jax.sharding.NamedSharding | UnspecifiedValue | None], new_mesh
+    shardings: Iterable[jax.sharding.NamedSharding | jc.UnspecifiedValue | None],
+    new_mesh,
 ):
     res = []
     for s in shardings:
-        if s is None or isinstance(s, UnspecifiedValue):
+        if s is None or isinstance(s, jc.UnspecifiedValue):
             res.append(s)
             continue
 
@@ -264,3 +266,53 @@ def print_memstats(label: str, enabled: bool = False):
             f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
             flush=True,
         )
+
+
+@overload
+def filter_axes(
+    sharding_or_pspec: jax.sharding.NamedSharding, axes: set[str]
+) -> jax.sharding.NamedSharding: ...
+
+
+@overload
+def filter_axes(
+    sharding_or_pspec: jax.sharding.PartitionSpec, axes: set[str]
+) -> jax.sharding.PartitionSpec: ...
+
+
+def filter_axes(
+    sharding_or_pspec: jax.sharding.NamedSharding | jax.sharding.PartitionSpec,
+    axes: set[str],
+) -> jax.sharding.NamedSharding | jax.sharding.PartitionSpec:
+    """Filter out specified axes from a sharding or partition spec.
+
+    Args:
+        sharding_or_pspec: Either a NamedSharding or PartitionSpec to filter.
+        axes: Set of axis names to remove from the spec.
+
+    Returns:
+        Same type as input with specified axes filtered out.
+    """
+    if isinstance(sharding_or_pspec, jax.sharding.NamedSharding):
+        return jax.sharding.NamedSharding(
+            sharding_or_pspec.mesh, filter_axes(sharding_or_pspec.spec, axes)
+        )
+
+    assert isinstance(sharding_or_pspec, jax.sharding.PartitionSpec)
+
+    new_spec = []
+    for axis in sharding_or_pspec:
+        if axis is None:
+            new_spec.append(None)
+        elif isinstance(axis, str):
+            if axis not in axes:
+                new_spec.append(axis)
+            else:
+                new_spec.append(None)
+        elif isinstance(axis, (list, tuple)):
+            new_axis = [a for a in axis if a not in axes]
+            new_spec.append(type(axis)(new_axis))
+        else:
+            raise ValueError(f"Unsupported axis type: {type(axis)}")
+
+    return jax.sharding.PartitionSpec(*new_spec)

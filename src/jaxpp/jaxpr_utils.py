@@ -18,9 +18,9 @@ from collections.abc import Sequence
 from typing import Callable, Iterable, Mapping, NamedTuple
 
 import jax
-import jax._src.core as jcore
-import jax._src.util as ju
-from jax._src.ad_checkpoint import remat_p
+
+from jaxpp import jax_compat as jc
+from jaxpp.jax_compat import core as jcore
 
 
 def gensym(suffix="") -> Callable[[jcore.AbstractValue], jcore.Var]:
@@ -120,7 +120,7 @@ def partition_eqns(
         eqn = eqns[eqn_idx]
         outvar_is_used = [outvar in used_vars for outvar in eqn.outvars]
         if any(outvar_is_used):
-            if eqn.primitive == remat_p and is_partial_bwd:
+            if eqn.primitive == jc.remat_p and is_partial_bwd:
                 dependencies_eqn, deferred_eqn = partition_remat(eqn, outvar_is_used)
 
                 mut_eqns[eqn_idx] = deferred_eqn
@@ -146,7 +146,7 @@ def partition_eqns(
         #   d = dot_general a e
         #   ...
         defs_in_deferred = set[jcore.Var]()
-        blacklisted_primitives = (jax.lax.dot_general_p, remat_p)
+        blacklisted_primitives = (jax.lax.dot_general_p, jc.remat_p)
         for eqn_idx in range(len(mut_eqns)):
             eqn = mut_eqns[eqn_idx]
             if eqn is None:
@@ -187,7 +187,7 @@ def schedule_dependencies(
 def eqns_free_vars(
     eqns: Iterable[jcore.JaxprEqn], ordered=False
 ) -> tuple[set[jcore.Var], set[jcore.Var]]:
-    set_ctor = (ju.OrderedSet if ordered else set)[jcore.Var]
+    set_ctor = (jc.OrderedSet if ordered else set)[jcore.Var]
     defined = set_ctor()
     free = set_ctor()
     for eqn in eqns:

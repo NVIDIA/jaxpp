@@ -14,28 +14,28 @@
 # limitations under the License.
 
 import logging
+import warnings
 from functools import partial
 from typing import Callable, Optional, ParamSpec, Sequence, TypedDict, TypeVar, cast
 
 import jax
-import jax._src.core as jcore
-import jax._src.util as ju
-from jax._src import effects, source_info_util
-from jax._src.debugging import debug_effect, inspect_sharding_p
-
-if jax.__version_info__ < (0, 7, 0):
-    from jax._src.pjit import pjit_p as jit_p
-else:
-    from jax._src.pjit import jit_p
+import jax.extend.source_info_util as jsiu
 from jax.interpreters import ad, batching, mlir
 from jax.interpreters import partial_eval as pe
 
+from jaxpp import jax_compat as jc
 from jaxpp.array import MpmdArray, logically_stacked
 from jaxpp.dime2 import send_or_recv
+from jaxpp.jax_compat import core as jcore
 from jaxpp.mesh import MpmdMesh
-from jaxpp.types import MpmdSharding
-from jaxpp.types import TaskType
-from jaxpp.utils import get_named_sharding, print_memstats, updated_named_sharding_mesh
+from jaxpp.types import MpmdSharding, TaskType
+from jaxpp.utils import (
+    filter_axes,
+    get_named_sharding,
+    print_memstats,
+    update_named_sharding,
+    updated_named_sharding_mesh,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,15 +98,20 @@ def all_reduce_fn(arrs):
 
 def all_reduce(
     arrs: list[jax.Array],
-    comm_mesh: jax.sharding.Mesh,
-    axis_name: str,
-    donated: list[bool] | None = None,
+    mpmd_mesh: MpmdMesh,
+    mpmd_idxs: list[int],
+    out_specs: list[jax.sharding.PartitionSpec],
+    donated: Sequence[int] | None = None,
 ):
+    assert mpmd_mesh.my_mpmd_axis_index in mpmd_idxs
+    comm_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs).jax_mesh
+    axis_name = mpmd_mesh.mpmd_axis_name
+
     shardings = [get_named_sharding(a) for a in arrs]
     assert len(set(_.mesh for _ in shardings)) == 1
 
     plogically_stacked = partial(
-        logically_stacked, comm_mesh=comm_mesh, axis_name=axis_name
+        logically_stacked, comm_mesh=comm_mesh, mesh_axis_name=axis_name
     )
     gas = tuple(plogically_stacked(a) for a in arrs)
 
@@ -114,13 +119,14 @@ def all_reduce(
         all_reduce_fn,
         in_shardings=tuple(a.sharding for a in gas),
         out_shardings=tuple(
-            jax.sharding.NamedSharding(comm_mesh, sh.spec) for sh in shardings
+            jax.sharding.NamedSharding(comm_mesh, spec) for spec in out_specs
         ),
         donate_argnums=donated,
     )(gas)
 
     res = []
     for a, sh in zip(all_reduced, shardings, strict=True):
+        sh = update_named_sharding(sh, mesh=mpmd_mesh.lowering_mesh())
         res.append(
             jax.make_array_from_single_device_arrays(
                 a.shape, sh, [s.data for s in a.addressable_shards]
@@ -134,22 +140,212 @@ all_reduce_p = jcore.Primitive("all_reduce")
 
 
 @all_reduce_p.def_abstract_eval
-def all_reduce_abstract_eval(arg, mpmd_idxs: list[int]):
+def all_reduce_abstract_eval(
+    arg,
+    mpmd_idxs: list[int],
+    donated: Sequence[int],
+    out_spec: jax.sharding.PartitionSpec,
+):
     return arg
 
 
 # TODO: support multi-arity all_reduce
 @all_reduce_p.def_impl
-def all_reduce_impl(arg, mpmd_idxs: list[int]):
+def all_reduce_impl(
+    arg,
+    mpmd_idxs: list[int],
+    donated: Sequence[int],
+    out_spec: jax.sharding.PartitionSpec,
+):
     _check_no_attrs(arg)
 
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    comm_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs).jax_mesh
     return all_reduce(
         [arg],
+        mpmd_mesh=mpmd_mesh,
+        mpmd_idxs=mpmd_idxs,
+        out_specs=[out_spec],
+        donated=donated,
+    )[0]
+
+
+gather_multi_p = jcore.Primitive("gather_multi")
+
+
+@gather_multi_p.def_effectful_abstract_eval
+def gather_multi_abstract_eval(
+    *args,
+    axis: int = 0,
+    in_shardings: Optional["ShardingStore"] = None,
+    out_shardings: Optional["ShardingStore"] = None,
+    mpmd_idxs=None,
+    donate_invars=None,
+    restore_order_perm=None,
+):
+    from jax._src.lax import lax as jax_lax
+
+    return jax_lax.concatenate_p.abstract_eval(*args, dimension=axis)
+
+
+@gather_multi_p.def_impl
+def gather_multi_impl(
+    *args,
+    axis: int = 0,
+    in_shardings: Optional["ShardingStore"] = None,
+    out_shardings: Optional["ShardingStore"] = None,
+    mpmd_idxs=None,
+    donate_invars=None,
+    restore_order_perm=None,
+):
+    assert mpmd_idxs is not None
+    mpmd_mesh = MpmdMesh.mesh_stack[-1]
+    assert (
+        not mpmd_mesh.jax_mesh.is_multi_process
+    ), f"{gather_multi_p.name} supported only in single-process runtime"
+
+    prev_shardings: list[jax.NamedSharding] = [a.sharding for a in args]
+
+    first_rank_arrays = [jax.device_put(a, args[0].sharding) for a in args]
+    result = jax.numpy.concatenate(first_rank_arrays, axis=axis)
+
+    # Apply permutation to restore original input order if needed
+    if restore_order_perm is not None:
+        result = jax.numpy.take(result, jax.numpy.array(restore_order_perm), axis=axis)
+
+    return MpmdArray(
+        [jax.device_put(result, s) for s in prev_shardings],
+        mpmd_sharding=MpmdSharding(mpmd_mesh, mpmd_idxs, prev_shardings[0].spec),
+    )
+
+
+def gather_multi_lower(
+    *arrays,
+    axis: int = 0,
+    in_shardings: Optional["ShardingStore"] = None,
+    out_shardings: Optional["ShardingStore"] = None,
+    mpmd_idxs=None,
+    donate_invars=None,
+    restore_order_perm=None,
+):
+    result = jax.numpy.concatenate(arrays, axis=axis)
+    if restore_order_perm is not None:
+        result = jax.numpy.take(result, jax.numpy.array(restore_order_perm), axis=axis)
+    return result
+
+
+mlir.register_lowering(
+    gather_multi_p, mlir.lower_fun(gather_multi_lower, multiple_results=False)
+)
+
+
+def _flatten_adjacent_axes(arr, first_axis):
+    new_shape = (
+        *arr.shape[:first_axis],
+        arr.shape[first_axis] * arr.shape[first_axis + 1],
+        *arr.shape[first_axis + 2 :],
+    )
+    return arr.reshape(new_shape)
+
+
+def _squeezed(arrs, axis: int, perm: Sequence[int]):
+    return tuple(
+        jax.numpy.take(
+            _flatten_adjacent_axes(a, axis), jax.numpy.array(perm), axis=axis
+        )
+        for a in arrs
+    )
+
+
+def all_gather(
+    arrs: list[jax.Array],
+    mpmd_mesh: MpmdMesh,
+    mpmd_idxs: list[int],
+    out_specs: list[jax.sharding.PartitionSpec],
+    donated: Sequence[int],
+    restore_order_perm: Sequence[int],
+    axis: int = 0,
+):
+    """Gather arrays across MPMD groups, keeping the stacked dimension."""
+    assert mpmd_mesh.my_mpmd_axis_index in mpmd_idxs
+    comm_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs).jax_mesh
+    axis_name = mpmd_mesh.mpmd_axis_name
+
+    shardings = [get_named_sharding(a) for a in arrs]
+    assert len(set(_.mesh for _ in shardings)) == 1
+
+    plogically_stacked = partial(
+        logically_stacked,
         comm_mesh=comm_mesh,
-        axis_name=mpmd_mesh.mpmd_axis_name,
-        donated=[False],  # FIXME
+        mesh_axis_name=axis_name,
+        array_axis=axis,
+    )
+
+    gas = tuple(plogically_stacked(a) for a in arrs)
+
+    out_shardings = tuple(
+        jax.sharding.NamedSharding(comm_mesh, filter_axes(spec, {axis_name}))
+        for spec in out_specs
+    )
+
+    gathered: tuple[jax.Array, ...] = jax.jit(
+        _squeezed,
+        in_shardings=tuple(a.sharding for a in gas),
+        out_shardings=out_shardings,
+        donate_argnums=donated,
+        static_argnums=(1, 2),
+    )(gas, axis, restore_order_perm)
+
+    res = []
+    for a, sh in zip(gathered, out_shardings, strict=True):
+        sh = update_named_sharding(sh, mesh=mpmd_mesh.lowering_mesh())
+        res.append(
+            jax.make_array_from_single_device_arrays(
+                a.shape, sh, [s.data for s in a.addressable_shards]
+            )
+        )
+
+    return res
+
+
+all_gather_p = jcore.Primitive("all_gather")
+
+
+@all_gather_p.def_abstract_eval
+def all_gather_abstract_eval(
+    arg,
+    axis: int,
+    mpmd_idxs: list[int],
+    donated: Sequence[int],
+    out_spec: jax.sharding.PartitionSpec,
+    restore_order_perm: Sequence[int],
+):
+    # Output shape: n_mpmd * local_size at axis
+    # The permutation only reorders elements, doesn't change shape
+    n = len(mpmd_idxs)
+    new_shape = arg.shape[:axis] + (n * arg.shape[axis],) + arg.shape[axis + 1 :]
+    return jcore.ShapedArray(new_shape, arg.dtype)
+
+
+@all_gather_p.def_impl
+def all_gather_impl(
+    arg,
+    axis: int,
+    mpmd_idxs: list[int],
+    donated: Sequence[int],
+    out_spec: jax.sharding.PartitionSpec,
+    restore_order_perm: Sequence[int],
+):
+    _check_no_attrs(arg)
+
+    mpmd_mesh = MpmdMesh.mesh_stack[-1]
+    return all_gather(
+        [arg],
+        mpmd_mesh=mpmd_mesh,
+        mpmd_idxs=mpmd_idxs,
+        axis=axis,
+        donated=donated,
+        out_specs=[out_spec],
+        restore_order_perm=restore_order_perm,
     )[0]
 
 
@@ -208,7 +404,7 @@ send_done_p = jcore.Primitive("send_done")
 send_done_p.multiple_results = True
 
 
-class _LifetimeEndEffect(effects.Effect):
+class _LifetimeEndEffect(jcore.Effect):
     def __str__(self):
         return "LifetimeEnd"
 
@@ -475,7 +671,7 @@ def dce_jaxpr_dax_pscan(
     return used_inputs, new_eqn
 
 
-@ju.cache()
+@jc.cache()
 def callable_task(prim: jcore.Primitive, **params):
     logging.info(f"Compiling {params['name']}")
 
@@ -496,7 +692,10 @@ def callable_task(prim: jcore.Primitive, **params):
 
 
 def apply_task(prim: jcore.Primitive, *args, **params):
-    with params["ctx_mesh"]:
+    with params["ctx_mesh"], warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="Some donated buffers were not usable.*"
+        )
         return callable_task(prim, **params)(*args)
 
 
@@ -574,7 +773,7 @@ def task_impl(
             arrays.append(a)
 
     with print_memstats(f"task_impl {task_name}"):
-        res = apply_task(jit_p, *arrays, **pjit_kwargs)
+        res = apply_task(jc.jit_p, *arrays, **pjit_kwargs)
         # jax.block_until_ready(res)
     return res
 
@@ -627,8 +826,8 @@ def task(fun: Callable[P, T], *, name: str | None = None) -> Callable[P, T]:
 mlir.register_lowering(task_p, task_lower)
 
 # FIXME: use closed_call_transpose below
-ad.primitive_transposes[task_p] = partial(ad.call_transpose, task_p)
-ad.call_transpose_param_updaters[task_p] = _task_transpose_update_params
+ad.primitive_transposes[task_p] = partial(jc.call_transpose, task_p)
+jc.call_transpose_param_updaters[task_p] = _task_transpose_update_params
 pe.dce_rules[task_p] = pe.dce_jaxpr_closed_call_rule
 pe.dce_rules[dax_pscan_p] = dce_jaxpr_dax_pscan
 
@@ -723,9 +922,9 @@ class ShardingStore:
                 jcore.new_jaxpr_eqn(
                     invars=[v],
                     outvars=[],
-                    primitive=inspect_sharding_p,
+                    primitive=jc.inspect_sharding_p,
                     params={"callback": store._callback_at_index(idx)},
-                    effects=frozenset({debug_effect}),
+                    effects=frozenset({jc.debug_effect}),
                 )
             )
         return store, res
@@ -750,7 +949,7 @@ class TaskEqn(jcore.JaxprEqn):
         primitive: jcore.Primitive | None = None,
         params: TaskEqnParams | None = None,
         effects: jcore.Effects | None = None,
-        source_info: source_info_util.SourceInfo | None = None,
+        source_info: jsiu.SourceInfo | None = None,
     ):
         pass
 

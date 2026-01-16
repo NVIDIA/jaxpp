@@ -14,15 +14,15 @@
 # limitations under the License.
 
 from collections import OrderedDict, defaultdict
-from typing import Any, cast, overload
+from typing import Any, cast
 
 import jax
-import jax._src.core as jcore
 import numpy as np
 
+from jaxpp.jax_compat import core as jcore
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import MpmdSharding
-from jaxpp.utils import get_named_sharding, update_named_sharding
+from jaxpp.utils import filter_axes, get_named_sharding, update_named_sharding
 
 
 class MpmdArray:
@@ -83,8 +83,8 @@ class MpmdArray:
             mesh = get_named_sharding(arr).mesh
             if (mpmd_idx := mpmd_mesh.mpmd_idx_for_mesh.get(mesh)) is None:
                 raise ValueError(
-                    f"Argument array {idx} {arr.shape} is not on a mesh that is part "
-                    f"mpmd_mesh={mpmd_mesh.jax_mesh}"
+                    f"Argument array {idx} {arr.shape} is not on a mesh that is part"
+                    f" of mpmd_mesh={mpmd_mesh.jax_mesh}"
                 )
 
             if mpmd_idx not in mpmd_idxs:
@@ -118,8 +118,9 @@ class MpmdArray:
             assert all(_ == shape for _ in shapes), (shape, shapes)
             dtypes = [a.dtype for a in self._partially_addressable_arrays.values()]
             assert all(_ == dtype for _ in dtypes), (dtype, dtypes)
+            mpmd_axis = mpmd_sharding.mpmd_mesh.mpmd_axis_name
             specs = [
-                get_named_sharding(a).spec
+                filter_axes(get_named_sharding(a).spec, {mpmd_axis})
                 for a in self._partially_addressable_arrays.values()
             ]
             assert all(_ == mpmd_sharding.spec for _ in specs), (
@@ -281,56 +282,6 @@ def _to_global_jax_array(mpmd_array: MpmdArray) -> jax.Array | None:
     )
 
 
-@overload
-def filter_axes(
-    sharding_or_pspec: jax.sharding.NamedSharding, axes: set[str]
-) -> jax.sharding.NamedSharding: ...
-
-
-@overload
-def filter_axes(
-    sharding_or_pspec: jax.sharding.PartitionSpec, axes: set[str]
-) -> jax.sharding.PartitionSpec: ...
-
-
-def filter_axes(
-    sharding_or_pspec: jax.sharding.NamedSharding | jax.sharding.PartitionSpec,
-    axes: set[str],
-) -> jax.sharding.NamedSharding | jax.sharding.PartitionSpec:
-    """Filter out specified axes from a sharding or partition spec.
-
-    Args:
-        sharding_or_pspec: Either a NamedSharding or PartitionSpec to filter.
-        axes: Set of axis names to remove from the spec.
-
-    Returns:
-        Same type as input with specified axes filtered out.
-    """
-    if isinstance(sharding_or_pspec, jax.sharding.NamedSharding):
-        return jax.sharding.NamedSharding(
-            sharding_or_pspec.mesh, filter_axes(sharding_or_pspec.spec, axes)
-        )
-
-    assert isinstance(sharding_or_pspec, jax.sharding.PartitionSpec)
-
-    new_spec = []
-    for axis in sharding_or_pspec:
-        if axis is None:
-            new_spec.append(None)
-        elif isinstance(axis, str):
-            if axis not in axes:
-                new_spec.append(axis)
-            else:
-                new_spec.append(None)
-        elif isinstance(axis, (list, tuple)):
-            new_axis = [a for a in axis if a not in axes]
-            new_spec.append(type(axis)(new_axis))
-        else:
-            raise ValueError(f"Unsupported_axis_type: {type(axis)}")
-
-    return jax.sharding.PartitionSpec(*new_spec)
-
-
 def _id(*xs):
     return xs
 
@@ -346,8 +297,9 @@ def _spmd_to_mpmd_reshard(
 
     for spmd_value, dist_sharding in zip(spmd_values, dist_shardings):
         assert isinstance(
-            spmd_value.sharding, jax.sharding.NamedSharding
-        ), spmd_value.sharding
+            spmd_value.sharding,
+            (jax.sharding.NamedSharding, jax.sharding.SingleDeviceSharding),
+        ), f"Unsupported sharding type: {spmd_value.sharding}"
 
     # NOTE: We filter out the mpmd axis from the sharding so that
     # the output is replicated across all mpmd ranks.
@@ -362,11 +314,7 @@ def _spmd_to_mpmd_reshard(
         for dist_sharding in dist_shardings
     )
 
-    res: list[jax.Array] = jax.jit(
-        _id,
-        in_shardings=tuple(_.sharding for _ in spmd_values),
-        out_shardings=_actual_shardings,
-    )(*spmd_values)
+    res: list[jax.Array] = jax.jit(_id, out_shardings=_actual_shardings)(*spmd_values)
 
     for spmd_value, donated in zip(spmd_values, donate, strict=True):
         if donated:
@@ -398,17 +346,19 @@ def _spmd_to_mpmd_reshard(
     _res = []
     for arr, dsh in zip(res, dist_shardings, strict=True):
         mesh_ids = dsh.mesh_ids
-        filtered_sharding = MpmdSharding(
+        # MpmdSharding.__post_init__ canonicalizes the spec by filtering out
+        # the mpmd axis, so we can just use dsh.spec directly
+        mpmd_sharding = MpmdSharding(
             mpmd_mesh=dsh.mpmd_mesh,
             mesh_ids=dsh.mesh_ids,
-            spec=filter_axes(dsh.sharding.spec, {mpmd_mesh.mpmd_axis_name}),
+            spec=dsh.spec,
         )
 
         if mpmd_mesh.my_mpmd_axis_index not in mesh_ids:
             _res.append(
                 MpmdArray(
                     partially_addressable_arrays=[],
-                    mpmd_sharding=filtered_sharding,
+                    mpmd_sharding=mpmd_sharding,
                     shape=arr.shape,
                     dtype=arr.dtype,
                 )
@@ -425,7 +375,7 @@ def _spmd_to_mpmd_reshard(
             _res.append(
                 MpmdArray(
                     partially_addressable_arrays=[new_arr],
-                    mpmd_sharding=filtered_sharding,
+                    mpmd_sharding=mpmd_sharding,
                 )
             )
     return _res
@@ -481,6 +431,9 @@ def spmd_to_mpmd_reshard(
     The specs of the returned arrays will _not_ have `mpmd_mesh.mpmd_axis_name` in
     them.
 
+    Limitations: same constraints as jax.jit apply (e.g. _device_assignment must be the
+    same for all arrays)
+
     Args:
         mpmd_mesh: The MPMD mesh definition.
         spmd_arrays: A pytree of source SPMD arrays.
@@ -505,28 +458,6 @@ def spmd_to_mpmd_reshard(
     ]
 
     assert spmd_tree_def == mpmd_tree_def
-
-    # Verify all arrays are on the same mesh
-    first_path, first_leaf = spmd_arrays_with_path[0]
-    first_sharding = first_leaf.sharding
-    assert isinstance(first_sharding, jax.sharding.NamedSharding), first_sharding
-    mesh = first_sharding.mesh
-
-    # This check is the same as the one performed by jax.jit
-    assert mesh._flat_devices_tuple == mpmd_mesh.jax_mesh._flat_devices_tuple, (
-        mesh,
-        mpmd_mesh.jax_mesh,
-    )
-    for path, leaf in spmd_arrays_with_path:
-        assert isinstance(leaf.sharding, jax.sharding.NamedSharding), (
-            path,
-            leaf.sharding,
-        )
-        assert leaf.sharding.mesh._flat_devices_tuple == mesh._flat_devices_tuple, (
-            path,
-            mesh,
-            leaf.sharding.mesh,
-        )
 
     _, spmd_arrays_flat = jax._src.util.unzip2(spmd_arrays_with_path)
     spmd_arrays_flat_list = list(spmd_arrays_flat)
@@ -605,7 +536,11 @@ def _axis_name_in_spec(axis_name: str, spec) -> bool:
 
 
 def logically_stacked(
-    array: jax.Array, comm_mesh: jax.sharding.Mesh, axis_name: str, strict: bool = False
+    array: jax.Array,
+    comm_mesh: jax.sharding.Mesh,
+    mesh_axis_name: str,
+    array_axis: int = 0,
+    strict: bool = False,
 ):
     """
     Logically stacks an array along a new axis corresponding to the MPMD dimension.
@@ -619,18 +554,25 @@ def logically_stacked(
     if strict:
         spec = array.sharding.spec
         assert not _axis_name_in_spec(
-            axis_name, spec
-        ), f"axis_name {axis_name!r} already exists in spec {spec}"
+            mesh_axis_name, spec
+        ), f"axis_name {mesh_axis_name!r} already exists in spec {spec}"
     else:
-        spec = filter_axes(array.sharding.spec, {axis_name})
+        spec = filter_axes(array.sharding.spec, {mesh_axis_name})
 
-    expanded_array = jax.numpy.expand_dims(array, 0)
+    expanded_array = jax.numpy.expand_dims(array, array_axis)
     in_sharding = jax.sharding.NamedSharding(
-        comm_mesh, jax.sharding.PartitionSpec(axis_name, *spec)
+        comm_mesh,
+        jax.sharding.PartitionSpec(
+            *spec[:array_axis], mesh_axis_name, *spec[array_axis:]
+        ),
     )
 
     global_array = jax.make_array_from_single_device_arrays(
-        (comm_mesh.shape[axis_name], *array.shape),
+        (
+            *array.shape[:array_axis],
+            comm_mesh.shape[mesh_axis_name],
+            *array.shape[array_axis:],
+        ),
         in_sharding,
         [s.data for s in expanded_array.addressable_shards],
     )
@@ -664,6 +606,12 @@ def mpmd_to_spmd_reshard(
     Returns:
         A pytree of JAX arrays with the same structure as mpmd_arrays.
     """
+
+    if not mpmd_mesh.jax_mesh.is_multi_process:
+        return jax.device_put(
+            jax.tree.map(lambda _: _.first_mpmd_replica, mpmd_arrays), spmd_shardings
+        )
+
     mpmd_arrays_with_path, mpmd_tree_def = jax.tree.flatten_with_path(mpmd_arrays)
     mpmd_arrays_with_path: list[tuple[Any, MpmdArray]]
     spmd_shardings_flat, spmd_tree_def = jax.tree.flatten(spmd_shardings)

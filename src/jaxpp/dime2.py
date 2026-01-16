@@ -8,16 +8,10 @@ from typing import Any, Callable
 
 import jax
 import jax.numpy as jnp
-from jax._src.dlpack import to_dlpack
-from jax._src.lib import _jax
 
 from jaxpp import env_vars
+from jaxpp import jax_compat as jc
 from jaxpp.dlpack import capsule_name, dlpack_nccl_args
-
-if jax.__version_info__ < (0, 7, 2):
-    from jax._src.op_shardings import are_op_shardings_equal as are_hlo_shardings_equal
-else:
-    from jax._src.op_shardings import are_hlo_shardings_equal
 
 
 # Lazy imports for cupy to avoid pulling in pytest at module load time
@@ -37,7 +31,7 @@ class _LazyDeps:
 
 
 _lazy = _LazyDeps()
-DistributedRuntimeClient = _jax.DistributedRuntimeClient
+DistributedRuntimeClient = jc._jax.DistributedRuntimeClient
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +65,8 @@ class UniqueSortedDevices(UniqueDevices):
 
 
 def get_distributed_client() -> DistributedRuntimeClient:
-    from jax._src.distributed import global_state
-
-    assert isinstance(global_state.client, DistributedRuntimeClient)
-    return global_state.client
+    assert isinstance(jc.global_state.client, DistributedRuntimeClient)
+    return jc.global_state.client
 
 
 def get_nccl_id(devs: UniqueDevices):
@@ -136,7 +128,7 @@ def shardings_are_compatible(
 ):
     # NOTE: Variant of `jax.sharding.Sharding.is_equivalent_to` that skips _internal_device_list check
     return (
-        are_hlo_shardings_equal(
+        jc.are_hlo_shardings_equal(
             self._to_xla_hlo_sharding(ndim), other._to_xla_hlo_sharding(ndim)
         )
         # and self._internal_device_list == other._internal_device_list  # type: ignore
@@ -173,7 +165,7 @@ def _get_shard_ops_and_keep_alives(
         shard = shards_by_device[x_device]
         stream = stream_per_local_device[x_device]
 
-        dlpack = to_dlpack(shard.data, stream=stream.ptr)
+        dlpack = shard.data.__dlpack__(stream=stream.ptr)
         cpy_arrays.append(dlpack)
         data_ptr, count, dtype = dlpack_nccl_args(dlpack)
 

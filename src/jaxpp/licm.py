@@ -21,13 +21,12 @@ from collections.abc import Callable
 from typing import Any, Iterable, Mapping, Sequence, TypeVar
 
 import jax
-import jax._src.core as jcore
-import jax._src.util as ju
+import jax.extend.source_info_util as jsiu
 import jax.interpreters.partial_eval as pe
 import jax.numpy as jnp
-from jax._src import source_info_util
-from jax._src.ad_checkpoint import remat_p
 
+from jaxpp import jax_compat as jc
+from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import dax_pscan_p
 from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, substitute, var_is_duplicate
 from jaxpp.jaxpr_utils import gensym as mk_gensym
@@ -113,7 +112,7 @@ def partial_eval_eqns(
                 (v,), trivially_known_defns, is_defined=env.__contains__
             )
             # NOTE: we don't replicate trivial definitions although we could
-            ju.safe_map(trivially_known_defns.pop, defined_vars)
+            jc.safe_map(trivially_known_defns.pop, defined_vars)
 
             into.extend(eqns)
             for dvar in defined_vars:
@@ -269,7 +268,7 @@ def inline_jaxpr(
     existing ones in such calling context.
     """
     assert len(results) == len(set(results))
-    jaxpr = pe.convert_constvars_jaxpr(jaxpr)
+    jaxpr = jc.convert_constvars_jaxpr(jaxpr)
 
     jaxpr_invars = {v: idx for idx, v in enumerate(jaxpr.invars)}
 
@@ -338,7 +337,7 @@ def partial_eval_jaxpr(
     if memory_scarce:
         new_known_eqns = list[jcore.JaxprEqn]()
         for eqn in known_eqns:
-            if eqn.primitive is remat_p:
+            if eqn.primitive is jc.remat_p:
                 j: jcore.Jaxpr = eqn.params["jaxpr"]
                 eqns = inline_jaxpr(j, j.constvars, eqn.invars, results=eqn.outvars)
                 new_known_eqns.extend(eqns)
@@ -401,7 +400,7 @@ def make_unzipped_jaxprs(
             if v not in known_vars:
                 raise AssertionError()
     check_known_invars()
-    _, known_jaxpr_invars = ju.partition_list(tuple(known_invars), jaxpr.invars)
+    _, known_jaxpr_invars = jc.partition_list(tuple(known_invars), jaxpr.invars)
     # fmt: on
 
     # Some of the original invars might be used by both the
@@ -509,8 +508,8 @@ def make_unzipped_application(
     gensym = mk_gensym()
     residual_outvars = [gensym(aval) for aval in residual_avals]
 
-    _, known_invars = ju.partition_list(in_known, eqn.invars)
-    known_outvars, unknown_outvars = ju.partition_list(out_is_unknown, eqn.outvars)
+    _, known_invars = jc.partition_list(in_known, eqn.invars)
+    known_outvars, unknown_outvars = jc.partition_list(out_is_unknown, eqn.outvars)
 
     known_eqn = eqn.replace(
         params={**eqn.params, "jaxpr": known_jaxpr},
@@ -570,7 +569,7 @@ def partial_eval_loop(
 
     rules = {jax.lax.convert_element_type_p: pe_rule_convert}
     if cross_remat:
-        rules[remat_p] = pe_rule_remat
+        rules[jc.remat_p] = pe_rule_remat
 
     with partial_eval_custom_rules.set(to=rules):
         (known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, res_avals) = (
@@ -599,13 +598,13 @@ def partial_eval_loop(
     )
 
 
-class CommonSubexpressionEliminationTrace(pe.DynamicJaxprTrace):
+class CommonSubexpressionEliminationTrace(jc.DynamicJaxprTrace):
     def __init__(self, debug_info, cross_remat: bool):
         super().__init__(debug_info)
         self.cross_remat = cross_remat
         self.equation_recipe_to_tracers_cache = dict[
             tuple[jcore.Primitive, Sequence[int], Any],
-            Sequence[pe.DynamicJaxprTracer] | pe.DynamicJaxprTracer,
+            Sequence[jc.DynamicJaxprTracer] | jc.DynamicJaxprTracer,
         ]()
 
     def default_process_primitive(self, primitive, tracers, params, source_info=None):
@@ -657,15 +656,12 @@ def hoist_and_cse_pscan_invariant_equations(
         out_tracers = jcore.eval_jaxpr(
             jaxpr,
             (),
-            *(
-                trace.new_arg(a.aval, source_info=source_info_util.current())
-                for a in jaxpr.invars
-            ),
+            *(trace.new_arg(a.aval, source_info=jsiu.current()) for a in jaxpr.invars),
         )
 
     additional_args = ()
     if jax.__version_info__ > (0, 6, 1):
-        source_info = source_info_util.current()
+        source_info = jsiu.current()
         additional_args = (source_info,)
         if jax.__version_info__ >= (0, 8, 0):
             out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
@@ -688,7 +684,7 @@ def remove_duplicate_consts_invars(jaxpr: jcore.Jaxpr):
         duplicate_idx[loop_eqn.params["n_consts"] :]
     ), "Unexpected duplicate in loop carried state"
 
-    kept_invars, duplicate_invars = ju.partition_list(
+    kept_invars, duplicate_invars = jc.partition_list(
         [_ is not None for _ in duplicate_idx], loop_eqn.invars
     )
     new_loop_eqn = loop_eqn.replace(

@@ -19,19 +19,15 @@ from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 import jax
-import jax._src.core as jcore
 import jax.api_util as jau
 import jax.extend.linear_util as lu
 import numpy as np
-from jax._src import dtypes
-
-# TODO: maybe use custom definition of `tree_broadcast` and
-#  improve error message if it cannot be broadcasted
-from jax._src.custom_transpose import tree_broadcast
 from jax.interpreters import ad
 from jax.interpreters import partial_eval as pe
 
+from jaxpp import jax_compat as jc
 from jaxpp.core import add_jaxpr_parameters, compute_needed, pushout_add_any
+from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import dax_pscan_p
 from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import BaseSchedule
@@ -44,7 +40,7 @@ Y = TypeVar("Y")
 
 def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     # NOTE: + 0 needed so that jax doesn't make it a `Literal` argument
-    mubatch_idx = jax.lax.zeros_like_array(0) + 0
+    mubatch_idx = jax.numpy.zeros_like(0) + 0
 
     flat_args, in_tree = jax.tree_util.tree_flatten((mubatch_idx, init))
     flat_scan_body, out_tree = jau.flatten_fun_nokwargs(fun, in_tree)
@@ -55,7 +51,7 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
 
     n_consts = len(consts)
     flat_args = consts + flat_args
-    scan_body_jaxpr = pe.convert_constvars_jaxpr(scan_body_jaxpr)
+    scan_body_jaxpr = jc.convert_constvars_jaxpr(scan_body_jaxpr)
 
     n_orig_outvars = len(scan_body_jaxpr.outvars)
     scan_body_jaxpr = pushout_add_any(scan_body_jaxpr)
@@ -75,14 +71,17 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
         if replicas := replicated_loop_body_invars.get(idx, None):
             new_flat_args.append(arg)
             for _ in replicas[1:]:
-                new_flat_args.append(arg)
+                # TODO: maybe create a normalization pass like outvar_normalization in licm.py
+                # At different stages of transformations, we have a few assumptions that are checked,
+                # but we don't have normalizations for them.
+                new_flat_args.append(jax.numpy.array(arg, copy=True))
         else:
             new_flat_args.append(arg)
     flat_args = new_flat_args
 
     out = dax_pscan_p.bind(
         *flat_args,
-        jaxpr=pe.close_jaxpr(scan_body_jaxpr),
+        jaxpr=jc.close_jaxpr(scan_body_jaxpr),
         n_mubatches=length,
         n_consts=n_consts,
         in_shardings=None,
@@ -146,7 +145,7 @@ class MaxT:
     def state(self, _: int, a: jax.ShapeDtypeStruct) -> jax.Array:
         return jax.lax.full(
             a.shape,
-            (-np.inf if dtypes.supports_inf(a.dtype) else dtypes.finfo(a.dtype).min),
+            (-np.inf if jc.supports_inf(a.dtype) else jc.finfo(a.dtype).min),
             dtype=a.dtype,
         )
 
@@ -277,7 +276,11 @@ def treduce_i(
         body_args = jcore.ShapedArray((), dtype=jax.numpy.int32)
         body_jaxpr, loop_out_shapes = jax.make_jaxpr(fun, return_shape=True)(body_args)
 
-    operation = tree_broadcast(jax.tree_util.tree_structure(loop_out_shapes), operation)
+    # TODO: maybe use custom definition of `tree_broadcast` and
+    #  improve error message if it cannot be broadcasted
+    operation = jc.tree_broadcast(
+        jax.tree_util.tree_structure(loop_out_shapes), operation
+    )
 
     def state(op: Op, a):
         return copy_if_scalar(op.state(length, a))

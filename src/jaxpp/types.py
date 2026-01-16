@@ -23,6 +23,7 @@ import jax
 from jax.sharding import NamedSharding, PartitionSpec
 
 from jaxpp.mesh import MpmdMesh
+from jaxpp.utils import filter_axes
 
 PyTree = Any
 ArrayTree = jax.Array | Iterable["ArrayTree"] | Mapping[Any, "ArrayTree"]
@@ -45,6 +46,10 @@ class MpmdSharding:
 
     def __post_init__(self):
         object.__setattr__(self, "mesh_ids", frozenset(self.mesh_ids))
+        # Canonicalize the spec by filtering out the mpmd axis - the lowering
+        # mesh has size 1 for the mpmd axis, so it should not appear in the spec
+        filtered_spec = filter_axes(self.spec, {self.mpmd_mesh.mpmd_axis_name})
+        object.__setattr__(self, "spec", filtered_spec)
 
     @property
     def sharding(self) -> NamedSharding:
