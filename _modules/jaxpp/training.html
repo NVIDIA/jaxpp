@@ -1,0 +1,754 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>jaxpp.training &#8212; jaxpp</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=d0aa047a" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../../_static/documentation_options.js?v=ec16d22d"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/jaxpp/training';</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.8.1" />
+
+
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../readme.html">JaxPP</a></li>
+
+
+
+
+
+
+
+
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../modules.html">jaxpp</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../jaxpp.html">api</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">jaxpp.training</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for jaxpp.training</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &amp; AFFILIATES. All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">TypeVar</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.api_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jau</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.extend.linear_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">lu</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax.interpreters</span><span class="w"> </span><span class="kn">import</span> <span class="n">ad</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax.interpreters</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial_eval</span> <span class="k">as</span> <span class="n">pe</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp</span><span class="w"> </span><span class="kn">import</span> <span class="n">jax_compat</span> <span class="k">as</span> <span class="n">jc</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_jaxpr_parameters</span><span class="p">,</span> <span class="n">compute_needed</span><span class="p">,</span> <span class="n">pushout_add_any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.jax_compat</span><span class="w"> </span><span class="kn">import</span> <span class="n">core</span> <span class="k">as</span> <span class="n">jcore</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.jax_primitives</span><span class="w"> </span><span class="kn">import</span> <span class="n">dax_pscan_p</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.pipelining</span><span class="w"> </span><span class="kn">import</span> <span class="n">yield_scope</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.schedules</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSchedule</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">log_elapsed_time</span>
+
+<span class="n">Carry</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;Carry&quot;</span><span class="p">)</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;X&quot;</span><span class="p">)</span>
+<span class="n">Y</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;Y&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pscan_wrapped</span><span class="p">(</span><span class="n">fun</span><span class="p">:</span> <span class="n">lu</span><span class="o">.</span><span class="n">WrappedFun</span><span class="p">,</span> <span class="n">init</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">schedule</span><span class="p">):</span>
+    <span class="c1"># NOTE: + 0 needed so that jax doesn&#39;t make it a `Literal` argument</span>
+    <span class="n">mubatch_idx</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">0</span>
+
+    <span class="n">flat_args</span><span class="p">,</span> <span class="n">in_tree</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_flatten</span><span class="p">((</span><span class="n">mubatch_idx</span><span class="p">,</span> <span class="n">init</span><span class="p">))</span>
+    <span class="n">flat_scan_body</span><span class="p">,</span> <span class="n">out_tree</span> <span class="o">=</span> <span class="n">jau</span><span class="o">.</span><span class="n">flatten_fun_nokwargs</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">in_tree</span><span class="p">)</span>
+
+    <span class="n">scan_body_jaxpr</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">consts</span> <span class="o">=</span> <span class="n">pe</span><span class="o">.</span><span class="n">trace_to_jaxpr_dynamic</span><span class="p">(</span>
+        <span class="n">flat_scan_body</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">jcore</span><span class="o">.</span><span class="n">get_aval</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">flat_args</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">n_consts</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">consts</span><span class="p">)</span>
+    <span class="n">flat_args</span> <span class="o">=</span> <span class="n">consts</span> <span class="o">+</span> <span class="n">flat_args</span>
+    <span class="n">scan_body_jaxpr</span> <span class="o">=</span> <span class="n">jc</span><span class="o">.</span><span class="n">convert_constvars_jaxpr</span><span class="p">(</span><span class="n">scan_body_jaxpr</span><span class="p">)</span>
+
+    <span class="n">n_orig_outvars</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">scan_body_jaxpr</span><span class="o">.</span><span class="n">outvars</span><span class="p">)</span>
+    <span class="n">scan_body_jaxpr</span> <span class="o">=</span> <span class="n">pushout_add_any</span><span class="p">(</span><span class="n">scan_body_jaxpr</span><span class="p">)</span>
+    <span class="c1"># FIXME: ensure that it doesn&#39;t produce duplicate outvars</span>
+    <span class="n">replicated_loop_body_invars</span><span class="p">,</span> <span class="n">replicated_loop_body_outvars</span><span class="p">,</span> <span class="n">replace_eqns</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">compute_needed</span><span class="p">(</span><span class="n">scan_body_jaxpr</span><span class="p">,</span> <span class="n">n_consts</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">scan_body_jaxpr</span> <span class="o">=</span> <span class="n">add_jaxpr_parameters</span><span class="p">(</span>
+        <span class="n">scan_body_jaxpr</span><span class="p">,</span>
+        <span class="n">replicated_loop_body_invars</span><span class="p">,</span>
+        <span class="n">replicated_loop_body_outvars</span><span class="p">,</span>
+        <span class="n">replace_eqns</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">new_flat_args</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">flat_args</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">replicas</span> <span class="o">:=</span> <span class="n">replicated_loop_body_invars</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">new_flat_args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">replicas</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+                <span class="c1"># TODO: maybe create a normalization pass like outvar_normalization in licm.py</span>
+                <span class="c1"># At different stages of transformations, we have a few assumptions that are checked,</span>
+                <span class="c1"># but we don&#39;t have normalizations for them.</span>
+                <span class="n">new_flat_args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_flat_args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+    <span class="n">flat_args</span> <span class="o">=</span> <span class="n">new_flat_args</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">dax_pscan_p</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+        <span class="o">*</span><span class="n">flat_args</span><span class="p">,</span>
+        <span class="n">jaxpr</span><span class="o">=</span><span class="n">jc</span><span class="o">.</span><span class="n">close_jaxpr</span><span class="p">(</span><span class="n">scan_body_jaxpr</span><span class="p">),</span>
+        <span class="n">n_mubatches</span><span class="o">=</span><span class="n">length</span><span class="p">,</span>
+        <span class="n">n_consts</span><span class="o">=</span><span class="n">n_consts</span><span class="p">,</span>
+        <span class="n">in_shardings</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">out_shardings</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">in_mpmd_refs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">out_mpmd_defs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">schedule</span><span class="o">=</span><span class="n">schedule</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">new_out</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">added_vars</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_orig_outvars</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">replicated_loop_body_outvars</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">new_out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ad</span><span class="o">.</span><span class="n">add_jaxvals</span><span class="p">(</span><span class="n">out</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">out</span><span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]))</span>
+            <span class="n">added_vars</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">out</span><span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="n">added_vars</span><span class="p">])</span>
+    <span class="c1"># NOTE: drop first output which is the loop index</span>
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_unflatten</span><span class="p">(</span><span class="n">out_tree</span><span class="p">(),</span> <span class="n">new_out</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Op</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">ShapeDtypeStruct</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">update</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span> <span class="o">...</span>
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">AddT</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents an element-wise addition operation.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">ShapeDtypeStruct</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">l</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">r</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">_</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+
+
+<span class="n">Add</span> <span class="o">=</span> <span class="n">AddT</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="Concat">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.Concat">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Concat</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents a concatenation operation along a specified axis.&quot;&quot;&quot;</span>
+
+    <span class="n">axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">ShapeDtypeStruct</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">axis</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">n</span><span class="p">,)</span> <span class="o">+</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">axis</span> <span class="p">:]</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">update</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">dynamic_update_index_in_dim</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">update</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">axis</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MaxT</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents an element-wise maximum operation.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">ShapeDtypeStruct</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">full</span><span class="p">(</span>
+            <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+            <span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span> <span class="k">if</span> <span class="n">jc</span><span class="o">.</span><span class="n">supports_inf</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="k">else</span> <span class="n">jc</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">),</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">l</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">r</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">_</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+
+
+<span class="n">Max</span> <span class="o">=</span> <span class="n">MaxT</span><span class="p">()</span>
+
+
+<span class="n">default_op</span> <span class="o">=</span> <span class="p">(</span><span class="n">Concat</span><span class="p">(),</span> <span class="n">Add</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="treduce">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.treduce">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">treduce</span><span class="p">(</span>
+    <span class="n">fun</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">X</span><span class="p">],</span> <span class="n">Y</span><span class="p">],</span>
+    <span class="n">xs</span><span class="p">:</span> <span class="n">X</span><span class="p">,</span>
+    <span class="n">schedule</span><span class="p">:</span> <span class="n">BaseSchedule</span><span class="p">,</span>
+    <span class="n">axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">operation</span><span class="o">=</span><span class="n">default_op</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Y</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Temporally reduces a sequence of inputs with a pipelined schedule.</span>
+
+<span class="sd">    This function behaves like the functional-programming primitive</span>
+<span class="sd">    ``reduce`` applied along the leading (time / micro-batch) axis of</span>
+<span class="sd">    ``xs``.  At each timestep ``i`` it applies ``fun`` to the slice</span>
+<span class="sd">    ``xs[i]`` and combines the resulting values using ``operation``, as shown</span>
+<span class="sd">    in the following example::</span>
+
+<span class="sd">        def treduce(fun, xs, operation=(Concat(), Add())):</span>
+<span class="sd">          # xs has shape (T, ...)</span>
+<span class="sd">          state = tree_map(lambda a, op: op.state(len(xs), a),</span>
+<span class="sd">                           fun(jnp.take(xs[0], 0, axis=axis)), operation)</span>
+<span class="sd">          for i in range(1, len(xs)):</span>
+<span class="sd">            state = tree_map(lambda op, s, v: op.update(s, v, i),</span>
+<span class="sd">                             operation, state, fun(jnp.take(xs[i], i, axis=axis)))</span>
+<span class="sd">          return state</span>
+
+<span class="sd">    Unlike a vanilla reduce, the execution of the loop body may be</span>
+<span class="sd">    interleaved according to ``schedule`` so that different timesteps can</span>
+<span class="sd">    overlap on the accelerator.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">      fun: A function that is applied to a single slice. It</span>
+<span class="sd">        receives one element ``xs[i]`` (a PyTree slice with the leading axis</span>
+<span class="sd">        removed) and returns a PyTree.</span>
+<span class="sd">      xs: A PyTree whose leaf nodes are arrays. All leaf arrays must share</span>
+<span class="sd">        the same leading dimension size; this leading dimension is the axis</span>
+<span class="sd">        that is reduced over.</span>
+<span class="sd">      schedule: A :class:`~jaxpp.schedules.BaseSchedule` specifying how loop</span>
+<span class="sd">        iterations should overlap.</span>
+<span class="sd">      axis: Integer specifying which axis of every leaf array in ``xs``</span>
+<span class="sd">        represents the micro-batch dimension.</span>
+<span class="sd">        At iteration ``i`` the function gathers the slice at index ``i`` along</span>
+<span class="sd">        this axis and feeds it to ``fun``.</span>
+<span class="sd">      operation: A PyTree of :class:`~.Op` objects (default: ``default_op``,</span>
+<span class="sd">        i.e., ``(Concat(), Add)``) describing how the per-timestep values are</span>
+<span class="sd">        aggregated. Each leaf :class:`~.Op` object defines ``state``</span>
+<span class="sd">        and ``update`` methods. Convenient predefined ops include:</span>
+
+<span class="sd">        - :data:`~.Add`: Element-wise sum.</span>
+<span class="sd">        - :data:`~.Max`: Element-wise maximum.</span>
+<span class="sd">        - :obj:`~.Concat`\ ``(axis=0)``: Stacks results from each timestep.</span>
+<span class="sd">          The ``axis`` parameter specifies the dimension in the output array</span>
+<span class="sd">          that corresponds to the reduction timesteps.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      A PyTree containing the aggregated result, with the same structure as ``Y``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">flat_batch</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_leaves</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+    <span class="n">first_batch_shape</span> <span class="o">=</span> <span class="n">flat_batch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">!=</span> <span class="n">first_batch_shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">flat_batch</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s2">&quot;Leading dimensions differing among xs&quot;</span><span class="p">)</span>
+
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">fun</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrap</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">),</span> <span class="n">xs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fun</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">treduce_i</span><span class="p">(</span>
+        <span class="n">wrap</span><span class="p">,</span> <span class="n">first_batch_shape</span><span class="p">[</span><span class="n">axis</span><span class="p">],</span> <span class="n">schedule</span><span class="o">=</span><span class="n">schedule</span><span class="p">,</span> <span class="n">operation</span><span class="o">=</span><span class="n">operation</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">copy_if_scalar</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span>
+
+
+<div class="viewcode-block" id="treduce_i">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.treduce_i">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">treduce_i</span><span class="p">(</span>
+    <span class="n">fun</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">],</span> <span class="n">Y</span><span class="p">],</span> <span class="n">length</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">schedule</span><span class="p">:</span> <span class="n">BaseSchedule</span><span class="p">,</span> <span class="n">operation</span><span class="o">=</span><span class="n">default_op</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Y</span><span class="p">:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Lower-level helper for :func:`~.treduce` that takes an explicit ``length``.</span>
+
+<span class="sd">    Instead of slicing from a pre-materialised batch this variant invokes</span>
+<span class="sd">    ``fun(i)`` directly for each ``0 &lt;= i &lt; length`` and reduces the returned</span>
+<span class="sd">    values using ``operation``::</span>
+
+<span class="sd">        def treduce_i(fun, length, operation):</span>
+<span class="sd">          state = tree_map(lambda a, op: op.state(length, a),</span>
+<span class="sd">                           fun(0), operation)</span>
+<span class="sd">          for i in range(1, length):</span>
+<span class="sd">            state = tree_map(lambda op, s, v: op.update(s, v, i),</span>
+<span class="sd">                             operation, state, fun(i))</span>
+<span class="sd">          return state</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">      fun: Function that receives the micro-batch/timestep index ``i`` (an</span>
+<span class="sd">        integer) and returns a PyTree to be reduced.</span>
+<span class="sd">      length: The number of timesteps / micro-batches.</span>
+<span class="sd">      schedule: A :class:`~jaxpp.schedules.BaseSchedule` determining how</span>
+<span class="sd">        iterations may overlap.</span>
+<span class="sd">      operation: A PyTree of :class:`~.Op` objects (default: ``default_op``,</span>
+<span class="sd">        i.e., ``(Concat(), Add)``) controlling the accumulation. See</span>
+<span class="sd">        :func:`~.treduce` for details. Convenient predefined ops include:</span>
+
+<span class="sd">        - :data:`~.Add`: Element-wise sum.</span>
+<span class="sd">        - :data:`~.Max`: Element-wise maximum.</span>
+<span class="sd">        - :obj:`~.Concat`\ ``(axis=0)``: Stacks results from each timestep.</span>
+<span class="sd">          The ``axis`` parameter specifies the dimension in the output array</span>
+<span class="sd">          that corresponds to the reduction timesteps.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      A PyTree containing the result of the temporal reduction, with the same</span>
+<span class="sd">      structure as ``Y``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">log_elapsed_time</span><span class="p">(</span><span class="s2">&quot;jaxpr/first_loop_tracing&quot;</span><span class="p">),</span> <span class="n">yield_scope</span><span class="p">():</span>
+        <span class="n">body_args</span> <span class="o">=</span> <span class="n">jcore</span><span class="o">.</span><span class="n">ShapedArray</span><span class="p">((),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="n">body_jaxpr</span><span class="p">,</span> <span class="n">loop_out_shapes</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_jaxpr</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">return_shape</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span><span class="n">body_args</span><span class="p">)</span>
+
+    <span class="c1"># TODO: maybe use custom definition of `tree_broadcast` and</span>
+    <span class="c1">#  improve error message if it cannot be broadcasted</span>
+    <span class="n">operation</span> <span class="o">=</span> <span class="n">jc</span><span class="o">.</span><span class="n">tree_broadcast</span><span class="p">(</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_structure</span><span class="p">(</span><span class="n">loop_out_shapes</span><span class="p">),</span> <span class="n">operation</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">state</span><span class="p">(</span><span class="n">op</span><span class="p">:</span> <span class="n">Op</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">copy_if_scalar</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">state</span><span class="p">(</span><span class="n">length</span><span class="p">,</span> <span class="n">a</span><span class="p">))</span>
+
+    <span class="n">loop_state</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">operation</span><span class="p">,</span> <span class="n">loop_out_shapes</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fun</span><span class="p">(</span><span class="n">mubatch_idx</span><span class="p">,</span> <span class="n">loop_state</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="n">op</span><span class="p">:</span> <span class="n">Op</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">update</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">copy_if_scalar</span><span class="p">(</span><span class="n">op</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">update</span><span class="p">,</span> <span class="n">mubatch_idx</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">mubatch_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+                <span class="n">update</span><span class="p">,</span>
+                <span class="n">operation</span><span class="p">,</span>
+                <span class="n">loop_state</span><span class="p">,</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">unflatten</span><span class="p">(</span>
+                    <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">structure</span><span class="p">(</span><span class="n">loop_out_shapes</span><span class="p">),</span>
+                    <span class="n">jcore</span><span class="o">.</span><span class="n">eval_jaxpr</span><span class="p">(</span>
+                        <span class="n">body_jaxpr</span><span class="o">.</span><span class="n">jaxpr</span><span class="p">,</span>
+                        <span class="n">body_jaxpr</span><span class="o">.</span><span class="n">consts</span><span class="p">,</span>
+                        <span class="n">mubatch_idx</span><span class="p">,</span>
+                        <span class="n">propagate_source_info</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="p">),</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="n">debug_info</span> <span class="o">=</span> <span class="n">jau</span><span class="o">.</span><span class="n">debug_info</span><span class="p">(</span><span class="n">treduce_i</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">fun</span><span class="p">,</span> <span class="p">(</span><span class="n">body_args</span><span class="p">,),</span> <span class="p">{})</span>
+    <span class="n">wrapped_body_fun</span> <span class="o">=</span> <span class="n">lu</span><span class="o">.</span><span class="n">wrap_init</span><span class="p">(</span><span class="n">_fun</span><span class="p">,</span> <span class="n">debug_info</span><span class="o">=</span><span class="n">debug_info</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">log_elapsed_time</span><span class="p">(</span><span class="s2">&quot;jaxpr/second_loop_tracing&quot;</span><span class="p">),</span> <span class="n">yield_scope</span><span class="p">():</span>
+        <span class="n">loop_output</span> <span class="o">=</span> <span class="n">pscan_wrapped</span><span class="p">(</span>
+            <span class="n">wrapped_body_fun</span><span class="p">,</span> <span class="n">loop_state</span><span class="p">,</span> <span class="n">length</span><span class="o">=</span><span class="n">length</span><span class="p">,</span> <span class="n">schedule</span><span class="o">=</span><span class="n">schedule</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">loop_output</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/">Privacy Policy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/">Manage My Privacy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/preferences/start/">Do Not Sell or Share My Data</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/">Terms of Service</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/accessibility/">Accessibility</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/company-policies/">Corporate Policies</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/product-security/">Product Security</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/contact/">Contact</a>
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2022-2026, NVIDIA CORPORATION. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
