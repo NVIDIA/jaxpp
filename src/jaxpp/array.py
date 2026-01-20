@@ -349,9 +349,7 @@ def _spmd_to_mpmd_reshard(
         # MpmdSharding.__post_init__ canonicalizes the spec by filtering out
         # the mpmd axis, so we can just use dsh.spec directly
         mpmd_sharding = MpmdSharding(
-            mpmd_mesh=dsh.mpmd_mesh,
-            mesh_ids=dsh.mesh_ids,
-            spec=dsh.spec,
+            mpmd_mesh=dsh.mpmd_mesh, mesh_ids=dsh.mesh_ids, spec=dsh.spec
         )
 
         if mpmd_mesh.my_mpmd_axis_index not in mesh_ids:
@@ -374,8 +372,7 @@ def _spmd_to_mpmd_reshard(
             )
             _res.append(
                 MpmdArray(
-                    partially_addressable_arrays=[new_arr],
-                    mpmd_sharding=mpmd_sharding,
+                    partially_addressable_arrays=[new_arr], mpmd_sharding=mpmd_sharding
                 )
             )
     return _res

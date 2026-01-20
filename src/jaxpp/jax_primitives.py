@@ -13,10 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
+import time
 import warnings
+from collections import defaultdict
 from functools import partial
-from typing import Callable, Optional, ParamSpec, Sequence, TypedDict, TypeVar, cast
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Optional,
+    ParamSpec,
+    Sequence,
+    TypedDict,
+    TypeVar,
+    cast,
+)
 
 import jax
 import jax.extend.source_info_util as jsiu
@@ -604,7 +617,6 @@ def _task_transpose_update_params(params, undef_primals, nonzero_cts):
 def task_lower(
     ctx,
     *args,
-    backend=None,
     call_jaxpr: jcore.ClosedJaxpr,
     task_name,
     task_info,
@@ -615,9 +627,7 @@ def task_lower(
     latency: float | None = None,
     call_counter=None,
 ):
-    return mlir.core_call_lowering(
-        ctx, *args, name=task_name, backend=backend, call_jaxpr=call_jaxpr
-    )
+    return mlir.core_call_lowering(ctx, *args, name=task_name, call_jaxpr=call_jaxpr)
 
 
 def dce_jaxpr_dax_pscan(
@@ -701,11 +711,50 @@ def apply_task(prim: jcore.Primitive, *args, **params):
 
 check_in_shardings = False
 
+_statistics: dict[Any, list[float]] | None = None
+
+
+def current_statistics():
+    return _statistics
+
+
+@contextlib.contextmanager
+def collect_task_times_ms(
+    enabled: bool = True,
+) -> Generator[dict[str, list[float]] | None, None, None]:
+    """Context manager to collect task execution times in milliseconds.
+
+    Example usage::
+
+        with collect_task_times_ms() as stats:
+            # ... run tasks ...
+
+        for task_name, times in stats.items():
+            print(f"{task_name}: {times}")
+
+    Example usage with collection disabled::
+
+        with collect_task_times_ms(enabled=False) as stats:
+            # ... run tasks ...
+
+        assert stats is None
+    """
+    if not enabled:
+        yield
+        return
+
+    global _statistics
+    old_statistics = _statistics
+    _statistics = defaultdict(list)
+    try:
+        yield _statistics
+    finally:
+        _statistics = old_statistics
+
 
 def task_impl(
     *args,
     call_jaxpr: jcore.ClosedJaxpr,
-    backend=None,
     task_name,
     task_info,
     mpmd_idx,
@@ -772,9 +821,23 @@ def task_impl(
         else:
             arrays.append(a)
 
-    with print_memstats(f"task_impl {task_name}"):
+    statistics = current_statistics()
+    if statistics is not None:
+        arrays = jax.block_until_ready(arrays)
+
+    enable_memstats = False
+    with print_memstats(f"task_impl {task_name}", enabled=enable_memstats):
+        start = time.perf_counter_ns() / 1_000_000
+
         res = apply_task(jc.jit_p, *arrays, **pjit_kwargs)
-        # jax.block_until_ready(res)
+        if enable_memstats or statistics is not None:
+            jax.block_until_ready(res)
+
+        end = time.perf_counter_ns() / 1_000_000
+
+    if statistics is not None:
+        statistics[f"{task_name} ({id(call_jaxpr)})"].append(end - start)
+
     return res
 
 
@@ -782,7 +845,6 @@ def task_abstract_eval(
     *args,
     call_jaxpr: jcore.ClosedJaxpr,
     name=None,
-    backend=None,
     task_name,
     task_info,
     mpmd_idx,

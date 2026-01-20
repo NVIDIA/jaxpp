@@ -24,7 +24,7 @@ from jaxpp.array import (
     spmd_to_mpmd_reshard,
 )
 from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_with_loop
-from jaxpp.jax_primitives import add_multi_p, gather_multi_p
+from jaxpp.jax_primitives import add_multi_p, collect_task_times_ms, gather_multi_p
 from jaxpp.mesh import MpmdMesh
 from jaxpp.pipelining import pipeline_enter_stage
 from jaxpp.schedules import (
