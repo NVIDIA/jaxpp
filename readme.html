@@ -1,0 +1,662 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>JaxPP &#8212; jaxpp</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/nvidia-sphinx-theme.css?v=d0aa047a" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="_static/documentation_options.js?v=ec16d22d"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'readme';</script>
+    <link rel="icon" href="_static/favicon.png"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="installation.html" />
+    <link rel="prev" title="Welcome to JAXPP’s documentation!" href="index.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.8.1" />
+
+
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">JaxPP</a></li>
+
+
+
+
+
+
+
+
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">jaxpp</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="jaxpp.html">api</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">JaxPP</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="jaxpp">
+<h1>JaxPP<a class="headerlink" href="#jaxpp" title="Link to this heading">#</a></h1>
+<p>JaxPP is a JAX library enabling Multiple-Program Multiple-Data (MPMD)
+pipeline parallelism through simple user annotations <code class="docutils literal notranslate"><span class="pre">pipeline_enter_stage(layer)</span></code>
+and decorators <code class="docutils literal notranslate"><span class="pre">&#64;mpmd_jit_with_loop</span></code>.</p>
+<p>JaxPP automatically splits JAX computations into multiple SPMD modules that
+are independently jitted and dispatched to different devices.</p>
+</section>
+<section id="status">
+<h1>Status<a class="headerlink" href="#status" title="Link to this heading">#</a></h1>
+<p>JaxPP is under active development, and its APIs are currently unstable and subject to change.</p>
+<section id="changelog">
+<h2>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>[Aug 19, 2025] Users must now add a final <code class="docutils literal notranslate"><span class="pre">pipeline_enter_stage</span></code> to mark the last
+stage as well.</p></li>
+</ul>
+</section>
+</section>
+<section id="contacts">
+<h1>Contacts<a class="headerlink" href="#contacts" title="Link to this heading">#</a></h1>
+<p>As project development is ongoing, we are not accepting Pull Requests to the GitHub repository.
+Please contact the maintainers for any questions or concerns.</p>
+<p>Issues and feature requests are welcome.</p>
+</section>
+<section id="installation-instructions">
+<h1>Installation instructions<a class="headerlink" href="#installation-instructions" title="Link to this heading">#</a></h1>
+<p>JaxPP dependencies and supported JAX versions are listed in <cite>``pyproject.toml`</cite> &lt;<a class="github reference external" href="https://github.com/NVIDIA/jaxpp/-/blob/main/pyproject.toml">NVIDIA/jaxpp</a>&gt;`_.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/NVIDIA/jaxpp.git
+<span class="nb">cd</span><span class="w"> </span>jaxpp
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+</pre></div>
+</div>
+<p>You can verify the setup with <cite>``examples/basic.py`</cite> &lt;examples/basic.py&gt;`_ on a single-node.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>examples/basic.py
+</pre></div>
+</div>
+</section>
+<section id="example">
+<h1>Example<a class="headerlink" href="#example" title="Link to this heading">#</a></h1>
+<p>The example here shows the typical pattern used in a <code class="docutils literal notranslate"><span class="pre">flax</span></code> module to enable JaxPP.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">ManualStagesModel</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">BertConfig</span>
+    <span class="n">pipeline_parallelism</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">float32</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">layers</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">FlaxBertLayer</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;flax_bert_layer_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">num_hidden_layers</span><span class="p">)</span>
+        <span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hidden_states</span><span class="p">):</span>
+        <span class="n">num_layers_per_stage</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">num_hidden_layers</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipeline_parallelism</span>
+        <span class="n">stage_id</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">layer</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">layers</span><span class="p">):</span>
+            <span class="n">outs</span> <span class="o">=</span> <span class="n">layer</span><span class="p">(</span><span class="n">hidden_states</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">hidden_states</span> <span class="o">=</span> <span class="n">outs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Mark that we are entering a new stage</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">num_layers_per_stage</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">hidden_states</span> <span class="o">=</span> <span class="n">jaxpp</span><span class="o">.</span><span class="n">pipeline_enter_stage</span><span class="p">(</span><span class="n">hidden_states</span><span class="p">)</span>
+                <span class="n">stage_id</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="n">hidden_states</span>
+</pre></div>
+</div>
+<p>And the code snippet below shows a typical train step function with JaxPP.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">loss</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">batch</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">res</span> <span class="o">-</span> <span class="n">batch</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">num_mubatches</span><span class="p">,</span> <span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+
+<span class="c1"># The `mpmd_jit_with_loop` transformation, with `treduce`,</span>
+<span class="c1"># will make this function execute in mpmd_jit_with_loop fashion over 2 devices</span>
+<span class="c1"># using the `Eager1F1B` schedule</span>
+<span class="nd">@partial</span><span class="p">(</span><span class="n">jaxpp</span><span class="o">.</span><span class="n">mpmd_jit_with_loop</span><span class="p">,</span> <span class="n">mpmd_mesh</span><span class="o">=</span><span class="n">mpmd_mesh</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">pp_train_step</span><span class="p">(</span><span class="n">opt_state</span><span class="p">,</span> <span class="n">pars</span><span class="p">,</span> <span class="n">batch</span><span class="p">):</span>
+    <span class="n">mubatch_grad</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">loss_fn</span><span class="p">,</span> <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">params</span><span class="p">)</span>
+    <span class="c1"># Compute loss and gradients</span>
+    <span class="p">(</span><span class="n">losses</span><span class="p">,</span> <span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">_</span><span class="p">)),</span> <span class="n">grad</span> <span class="o">=</span> <span class="n">jaxpp</span><span class="o">.</span><span class="n">treduce</span><span class="p">(</span>
+        <span class="n">mubatch_grad</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">schedule</span><span class="o">=</span><span class="n">jaxpp</span><span class="o">.</span><span class="n">Std1F1B</span><span class="p">(</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_dim</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="c1"># Apply the optimizer as usual</span>
+    <span class="p">(</span><span class="n">updates</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">)</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grad</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">pars</span><span class="p">)</span>
+    <span class="n">new_pars</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">pars</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">new_pars</span><span class="p">,</span> <span class="n">losses</span><span class="p">,</span> <span class="n">pred</span>
+</pre></div>
+</div>
+<p>To run the train step, we need to create a <code class="docutils literal notranslate"><span class="pre">MpmdMesh</span></code> object, which
+is a wrapper of a standard Jax <code class="docutils literal notranslate"><span class="pre">Mesh</span></code> describing which dimension is the
+mpmd one.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">devices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="n">jax_mesh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">(</span><span class="n">devices</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;mpmd&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">))</span>
+<span class="n">mpmd_mesh</span> <span class="o">=</span> <span class="n">jaxpp</span><span class="o">.</span><span class="n">MpmdMesh</span><span class="p">(</span><span class="n">jax_mesh</span><span class="p">,</span> <span class="s2">&quot;mpmd&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">lowering_mesh</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="c1"># OrderedDict([(&#39;mpmd&#39;, 1), (&#39;data&#39;, 1), (&#39;model&#39;, 4)])</span>
+</pre></div>
+</div>
+<p><a class="reference external" href="examples/basic.py">examples/basic.py</a> provides a complete example.</p>
+</section>
+<section id="building-and-testing-docker-container">
+<h1>Building and Testing Docker Container<a class="headerlink" href="#building-and-testing-docker-container" title="Link to this heading">#</a></h1>
+<p>JaxPP provides Docker containers for development and testing. The build process consists of two stages: building a base image and then building the main image.</p>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Docker installed and configured</p></li>
+<li><p>NVIDIA Container Toolkit installed</p></li>
+</ul>
+</section>
+<section id="building-the-base-image">
+<h2>Building the Base Image<a class="headerlink" href="#building-the-base-image" title="Link to this heading">#</a></h2>
+<p>The base image contains all the core dependencies and is built using CUDA 12.8:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>build<span class="w"> </span>--force-rm<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-f<span class="w"> </span>scripts/docker/Dockerfile.base<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--build-arg<span class="w"> </span><span class="nv">CUDA_BASE_IMAGE</span><span class="o">=</span>nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-t<span class="w"> </span>jaxpp-base<span class="w"> </span>.
+</pre></div>
+</div>
+</section>
+<section id="building-the-main-image">
+<h2>Building the Main Image<a class="headerlink" href="#building-the-main-image" title="Link to this heading">#</a></h2>
+<p>After building the base image, you can build the main image:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>build<span class="w"> </span>--force-rm<span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-f<span class="w"> </span>scripts/docker/Dockerfile<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--build-arg<span class="w"> </span><span class="nv">BASE_IMAGE</span><span class="o">=</span>jaxpp-base<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-t<span class="w"> </span>jaxpp<span class="w"> </span>.
+</pre></div>
+</div>
+</section>
+<section id="running-tests">
+<h2>Running Tests<a class="headerlink" href="#running-tests" title="Link to this heading">#</a></h2>
+<p>The container includes several test suites that can be run:</p>
+<ol class="arabic">
+<li><p><strong>Unit Tests</strong>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--gpus<span class="o">=</span>all<span class="w"> </span>--shm-size<span class="o">=</span><span class="m">10</span>.24gb<span class="w"> </span>--ulimit<span class="w"> </span><span class="nv">memlock</span><span class="o">=</span>-1<span class="w"> </span>--ulimit<span class="w"> </span><span class="nv">stack</span><span class="o">=</span><span class="m">67108864</span><span class="w"> </span><span class="se">\</span>
+--rm<span class="w"> </span>--workdir<span class="o">=</span>/workdir/jaxpp<span class="w"> </span>jaxpp<span class="w"> </span><span class="se">\</span>
+<span class="s2">&quot;python /workdir/jaxpp/examples/basic.py --dtype=float32 &amp;&amp; \</span>
+<span class="s2">python /workdir/jaxpp/examples/basic.py --dtype=float16&quot;</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>PyTest Suite</strong>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--gpus<span class="o">=</span>all<span class="w"> </span>--shm-size<span class="o">=</span><span class="m">10</span>.24gb<span class="w"> </span>--ulimit<span class="w"> </span><span class="nv">memlock</span><span class="o">=</span>-1<span class="w"> </span>--ulimit<span class="w"> </span><span class="nv">stack</span><span class="o">=</span><span class="m">67108864</span><span class="w"> </span><span class="se">\</span>
+-e<span class="w"> </span><span class="nv">XLA_PYTHON_CLIENT_ALLOCATOR</span><span class="o">=</span>platform<span class="w"> </span><span class="se">\</span>
+--rm<span class="w"> </span>--workdir<span class="o">=</span>/workdir/jaxpp<span class="w"> </span>jaxpp<span class="w"> </span><span class="s2">&quot;nvidia-smi &amp;&amp; make install &amp;&amp; pytest&quot;</span>
+</pre></div>
+</div>
+</li>
+</ol>
+<p>Note: The tests require GPU access and sufficient GPU memory.</p>
+</section>
+</section>
+<section id="multi-node-setup">
+<h1>Multi-node setup<a class="headerlink" href="#multi-node-setup" title="Link to this heading">#</a></h1>
+<p>JaxPP needs to be installed on all nodes that are participating in the parallel
+execution and the <a class="reference external" href="#installation-instructions">installation instruction</a> needs
+to be repeated on each node.
+In addition, all packages that are needed for the execution of the workload
+needs to be installed on all nodes.</p>
+</section>
+<section id="benchmarks">
+<h1>Benchmarks<a class="headerlink" href="#benchmarks" title="Link to this heading">#</a></h1>
+<p>JaxPP has been tested with several models from MaxText.
+We have integrated JaxPP into a <a class="reference external" href="https://github.com/NVIDIA/maxtext-jaxpp/blob/jaxpp/main/jaxpp.README.md">fork of MaxText</a> with minimal changes.</p>
+</section>
+<section id="citing-jaxpp">
+<h1>Citing JaxPP<a class="headerlink" href="#citing-jaxpp" title="Link to this heading">#</a></h1>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@misc</span><span class="p">{</span><span class="n">jaxpp</span><span class="p">,</span>
+      <span class="n">title</span><span class="o">=</span><span class="p">{</span><span class="n">Scaling</span> <span class="n">Deep</span> <span class="n">Learning</span> <span class="n">Training</span> <span class="k">with</span> <span class="n">MPMD</span> <span class="n">Pipeline</span> <span class="n">Parallelism</span><span class="p">},</span>
+      <span class="n">author</span><span class="o">=</span><span class="p">{</span><span class="n">Anxhelo</span> <span class="n">Xhebraj</span> <span class="ow">and</span> <span class="n">Sean</span> <span class="n">Lee</span> <span class="ow">and</span> <span class="n">Hanfeng</span> <span class="n">Chen</span> <span class="ow">and</span> <span class="n">Vinod</span> <span class="n">Grover</span><span class="p">},</span>
+      <span class="n">year</span><span class="o">=</span><span class="p">{</span><span class="mi">2024</span><span class="p">},</span>
+      <span class="n">eprint</span><span class="o">=</span><span class="p">{</span><span class="mf">2412.14374</span><span class="p">},</span>
+      <span class="n">archivePrefix</span><span class="o">=</span><span class="p">{</span><span class="n">arXiv</span><span class="p">},</span>
+      <span class="n">primaryClass</span><span class="o">=</span><span class="p">{</span><span class="n">cs</span><span class="o">.</span><span class="n">DC</span><span class="p">},</span>
+      <span class="n">url</span><span class="o">=</span><span class="p">{</span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">arxiv</span><span class="o">.</span><span class="n">org</span><span class="o">/</span><span class="nb">abs</span><span class="o">/</span><span class="mf">2412.14374</span><span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Welcome to JAXPP’s documentation!</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="installation.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Installation</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">JaxPP</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#status">Status</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#changelog">Changelog</a></li>
+</ul>
+</li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#contacts">Contacts</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-instructions">Installation instructions</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#example">Example</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#building-and-testing-docker-container">Building and Testing Docker Container</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-the-base-image">Building the Base Image</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#building-the-main-image">Building the Main Image</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-tests">Running Tests</a></li>
+</ul>
+</li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-node-setup">Multi-node setup</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#benchmarks">Benchmarks</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#citing-jaxpp">Citing JaxPP</a></li>
+</ul>
+
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/">Privacy Policy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/">Manage My Privacy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/preferences/start/">Do Not Sell or Share My Data</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/">Terms of Service</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/accessibility/">Accessibility</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/company-policies/">Corporate Policies</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/product-security/">Product Security</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/contact/">Contact</a>
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2022-2026, NVIDIA CORPORATION. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
