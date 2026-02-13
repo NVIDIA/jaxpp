@@ -84,10 +84,21 @@ else:
     from jax._src.pjit import jit_p
 
 # _infer_params was renamed to _trace_for_jit in JAX 0.8.3
-if jax.__version_info__ < (0, 8, 3):
+if jax.__version_info__ < (0, 8, 3) or jax.__version_info__ > (0, 9, 0):
     from jax._src.pjit import _infer_params
 else:
     from jax._src.pjit import _trace_for_jit as _infer_params
+
+
+def set_mesh(mesh: jax.sharding.Mesh):
+    """Return a context manager that sets the mesh.
+
+    JAX >= 0.8 requires ``jax.set_mesh`` for the mesh to be visible to
+    ``jax.jit``; older versions only support ``with mesh:``.
+    """
+    if jax.__version_info__ >= (0, 8):
+        return jax.set_mesh(mesh)
+    return mesh
 
 
 def map_dynamic_args(args, kwargs, static_argnums, static_argnames, fn):
@@ -165,4 +176,5 @@ __all__ = [
     "convert_constvars_jaxpr",
     # utilities
     "map_dynamic_args",
+    "set_mesh",
 ]

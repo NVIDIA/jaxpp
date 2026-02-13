@@ -128,14 +128,15 @@ def all_reduce(
     )
     gas = tuple(plogically_stacked(a) for a in arrs)
 
-    all_reduced: tuple[jax.Array, ...] = jax.jit(
-        all_reduce_fn,
-        in_shardings=tuple(a.sharding for a in gas),
-        out_shardings=tuple(
-            jax.sharding.NamedSharding(comm_mesh, spec) for spec in out_specs
-        ),
-        donate_argnums=donated,
-    )(gas)
+    with jc.set_mesh(comm_mesh):
+        all_reduced: tuple[jax.Array, ...] = jax.jit(
+            all_reduce_fn,
+            in_shardings=tuple(a.sharding for a in gas),
+            out_shardings=tuple(
+                jax.sharding.NamedSharding(comm_mesh, spec) for spec in out_specs
+            ),
+            donate_argnums=donated,
+        )(gas)
 
     res = []
     for a, sh in zip(all_reduced, shardings, strict=True):
@@ -300,13 +301,14 @@ def all_gather(
         for spec in out_specs
     )
 
-    gathered: tuple[jax.Array, ...] = jax.jit(
-        _squeezed,
-        in_shardings=tuple(a.sharding for a in gas),
-        out_shardings=out_shardings,
-        donate_argnums=donated,
-        static_argnums=(1, 2),
-    )(gas, axis, restore_order_perm)
+    with jc.set_mesh(comm_mesh):
+        gathered: tuple[jax.Array, ...] = jax.jit(
+            _squeezed,
+            in_shardings=tuple(a.sharding for a in gas),
+            out_shardings=out_shardings,
+            donate_argnums=donated,
+            static_argnums=(1, 2),
+        )(gas, axis, restore_order_perm)
 
     res = []
     for a, sh in zip(gathered, out_shardings, strict=True):
@@ -461,7 +463,7 @@ def send_abstract_eval(*args, id, shardings):
 
 @send_p.def_impl
 def send_impl(*arrs, id, shardings):
-    tgt_mpmd_idxs, receiver_shardings = jax._src.util.unzip2(shardings)
+    tgt_mpmd_idxs, receiver_shardings = jc.unzip2(shardings)
     for a, _wait_send_finish in zip(
         arrs,
         send_or_recv(arrs, remote_shardings=receiver_shardings, is_send=True),
@@ -495,7 +497,7 @@ def _zeros(shapes_and_dtype):
 
 @recv_p.def_impl
 def recv_impl(*buffers, id, shardings, shape_and_dtype):
-    src_mpmd_idxs, sender_shardings = jax._src.util.unzip2(shardings)
+    src_mpmd_idxs, sender_shardings = jc.unzip2(shardings)
 
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
     my_mesh = mpmd_mesh.unstack[mpmd_mesh.my_mpmd_axis_index]
@@ -506,9 +508,10 @@ def recv_impl(*buffers, id, shardings, shape_and_dtype):
             len(shape_and_dtype),
         )
     else:
-        buffers = jax.jit(
-            _zeros, static_argnums=(0,), out_shardings=tuple(local_shardings)
-        )(tuple(shape_and_dtype))
+        with jc.set_mesh(my_mesh):
+            buffers = jax.jit(
+                _zeros, static_argnums=(0,), out_shardings=tuple(local_shardings)
+            )(tuple(shape_and_dtype))
 
     enqueues = send_or_recv(buffers, remote_shardings=sender_shardings, is_send=False)
     for buf, _ensure_receive_enqueued in zip(buffers, enqueues, strict=True):
@@ -641,7 +644,7 @@ def dce_jaxpr_dax_pscan(
         has_changed = False
         new_jaxpr, used_inputs = pe.dce_jaxpr(jaxpr, used_outputs)
         for o_idx, (i, o) in enumerate(
-            jax._src.util.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
+            jc.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
         ):
             if i and i != o:
                 used_outputs[o_idx] = i
@@ -652,15 +655,13 @@ def dce_jaxpr_dax_pscan(
     #  Here we make sure that the LoopState part of `used_inputs` agrees
     #  with `used_outputs`.
     for o_idx, (_, o) in enumerate(
-        jax._src.util.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
+        jc.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
     ):
         used_inputs[eqn.params["n_consts"] + o_idx] = o
 
     new_jaxpr = new_jaxpr.replace(
         invars=[
-            invar
-            for invar, used in jax._src.util.safe_zip(jaxpr.invars, used_inputs)
-            if used
+            invar for invar, used in jc.safe_zip(jaxpr.invars, used_inputs) if used
         ],
         debug_info=None,  # FIXME
     )
@@ -702,7 +703,7 @@ def callable_task(prim: jcore.Primitive, **params):
 
 
 def apply_task(prim: jcore.Primitive, *args, **params):
-    with params["ctx_mesh"], warnings.catch_warnings():
+    with jc.set_mesh(params["ctx_mesh"]), warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="Some donated buffers were not usable.*"
         )

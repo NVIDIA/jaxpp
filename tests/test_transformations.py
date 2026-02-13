@@ -14,18 +14,22 @@ from jaxpp import env_vars
 from jaxpp.api import Add, BaseSchedule, Concat, pipeline_enter_stage, treduce
 from jaxpp.core import (
     cluster_jaxpr,
-    common_passes,
-    fixup_multidefs,
     infer_shardings2,
     maybe_unroll_loop,
-    outvar_normalization,
     strip_inspect_sharding_eqns,
     wrap_into_tasks,
 )
 from jaxpp.jax_primitives import dax_pscan_p
 from jaxpp.mesh import MpmdMesh
 from jaxpp.pipelining import yield_scope
-from jaxpp.schedules import DualPipeV, Eager1F1B, Interleaved1F1B, Std1F1B, ZeroBubble
+from jaxpp.schedules import (
+    DualPipeV,
+    Eager1F1B,
+    Interleaved1F1B,
+    KimiK2,
+    Std1F1B,
+    ZeroBubble,
+)
 
 
 def named_computation(fun, name):
@@ -35,13 +39,7 @@ def named_computation(fun, name):
     return _fn
 
 
-def relu(x):
-    return jnp.maximum(0, x)
-
-
 def predict(params, X):
-    # TODO: add a constant here
-
     # per-example predictions
     activations = X
     layer_1_inputs = None
@@ -49,7 +47,7 @@ def predict(params, X):
 
         def stage(activations):
             outputs = jnp.dot(activations, w) + b
-            activations = relu(outputs)
+            activations = jnp.maximum(0, outputs)
             return activations
 
         activations = named_computation(stage, f"stage_{layer}")(activations)
@@ -147,6 +145,7 @@ def cleanup(fn):
         (3, 3, 5, Eager1F1B(num_stages=3)),
         (1, 1, 1, Interleaved1F1B(num_stages=1, mpmd_dim=1)),
         (4, 8, 1, Interleaved1F1B(num_stages=8, mpmd_dim=4)),
+        (4, 8, 1, KimiK2(num_stages=8, mpmd_dim=4, fuse_steady_state=True)),
         (2, 4, 12, Interleaved1F1B(num_stages=4, mpmd_dim=2)),
         (4, 4, 4, ZeroBubble(num_stages=4)),
         (4, 4, 8, ZeroBubble(num_stages=4)),

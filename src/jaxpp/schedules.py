@@ -470,7 +470,7 @@ class Interleaved1F1B(InterleavedBaseSchedule):
             raise ValueError("n_microbatches must be divisible by mpmd_dim")
         return microbatches_per_round
 
-    def get_rank_warmup_ops(self, mpmd_idx, n_microbatches):
+    def _get_rank_warmup_ops(self, mpmd_idx, n_microbatches: int) -> int:
         microbatches_per_round = self.microbatches_per_round(n_microbatches)
 
         # Warms up operations for last stage
@@ -480,7 +480,10 @@ class Interleaved1F1B(InterleavedBaseSchedule):
         warmup_ops = warmups_ops_last_stage + multiply_factor * (
             (self.mpmd_dim - 1) - mpmd_idx
         )
+        return warmup_ops
 
+    def get_rank_warmup_ops(self, mpmd_idx, n_microbatches: int) -> int:
+        warmup_ops = self._get_rank_warmup_ops(mpmd_idx, n_microbatches)
         # We cannot have more warmup operations than there are number of microbatches,
         # so cap it there
         return min(warmup_ops, n_microbatches * self.vp)
@@ -551,6 +554,11 @@ class Interleaved1F1B(InterleavedBaseSchedule):
             self._tasks_for_rank(mpmd_idx, n_mubatches)
             for mpmd_idx in range(self.mpmd_dim)
         ]
+
+
+class KimiK2(Interleaved1F1B):
+    def _get_rank_warmup_ops(self, mpmd_idx, n_microbatches):
+        return super()._get_rank_warmup_ops(mpmd_idx, n_microbatches) + 1
 
 
 @dataclass(eq=True, frozen=True)

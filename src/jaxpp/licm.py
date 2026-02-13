@@ -48,40 +48,6 @@ def hashable_params(params: dict[str, Any], exclude: set[str] | None = None):
     return tuple((k, freeze_if_set(v)) for k, v in params.items() if k not in exclude)
 
 
-def schedule(
-    vs: Iterable[jcore.Var],
-    mut_defns: dict[jcore.Var, jcore.JaxprEqn],
-    /,
-    *,
-    is_defined: Callable[[jcore.Var], bool],
-) -> tuple[list[jcore.JaxprEqn], set[jcore.Var]]:
-    now_defined = set[jcore.Var]()
-
-    res = list[jcore.JaxprEqn]()
-    stack = list(reversed(list(vs)))
-    while len(stack) > 0:
-        if stack[-1] in now_defined:
-            stack.pop()
-            continue
-
-        defn_eqn = mut_defns[stack[-1]]
-        not_visited = []
-        for invar in nonlit(defn_eqn.invars):
-            if invar in mut_defns:
-                if invar not in now_defined:
-                    not_visited.append(invar)
-            else:
-                assert is_defined(invar)
-
-        if len(not_visited) > 0:
-            stack.extend(not_visited)
-        else:
-            res.append(defn_eqn)
-            now_defined.update(defn_eqn.outvars)
-
-    return res, now_defined
-
-
 class PartialValue(enum.Enum):
     UNKNOWN = 0
     TRIVIALLY_KNOWN = 1
@@ -100,27 +66,11 @@ def partial_eval_eqns(
 ) -> tuple[list[jcore.JaxprEqn], list[jcore.JaxprEqn]]:
     known_eqns = []
     unknown_eqns = []
-
-    trivially_known_defns = dict[jcore.Var, jcore.JaxprEqn]()
-
-    def maybe_define_triv_known(
-        v: jcore.Var, as_: PartialValue, into: list[jcore.JaxprEqn]
-    ) -> None:
-        if v in trivially_known_defns:
-            assert env[v] == PartialValue.TRIVIALLY_KNOWN
-            eqns, defined_vars = schedule(
-                (v,), trivially_known_defns, is_defined=env.__contains__
-            )
-            # NOTE: we don't replicate trivial definitions although we could
-            jc.safe_map(trivially_known_defns.pop, defined_vars)
-
-            into.extend(eqns)
-            for dvar in defined_vars:
-                if (ex := env.get(dvar)) is not None:
-                    assert ex == PartialValue.TRIVIALLY_KNOWN
-                env[dvar] = as_
+    remaining_eqns = []
 
     custom_rules = partial_eval_custom_rules.value
+    eqns_to_results = dict[jcore.JaxprEqn, list[tuple[PartialValue, jcore.JaxprEqn]]]()
+    # Propagate partial value information through the equations.
     for eqn in eqns:
         in_vals = [
             env[invar] if isinstance(invar, jcore.Var) else PartialValue.TRIVIALLY_KNOWN
@@ -129,36 +79,48 @@ def partial_eval_eqns(
 
         rule = custom_rules.get(eqn.primitive, pe_rule_default)
         results = rule(eqn, in_vals)
+        eqns_to_results[eqn] = results
 
         for ty, e in results:
-            if ty == PartialValue.TRIVIALLY_KNOWN:
-                for outvar in e.outvars:
-                    trivially_known_defns[outvar] = e
-                    env[outvar] = PartialValue.TRIVIALLY_KNOWN
-            else:
-                into = {
-                    PartialValue.KNOWN: known_eqns,
-                    PartialValue.UNKNOWN: unknown_eqns,
-                }[ty]
+            env.update(zip(e.outvars, it.repeat(ty)))
 
-                # FIXME: currently if a TRIVIALLY_KNOWN var is used by both
-                #  a KNOWN equation and an UNKOWN equation then that var is
-                #  defined as KNOWN or UNKOWN depending on which use comes first.
-                #  It would be better that if the first use is UNKOWN we further
-                #  delay its definition and if another use is KNOWN then we schedule
-                #  this delayed equation as KNOWN.
+    # Resolve TRIVIALLY_KNOWN to either KNOWN or UNKNOWN.
+    for eqn in reversed(eqns):
+        results = eqns_to_results[eqn]
+
+        # Ignore ty from results intentionally as we want to propagate the partial value type
+        # of the outvars for the equation to the invars.
+        for _, e in results:
+            ty = env[e.outvars[0]]
+            assert all(
+                env[outvar] == ty for outvar in e.outvars
+            ), "Equation outvars have different partial value types"
+            if ty == PartialValue.UNKNOWN:
+                # UNKNOWN equations can have KNOWN invars and UNKNOWN invars.
+                for invar in [
+                    v
+                    for v in e.invars
+                    if isinstance(v, jcore.Var) and env[v] is not PartialValue.KNOWN
+                ]:
+                    env[invar] = PartialValue.UNKNOWN
+            elif ty == PartialValue.KNOWN:
+                # KNOWN equations can have only KNOWN invars.
                 for invar in nonlit(e.invars):
-                    if env[invar] == PartialValue.TRIVIALLY_KNOWN:
-                        maybe_define_triv_known(invar, as_=ty, into=into)
+                    env[invar] = PartialValue.KNOWN
 
-                into.append(e)
-                env.update(zip(e.outvars, it.repeat(ty)))
+    for eqn in eqns:
+        ty = env[eqn.outvars[0]]
+        into = {
+            PartialValue.KNOWN: known_eqns,
+            PartialValue.UNKNOWN: unknown_eqns,
+            PartialValue.TRIVIALLY_KNOWN: remaining_eqns,
+        }[ty]
+        into.append(eqn)
 
-    while len(trivially_known_defns) > 0:
-        maybe_define_triv_known(
-            next(iter(trivially_known_defns)), as_=PartialValue.KNOWN, into=known_eqns
-        )
+    assert len(known_eqns) + len(unknown_eqns) + len(remaining_eqns) == len(eqns)
 
+    # The eqns in remaining_eqns are not used by any other equation,
+    # so we can safely ignore them.
     return known_eqns, unknown_eqns
 
 

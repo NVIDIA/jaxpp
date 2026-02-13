@@ -379,12 +379,23 @@ def _spmd_to_mpmd_reshard(
 
 
 def _get_working_memory_threshold() -> int:
-    """Get the minimum available working memory across local devices."""
+    """Get the minimum available working memory across all devices globally."""
     min_available = float("inf")
     for d in jax.local_devices():
         stats = d.memory_stats()
         available = stats["bytes_limit"] - stats["peak_bytes_in_use"]
         min_available = min(min_available, available)
+
+    # Ensure all processes use the same threshold by computing global minimum
+    if jax.process_count() > 1:
+        # Use process_allgather to collect all local minimums, then compute global min
+        # Note: process_allgather requires an array, not a scalar
+        local_min_array = jax.numpy.array(min_available, dtype=jax.numpy.float32)
+        all_mins = jax.experimental.multihost_utils.process_allgather(
+            local_min_array, tiled=True
+        )
+        min_available = float(jax.numpy.min(all_mins))
+
     return int(min_available // 3)
 
 

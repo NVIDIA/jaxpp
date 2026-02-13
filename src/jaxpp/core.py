@@ -103,31 +103,6 @@ from jaxpp.utils import (
 logger = logging.getLogger(__name__)
 
 
-@contextmanager
-def stable_names_ctx(anno: Callable[[jcore.Var], str | None] = lambda v: None):
-    prev_repr = jax._src.core.Var.__repr__
-    prev_pp_var = jax._src.core.pp_var
-
-    ctx = jcore.JaxprPpContext()
-
-    def __repr__(v):
-        if isinstance(v, jcore.Literal):
-            return f"{v}"
-        if (s := anno(v)) is not None:
-            return f"{prev_pp_var(v, ctx)}{{{s}}}"
-
-        return f"{prev_pp_var(v, ctx)}"
-
-    jax._src.core.pp_var = lambda v, _: __repr__(v)
-    jax._src.core.Var.__repr__ = __repr__
-
-    try:
-        yield
-    finally:
-        jax._src.core.Var.__repr__ = prev_repr
-        jax._src.core.pp_var = prev_pp_var
-
-
 CJaxpr = TypeVar("CJaxpr", jcore.ClosedJaxpr, jcore.Jaxpr)
 Res = TypeVar("Res")
 P = ParamSpec("P")
@@ -893,9 +868,7 @@ def first_pipeline_yield_eqn_idx(eqns: Iterable[jcore.JaxprEqn]) -> int | None:
 def infer_cluster_idx_for_eqns(
     clusters: list[Cluster],
     eqns: list[jcore.JaxprEqn],
-    bias: dict[jcore.Var, set[MpmdIdx]] | None = None,
 ) -> list[int | None]:
-    bias = bias or {}
     cluster_info = get_cluster_information(clusters)
     var_def_cluster_idx = cluster_info.var_def_cluster_idx
     var_ref_cluster_idx = cluster_info.var_ref_cluster_idx
@@ -1048,11 +1021,9 @@ def cluster_by_yield_eqns(
 def cluster_eqns(
     eqns: list[jcore.JaxprEqn],
     get_mpmd_idx: Callable[[int], MpmdIdx],
-    bias: dict[jcore.Var, set[MpmdIdx]] | None = None,
 ) -> tuple[list[Cluster], list[jcore.JaxprEqn]]:
-    bias = bias or {}
     clusters, rest = cluster_by_yield_eqns(eqns, get_mpmd_idx)
-    eqns_cluster_idxs = infer_cluster_idx_for_eqns(clusters, rest, bias)
+    eqns_cluster_idxs = infer_cluster_idx_for_eqns(clusters, rest)
     unclustered_eqns = list[jcore.JaxprEqn]()
     for cluster_idx, eqn in zip(eqns_cluster_idxs, rest, strict=True):
         if cluster_idx is not None:
@@ -1124,19 +1095,10 @@ def cluster_jaxpr(
     target_num_stages: int,
     is_partial_bwd: bool,
     get_mpmd_idx: Callable[[int], MpmdIdx],
-    bias: list[set[MpmdIdx] | None] | None = None,
     is_loop: bool = True,
 ):
     # TODO: remove is_loop parameter and make the caller perform the checks
-    bias_map = None
-    if bias is not None:
-        bias_map = {
-            invar: p
-            for invar, p in zip(jaxpr.invars, bias, strict=True)
-            if p is not None
-        }
-
-    clusters, unclustered_eqns = cluster_eqns(jaxpr.eqns, get_mpmd_idx, bias_map)
+    clusters, unclustered_eqns = cluster_eqns(jaxpr.eqns, get_mpmd_idx)
     if (
         is_loop
         and len(unclustered_eqns) != 0
@@ -1190,10 +1152,7 @@ def cluster_jaxpr(
     return clustered_jaxpr
 
 
-def wrap_into_tasks_inside_loop(
-    loop_eqn: jcore.JaxprEqn,
-    bias: list[set[MpmdIdx] | None] | None = None,
-) -> jcore.JaxprEqn:
+def wrap_into_tasks_inside_loop(loop_eqn: jcore.JaxprEqn) -> jcore.JaxprEqn:
     jaxpr: jcore.Jaxpr = loop_eqn.params["jaxpr"].jaxpr
     # TODO: let bind literals
     assert len(jaxpr.outvars) == len(
@@ -1205,7 +1164,6 @@ def wrap_into_tasks_inside_loop(
         target_num_stages=loop_eqn.params["schedule"].num_stages,
         is_partial_bwd=loop_eqn.params["schedule"].is_partial_bwd,
         get_mpmd_idx=loop_eqn.params["schedule"].get_mpmd_idx,
-        bias=bias,
     )
 
     # Infer where loop inputs are used (refs) and where loop outputs
@@ -1399,43 +1357,6 @@ def make_replicated_jaxpr(
                 p.add(mpmd_idx)
 
     return res, invar_mpmd_refs
-
-
-def infer_outvar_placement_rev(
-    jaxpr: jcore.Jaxpr, partial_outvar_placement: Iterable[set[MpmdIdx] | None]
-) -> tuple[list[set[MpmdIdx]], list[set[MpmdIdx] | None]]:
-    partial_outvar_placement = tuple(partial_outvar_placement)
-    outvars = cast(list[jcore.Var], jaxpr.outvars)
-    placement = {
-        outvar: maybe_p
-        for outvar, maybe_p in jc.safe_zip(outvars, partial_outvar_placement)
-        if isinstance(outvar, jcore.Var) and maybe_p is not None
-    }
-
-    # Infer from outvars to invars
-    for eqn in reversed(jaxpr.eqns):
-        eqn_p = set.union(
-            set(), *(placement.get(outvar, set()) for outvar in eqn.outvars)
-        )
-        if len(eqn_p) > 0:
-            for invar in nonlit(eqn.invars):
-                placement[invar] = placement.get(invar, set()) | eqn_p
-
-    # Infer from invars to outvars
-    for eqn in jaxpr.eqns:
-        eqn_p = set.union(
-            set(), *(placement.get(invar, set()) for invar in nonlit(eqn.invars))
-        )
-        if len(eqn_p) > 0:
-            for outvar in eqn.outvars:
-                placement[outvar] = placement.get(outvar, set()) | eqn_p
-
-    return [placement.get(invar) for invar in jaxpr.invars], [
-        placement.get(outvar)
-        if isinstance(outvar, jcore.Var)
-        else partial_outvar_placement[outvar_idx]
-        for outvar_idx, outvar in enumerate(outvars)
-    ]
 
 
 def get_one_loop_eqn_idx(
@@ -1716,25 +1637,18 @@ def loop_placement_by_clusters(
         if (idx := outvar_idx.get(outvar)) is not None:
             out_mpmd_defs[idx] = clusters[def_cluster_idx].mpmd_idx
 
-    with stable_names_ctx(
-        lambda v: {clusters[idx].mpmd_idx for idx in idxs}
-        if (idxs := cluster_info.var_ref_cluster_idx.get(v)) is not None
-        else {clusters[idx].mpmd_idx}
-        if (idx := cluster_info.var_def_cluster_idx.get(v)) is not None
-        else None
+    for in_idx, (mpmd_refs, mpmd_def) in enumerate(
+        jc.safe_zip(in_mpmd_refs[n_consts:], out_mpmd_defs), start=n_consts
     ):
-        for in_idx, (mpmd_refs, mpmd_def) in enumerate(
-            jc.safe_zip(in_mpmd_refs[n_consts:], out_mpmd_defs), start=n_consts
-        ):
-            # Check that the mpmd_index that produces an outvar
-            #  is a subset of the ones that refer to it.
-            if mpmd_refs is not None:
-                if mpmd_def not in mpmd_refs:
-                    raise AssertionError(
-                        f"Loop state is not stable across iterations {in_idx=} {in_idx - n_consts=}"
-                    )
-            elif mpmd_def is not None:
-                in_mpmd_refs[in_idx] = {mpmd_def}
+        # Check that the mpmd_index that produces an outvar
+        #  is a subset of the ones that refer to it.
+        if mpmd_refs is not None:
+            if mpmd_def not in mpmd_refs:
+                raise AssertionError(
+                    f"Loop state is not stable across iterations {in_idx=} {in_idx - n_consts=}"
+                )
+        elif mpmd_def is not None:
+            in_mpmd_refs[in_idx] = {mpmd_def}
 
     return in_mpmd_refs, out_mpmd_defs
 
@@ -1766,77 +1680,6 @@ def join_argument_refs(
     return loop_args_mpmd_refs_map
 
 
-def _compute_bias(jaxpr: jcore.Jaxpr, loop_eqn_idx: int):
-    loop_eqn = jaxpr.eqns[loop_eqn_idx]
-
-    # Infer partial placement from loop body
-    loop_in_mpmd_refs, loop_out_mpmd_defs = loop_placement_by_clusters(
-        loop_eqn, loop_eqn.params["schedule"].get_mpmd_idx
-    )
-
-    # Use partial placement from loop body to infer
-    #  before loop partial placement
-    before_loop_jaxpr = jaxpr_from_eqns(
-        jaxpr.eqns[:loop_eqn_idx], eqns_free_vars(jaxpr.eqns[loop_eqn_idx:])[0]
-    )
-
-    loop_args_mpmd_refs = join_argument_refs(
-        cast(list[jcore.Var], loop_eqn.invars), loop_in_mpmd_refs
-    )
-
-    before_loop_invar_placement, before_loop_outvar_mpmd_defs = (
-        infer_outvar_placement_rev(
-            before_loop_jaxpr,
-            partial_outvar_placement=tuple(
-                loop_args_mpmd_refs.get(outvar)
-                # NOTE: before loop outvars are just vars as it comes from
-                #  `jaxpr_from_eqns`
-                for outvar in cast(list[jcore.Var], before_loop_jaxpr.outvars)
-            ),
-        )
-    )
-
-    # make_replicated_jaxpr(
-    #     before_loop_jaxpr,
-    #     tuple(
-    #         map(
-    #             join_argument_refs(loop_eqn.invars, loop_in_mpmd_refs).get,
-    #             before_loop_jaxpr.outvars,
-    #         )
-    #     ),
-    #     list(range(mpmd_dim)),
-    # )
-
-    # Merge all partial placement known so far
-    placement = {}
-    for invar, p in zip(
-        before_loop_jaxpr.invars, before_loop_invar_placement, strict=True
-    ):
-        assert invar not in placement
-        placement[invar] = p
-
-    for outvar, p in zip(
-        before_loop_jaxpr.outvars, before_loop_outvar_mpmd_defs, strict=True
-    ):
-        assert outvar not in placement
-        if p is not None:
-            placement[outvar] = p
-
-    bias: list[set[MpmdIdx] | None] = [None] * len(loop_eqn.invars)
-    for invar_idx, invar in enumerate(loop_eqn.invars):
-        p = placement.get(invar)
-        loop_parameter_p = loop_in_mpmd_refs[invar_idx]
-        if loop_parameter_p is not None and p is not None:
-            if not loop_parameter_p.issubset(p):
-                raise AssertionError()
-
-        if loop_parameter_p is None and p is not None:
-            bias[invar_idx] = p
-    loop_placement_changed = any(b is not None for b in bias)  # noqa: F841
-
-    return before_loop_jaxpr, bias
-
-
 @jc.weakref_lru_cache
 def _wrap_into_tasks(
     cjaxpr: jcore.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
@@ -1854,11 +1697,11 @@ def _wrap_into_tasks(
     loop_eqn_idx = len(before_loop_eqns)
     loop_eqn = jaxpr.eqns[loop_eqn_idx]
 
-    # TODO: use partial placement to obtain partial placement from
-    #  after loop part
-    before_loop_jaxpr, bias = _compute_bias(jaxpr, loop_eqn_idx)
+    before_loop_jaxpr = jaxpr_from_eqns(
+        jaxpr.eqns[:loop_eqn_idx], eqns_free_vars(jaxpr.eqns[loop_eqn_idx:])[0]
+    )
     # Use current placement to taskify loop body
-    tasked_loop_eqn = wrap_into_tasks_inside_loop(loop_eqn, bias)
+    tasked_loop_eqn = wrap_into_tasks_inside_loop(loop_eqn)
 
     # Use current placement to taskify before loop
     loop_args_mpmd_refs = join_argument_refs(
@@ -3640,8 +3483,9 @@ class GlobalMpmdFunction:
             jc.equality_errors_pytreedef(self.in_info.in_tree, in_tree)
         )
 
+        n_consts = len(self.consts)
         for i, arg in enumerate(flat_args):
-            expected_mpmd_idx = set(self.in_info.in_mpmd_defs[len(self.consts) + i])
+            expected_mpmd_idx = set(self.in_info.in_mpmd_defs[n_consts + i])
             if len(expected_mpmd_idx) == 0:
                 continue
 
@@ -3663,9 +3507,10 @@ class GlobalMpmdFunction:
                     except KeyError:
                         pass
 
+                    in_sharding = self.in_info.in_shardings[n_consts + i]
                     for mpmd_idx in expected_mpmd_idx:
                         (sh,) = updated_named_sharding_mesh(
-                            (self.in_info.in_shardings[i],),
+                            (in_sharding,),
                             self.mpmd_mesh.unstack[mpmd_idx],
                         )
                         values[mpmd_idx] = jax.device_put(arg, sh)
@@ -3677,7 +3522,7 @@ class GlobalMpmdFunction:
                         mpmd_sharding=MpmdSharding(
                             self.mpmd_mesh,
                             expected_mpmd_idx,
-                            self.in_info.in_shardings[i].spec,
+                            in_sharding.spec,
                         ),
                     )
 
