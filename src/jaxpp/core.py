@@ -2864,8 +2864,6 @@ def infer_shardings(
     out_shardings,
     in_layouts,
     out_layouts,
-    compiler_options,
-    name: str,
 ) -> jcore.ClosedJaxpr:
     assert all(_ is None for _ in in_layouts)
     assert all(_ is None for _ in out_layouts)
@@ -2878,11 +2876,30 @@ def infer_shardings(
             _ = infer_shardings2(closed_jaxpr, in_shardings, lowering_mesh)
         else:
             # Trigger first compilation on the driver for inferring intermediate shardings
+            if env_vars.jaxpp_fast_infer_shardings.value:
+                compiler_options = {
+                    "xla_gpu_enable_latency_hiding_scheduler": False,
+                    "xla_gpu_experimental_enable_fusion_autotuner": False,
+                    "xla_gpu_enable_dynamic_slice_fusion": False,
+                    "xla_gpu_enable_pipelined_all_gather": False,
+                    "xla_gpu_enable_pipelined_all_reduce": False,
+                    "xla_gpu_enable_pipelined_reduce_scatter": False,
+                    "xla_gpu_enable_while_loop_double_buffering": False,
+                    "xla_llvm_disable_expensive_passes": True,
+                    "xla_backend_optimization_level": 0,
+                    "xla_gpu_enable_triton_gemm": False,
+                    "xla_gpu_autotune_level": 0,
+                    "xla_gpu_enable_split_k_autotuning": False,
+                    "xla_gpu_enable_reduction_epilogue_fusion": False,
+                }
+            else:
+                compiler_options = None
             with ensuring_pgle_disabled():
                 jax.jit(
                     jcore.jaxpr_as_fun(closed_jaxpr),
                     in_shardings=in_shardings,
                     out_shardings=list(out_shardings),
+                    compiler_options=compiler_options,
                 ).lower(*closed_jaxpr.in_avals).compile()
 
     closed_jaxpr = strip_inspect_sharding_eqns(closed_jaxpr)
@@ -3449,8 +3466,6 @@ class GlobalMpmdFunction:
                 out_shardings=self.in_info.out_shardings,
                 in_layouts=self.in_info.in_layouts,
                 out_layouts=self.in_info.out_layouts,
-                compiler_options=self.compiler_options,
-                name=self.name,
             )
             return dataclasses.replace(self, closed_jaxpr=closed_jaxpr)
         return dataclasses.replace(

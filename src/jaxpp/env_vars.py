@@ -18,3 +18,5 @@ jaxpp_conservative_loop_clustering = BoolEnvVar(
 
 jaxpp_debug_skip_propagation = BoolEnvVar("JAXPP_DEBUG_SKIP_PROPAGATION", False)
 jaxpp_debug_force_mpmdify = BoolEnvVar("JAXPP_DEBUG_FORCE_MPMDIFY", False)
+
+jaxpp_fast_infer_shardings = BoolEnvVar("JAXPP_FAST_INFER_SHARDINGS", False)
