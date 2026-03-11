@@ -1,0 +1,1125 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>jaxpp.array &#8212; jaxpp</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=d0aa047a" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../../_static/documentation_options.js?v=ec16d22d"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/jaxpp/array';</script>
+    <link rel="icon" href="../../_static/favicon.png"/>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.8.1" />
+
+
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../readme.html">JaxPP</a></li>
+
+
+
+
+
+
+
+
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Usage</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../modules.html">jaxpp</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../jaxpp.html">api</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">jaxpp.array</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for jaxpp.array</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION &amp; AFFILIATES. All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);</span>
+<span class="c1"># you may not use this file except in compliance with the License.</span>
+<span class="c1"># You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1"># http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing, software</span>
+<span class="c1"># distributed under the License is distributed on an &quot;AS IS&quot; BASIS,</span>
+<span class="c1"># WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="c1"># See the License for the specific language governing permissions and</span>
+<span class="c1"># limitations under the License.</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderedDict</span><span class="p">,</span> <span class="n">defaultdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">cast</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.jax_compat</span><span class="w"> </span><span class="kn">import</span> <span class="n">core</span> <span class="k">as</span> <span class="n">jcore</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.mesh</span><span class="w"> </span><span class="kn">import</span> <span class="n">MpmdMesh</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MpmdSharding</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jaxpp.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">filter_axes</span><span class="p">,</span> <span class="n">get_named_sharding</span><span class="p">,</span> <span class="n">update_named_sharding</span>
+
+
+<div class="viewcode-block" id="MpmdArray">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.MpmdArray">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MpmdArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An array distributed across one or more MPMD groups.</span>
+
+<span class="sd">    MpmdArray represents a logical array that exists in a subset of MPMD groups</span>
+<span class="sd">    within an :class:`~jaxpp.mesh.MpmdMesh`.</span>
+<span class="sd">    Unlike standard JAX SPMD arrays where all processes have a shard of the corresponding</span>
+<span class="sd">    array, an MpmdArray is only &quot;partially addressable&quot;, it exists as sharded in only</span>
+<span class="sd">    one or more MPMD groups (potentially all of them too).</span>
+
+<span class="sd">    Properties:</span>
+<span class="sd">        - `mpmd_idxs`: The set of MPMD group indices where this array exists.</span>
+<span class="sd">          Most computed arrays exist in a single group (len=1), but constants</span>
+<span class="sd">          and loop invariants may be replicated across multiple groups when</span>
+<span class="sd">          needed as inputs by multiple pipeline stages.</span>
+<span class="sd">        - `is_partially_addressable`: A process can only access array shards if</span>
+<span class="sd">          it belongs to one of the MPMD groups in mpmd_idxs.</span>
+<span class="sd">          Use `to_mpmd_local_array` to get the SPMD JAX array</span>
+<span class="sd">          (potentially spanning multiple devices) for this MPMD group.</span>
+<span class="sd">        - `is_mpmd_replicated`: When `len(mpmd_idxs) &gt; 1`, the array data is replicated</span>
+<span class="sd">          across those groups.</span>
+
+<span class="sd">    The `sharding` property returns a NamedSharding whose mesh spans all devices</span>
+<span class="sd">    in mpmd_idxs, useful for resharding between SPMD and MPMD layouts.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        An array with mpmd_idxs={0, 2} on a 4-group MPMD mesh exists in groups</span>
+<span class="sd">        0 and 2. Processes in groups 1 and 3 cannot access this array&#39;s data</span>
+<span class="sd">        (is_partially_addressable=False for them).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        spec: The PartitionSpec describing how the array is sharded within</span>
+<span class="sd">            each MPMD group.</span>
+<span class="sd">        aval: The abstract value (shape and dtype) of the array.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">partially_addressable_arrays</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span>
+        <span class="n">mpmd_sharding</span><span class="p">:</span> <span class="n">MpmdSharding</span><span class="p">,</span>
+        <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">dtype</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">mpmd_mesh</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">mpmd_mesh</span>
+        <span class="n">mpmd_idxs</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">mesh_ids</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">spec</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_sharding</span> <span class="o">=</span> <span class="n">mpmd_sharding</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_mesh</span> <span class="o">=</span> <span class="n">mpmd_mesh</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_idxs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">mpmd_idxs</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">is_multi_process</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">partially_addressable_arrays</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span>
+
+        <span class="n">partially_addressable_arrays_map</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">arr</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">partially_addressable_arrays</span><span class="p">):</span>
+            <span class="n">mesh</span> <span class="o">=</span> <span class="n">get_named_sharding</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">mesh</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">mpmd_idx</span> <span class="o">:=</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_idx_for_mesh</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">mesh</span><span class="p">))</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Argument array </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2"> is not on a mesh that is part&quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot; of mpmd_mesh=</span><span class="si">{</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">mpmd_idx</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mpmd_idxs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Argument array&#39;s (</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">) mpmd_idx=</span><span class="si">{</span><span class="n">mpmd_idx</span><span class="si">}</span><span class="s2"> not &quot;</span>
+                    <span class="s2">&quot;in mpmd_idxs=</span><span class="si">{mpmd_idxs}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">mpmd_idx</span> <span class="ow">in</span> <span class="n">partially_addressable_arrays_map</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Argument array </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2"> already has a &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;mpmd_idx=</span><span class="si">{</span><span class="n">mpmd_idx</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="n">partially_addressable_arrays_map</span><span class="p">[</span><span class="n">mpmd_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="p">:</span> <span class="n">OrderedDict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">(</span>
+            <span class="nb">sorted</span><span class="p">(</span><span class="n">partially_addressable_arrays_map</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">spec</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">assert</span> <span class="n">shape</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">assert</span> <span class="n">dtype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">first_value</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="n">shape</span> <span class="k">if</span> <span class="n">shape</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">first_value</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">dtype</span> <span class="o">=</span> <span class="n">dtype</span> <span class="k">if</span> <span class="n">dtype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">first_value</span><span class="o">.</span><span class="n">dtype</span>
+
+            <span class="n">shapes</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">_</span> <span class="o">==</span> <span class="n">shape</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">shapes</span><span class="p">),</span> <span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">shapes</span><span class="p">)</span>
+            <span class="n">dtypes</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">_</span> <span class="o">==</span> <span class="n">dtype</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">dtypes</span><span class="p">),</span> <span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">dtypes</span><span class="p">)</span>
+            <span class="n">mpmd_axis</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_axis_name</span>
+            <span class="n">specs</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">filter_axes</span><span class="p">(</span><span class="n">get_named_sharding</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="p">{</span><span class="n">mpmd_axis</span><span class="p">})</span>
+                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+            <span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">_</span> <span class="o">==</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">spec</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">specs</span><span class="p">),</span> <span class="p">(</span>
+                <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span>
+                <span class="n">specs</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_spec</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">spec</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sharding</span> <span class="o">=</span> <span class="n">mpmd_sharding</span><span class="o">.</span><span class="n">sharding</span>
+
+        <span class="c1"># TODO: maybe add sharding/vma/memory_space to aval</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">aval</span> <span class="o">=</span> <span class="n">jcore</span><span class="o">.</span><span class="n">ShapedArray</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">weak_type</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">spec</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">PartitionSpec</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spec</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">aval</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">dtype</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">aval</span><span class="o">.</span><span class="n">dtype</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ndim</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sharding</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        NOTE: this is different from self.to_mpmd_local_array.sharding</span>
+<span class="sd">          if self.is_mpmd_replicated</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sharding</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_mpmd_local_sharding</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_mesh</span><span class="o">.</span><span class="n">lowering_mesh</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;MpmdArray(shape=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">, dtype=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;mpmd_idxs=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_idxs</span><span class="si">}</span><span class="s2">, sharding=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_sharding</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_mpmd_replicated</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns True if the array is replicated in more than one mpmd rank.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_idxs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_partially_addressable</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns True if the array is partially addressable in the mpmd rank</span>
+<span class="sd">        this process participates in.</span>
+<span class="sd">        An array is partially addressable at this rank if this rank holds a shard of</span>
+<span class="sd">        the array (the shard can potentially be replicated across multiple mpmd ranks).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">,</span> <span class="s2">&quot;Array is not partially addressable&quot;</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_deleted</span><span class="p">(),</span> <span class="s2">&quot;Array is deleted&quot;</span>
+        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_deleted</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">,</span> <span class="s2">&quot;Array is not partially addressable&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">items</span><span class="p">()))[</span>
+                <span class="mi">1</span>
+            <span class="p">]</span><span class="o">.</span><span class="n">is_deleted</span><span class="p">()</span>
+
+        <span class="n">_</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">is_deleted</span><span class="p">()</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+        <span class="n">deleted</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">_</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">deleted</span> <span class="o">==</span> <span class="nb">all</span><span class="p">(</span><span class="n">_</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">deleted</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_mpmd_local_array</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a jax.Array if the array is partially addressable in the mpmd rank</span>
+<span class="sd">        this process participates in.</span>
+<span class="sd">        Otherwise, returns None.</span>
+<span class="sd">        Returns a list of arrays when it&#39;s a single process, multiple-devices mesh.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_deleted</span><span class="p">(),</span> <span class="s2">&quot;Array is deleted&quot;</span>
+
+        <span class="n">els</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">els</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">els</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">els</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">first_mpmd_replica</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_deleted</span><span class="p">(),</span> <span class="s2">&quot;Array is deleted&quot;</span>
+
+        <span class="n">mpmd_idx</span><span class="p">,</span> <span class="n">array</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">items</span><span class="p">()))</span>
+        <span class="k">if</span> <span class="n">mpmd_idx</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_idxs</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">array</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__int__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">,</span> <span class="s2">&quot;Array is not partially addressable&quot;</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">to_mpmd_local_array</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__format__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">format_spec</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">,</span> <span class="s2">&quot;Array is not partially addressable&quot;</span>
+        <span class="k">return</span> <span class="nb">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">to_mpmd_local_array</span><span class="p">,</span> <span class="n">format_spec</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">block_until_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">arr</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pytype_aval_mapping</span><span class="p">(</span><span class="bp">self</span><span class="p">:</span> <span class="n">MpmdArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jcore</span><span class="o">.</span><span class="n">AbstractValue</span><span class="p">:</span>
+    <span class="n">aval</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">aval</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">aval</span><span class="p">,</span> <span class="s2">&quot;sharding&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">jcore</span><span class="o">.</span><span class="n">update_aval_with_sharding</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">aval</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mpmd_local_sharding</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">aval</span>
+
+
+<span class="n">jcore</span><span class="o">.</span><span class="n">pytype_aval_mappings</span><span class="p">[</span><span class="n">MpmdArray</span><span class="p">]</span> <span class="o">=</span> <span class="n">pytype_aval_mapping</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_to_global_jax_array</span><span class="p">(</span><span class="n">mpmd_array</span><span class="p">:</span> <span class="n">MpmdArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mpmd_array</span><span class="o">.</span><span class="n">is_partially_addressable</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="s2">&quot;jax_enable_empty_arrays&quot;</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="p">)</span> <span class="ow">or</span> <span class="n">jax</span><span class="o">.</span><span class="n">__version_info__</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span>
+                <span class="n">shape</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                <span class="n">sharding</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">_sharding</span><span class="p">,</span>
+                <span class="n">arrays</span><span class="o">=</span><span class="p">[],</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span>
+        <span class="n">shape</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+        <span class="n">sharding</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">_sharding</span><span class="p">,</span>
+        <span class="n">arrays</span><span class="o">=</span><span class="p">[</span>
+            <span class="n">shard</span><span class="o">.</span><span class="n">data</span>
+            <span class="k">for</span> <span class="n">arr</span> <span class="ow">in</span> <span class="n">mpmd_array</span><span class="o">.</span><span class="n">_partially_addressable_arrays</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">shard</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">addressable_shards</span>
+        <span class="p">],</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="n">mpmd_array</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_id</span><span class="p">(</span><span class="o">*</span><span class="n">xs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">xs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_spmd_to_mpmd_reshard</span><span class="p">(</span>
+    <span class="n">mpmd_mesh</span><span class="p">:</span> <span class="n">MpmdMesh</span><span class="p">,</span>
+    <span class="n">spmd_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span>
+    <span class="n">dist_shardings</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">MpmdSharding</span><span class="p">],</span>
+    <span class="n">donate</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">MpmdArray</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">donate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">donate</span> <span class="o">=</span> <span class="p">[</span><span class="kc">False</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">spmd_values</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">spmd_value</span><span class="p">,</span> <span class="n">dist_sharding</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">spmd_values</span><span class="p">,</span> <span class="n">dist_shardings</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">spmd_value</span><span class="o">.</span><span class="n">sharding</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">SingleDeviceSharding</span><span class="p">),</span>
+        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;Unsupported sharding type: </span><span class="si">{</span><span class="n">spmd_value</span><span class="o">.</span><span class="n">sharding</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="c1"># NOTE: We filter out the mpmd axis from the sharding so that</span>
+    <span class="c1"># the output is replicated across all mpmd ranks.</span>
+    <span class="n">_actual_shardings</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="n">update_named_sharding</span><span class="p">(</span>
+            <span class="n">filter_axes</span><span class="p">(</span>
+                <span class="n">cast</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">,</span> <span class="n">dist_sharding</span><span class="o">.</span><span class="n">sharding</span><span class="p">),</span>
+                <span class="p">{</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_axis_name</span><span class="p">},</span>
+            <span class="p">),</span>
+            <span class="n">mesh</span><span class="o">=</span><span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">dist_sharding</span> <span class="ow">in</span> <span class="n">dist_shardings</span>
+    <span class="p">)</span>
+
+    <span class="n">res</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">_id</span><span class="p">,</span> <span class="n">out_shardings</span><span class="o">=</span><span class="n">_actual_shardings</span><span class="p">)(</span><span class="o">*</span><span class="n">spmd_values</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">spmd_value</span><span class="p">,</span> <span class="n">donated</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">spmd_values</span><span class="p">,</span> <span class="n">donate</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">donated</span><span class="p">:</span>
+            <span class="n">spmd_value</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">is_multi_process</span><span class="p">:</span>
+        <span class="c1"># TODO: return an jaxpp.MpmdArray instead of a list of jax.Array</span>
+        <span class="n">_res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">dsh</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">dist_shardings</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">shards</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">_</span><span class="o">.</span><span class="n">addressable_shards</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">device_mpmd_idx</span><span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">device</span><span class="p">]</span> <span class="ow">in</span> <span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span><span class="p">:</span>
+                    <span class="n">shards</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">s</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+
+            <span class="n">_arr</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span>
+                <span class="n">_</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span>
+                    <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_submesh</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span><span class="p">))</span><span class="o">.</span><span class="n">jax_mesh</span><span class="p">,</span>
+                    <span class="n">_</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">shards</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_arr</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_res</span>
+
+    <span class="n">_res</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">arr</span><span class="p">,</span> <span class="n">dsh</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">dist_shardings</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">mesh_ids</span> <span class="o">=</span> <span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span>
+        <span class="c1"># MpmdSharding.__post_init__ canonicalizes the spec by filtering out</span>
+        <span class="c1"># the mpmd axis, so we can just use dsh.spec directly</span>
+        <span class="n">mpmd_sharding</span> <span class="o">=</span> <span class="n">MpmdSharding</span><span class="p">(</span>
+            <span class="n">mpmd_mesh</span><span class="o">=</span><span class="n">dsh</span><span class="o">.</span><span class="n">mpmd_mesh</span><span class="p">,</span> <span class="n">mesh_ids</span><span class="o">=</span><span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span><span class="p">,</span> <span class="n">spec</span><span class="o">=</span><span class="n">dsh</span><span class="o">.</span><span class="n">spec</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">my_mpmd_axis_index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mesh_ids</span><span class="p">:</span>
+            <span class="n">_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">MpmdArray</span><span class="p">(</span>
+                    <span class="n">partially_addressable_arrays</span><span class="o">=</span><span class="p">[],</span>
+                    <span class="n">mpmd_sharding</span><span class="o">=</span><span class="n">mpmd_sharding</span><span class="p">,</span>
+                    <span class="n">shape</span><span class="o">=</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                    <span class="n">dtype</span><span class="o">=</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">arr</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_arr</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span>
+                <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span>
+                    <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">my_mpmd_group_mesh</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">spec</span>
+                <span class="p">),</span>
+                <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">data</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">arr</span><span class="o">.</span><span class="n">addressable_shards</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="n">_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">MpmdArray</span><span class="p">(</span>
+                    <span class="n">partially_addressable_arrays</span><span class="o">=</span><span class="p">[</span><span class="n">new_arr</span><span class="p">],</span> <span class="n">mpmd_sharding</span><span class="o">=</span><span class="n">mpmd_sharding</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+    <span class="k">return</span> <span class="n">_res</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_working_memory_threshold</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the minimum available working memory across all devices globally.&quot;&quot;&quot;</span>
+    <span class="n">min_available</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">():</span>
+        <span class="n">stats</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">memory_stats</span><span class="p">()</span>
+        <span class="n">available</span> <span class="o">=</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;bytes_limit&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">stats</span><span class="p">[</span><span class="s2">&quot;peak_bytes_in_use&quot;</span><span class="p">]</span>
+        <span class="n">min_available</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">min_available</span><span class="p">,</span> <span class="n">available</span><span class="p">)</span>
+
+    <span class="c1"># Ensure all processes use the same threshold by computing global minimum</span>
+    <span class="k">if</span> <span class="n">jax</span><span class="o">.</span><span class="n">process_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Use process_allgather to collect all local minimums, then compute global min</span>
+        <span class="c1"># Note: process_allgather requires an array, not a scalar</span>
+        <span class="n">local_min_array</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">min_available</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">all_mins</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">multihost_utils</span><span class="o">.</span><span class="n">process_allgather</span><span class="p">(</span>
+            <span class="n">local_min_array</span><span class="p">,</span> <span class="n">tiled</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="n">min_available</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">all_mins</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">min_available</span> <span class="o">//</span> <span class="mi">3</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_mpmd_interleaved_order</span><span class="p">(</span>
+    <span class="n">arrays</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span>
+    <span class="n">shardings</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">MpmdSharding</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build array order interleaved by mpmd_idx, largest first within each idx.&quot;&quot;&quot;</span>
+    <span class="n">by_mpmd_idx</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">dsh</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">shardings</span><span class="p">):</span>
+        <span class="n">by_mpmd_idx</span><span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span><span class="p">)]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+
+    <span class="c1"># Sort each mpmd_idx group by size (largest last for popping)</span>
+    <span class="n">by_mpmd_idx</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">mpmd_idx</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">vs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">arrays</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">addressable_shards</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">nbytes</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">mpmd_idx</span><span class="p">,</span> <span class="n">vs</span> <span class="ow">in</span> <span class="n">by_mpmd_idx</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Build order by round-robin popping largest from each mpmd_idx</span>
+    <span class="n">order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="nb">any</span><span class="p">(</span><span class="n">by_mpmd_idx</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
+        <span class="k">for</span> <span class="n">mpmd_idx</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">by_mpmd_idx</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+            <span class="k">if</span> <span class="n">by_mpmd_idx</span><span class="p">[</span><span class="n">mpmd_idx</span><span class="p">]:</span>
+                <span class="n">order</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">by_mpmd_idx</span><span class="p">[</span><span class="n">mpmd_idx</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>
+
+    <span class="k">return</span> <span class="n">order</span>
+
+
+<div class="viewcode-block" id="spmd_to_mpmd_reshard">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.spmd_to_mpmd_reshard">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">spmd_to_mpmd_reshard</span><span class="p">(</span>
+    <span class="n">mpmd_mesh</span><span class="p">:</span> <span class="n">MpmdMesh</span><span class="p">,</span> <span class="n">spmd_arrays</span><span class="p">,</span> <span class="n">mpmd_shardings</span><span class="p">,</span> <span class="n">threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reshards a pytree of SPMD arrays to MPMD arrays.</span>
+
+<span class="sd">    This function redistributes data from a Single Program Multiple Data (SPMD)</span>
+<span class="sd">    layout to a Multiple Program Multiple Data (MPMD) layout. It handles</span>
+<span class="sd">    memory constraints by grouping arrays and processing them in chunks.</span>
+<span class="sd">    It&#39;s the caller&#39;s responsibility to not use the input spmd_arrays after calling</span>
+<span class="sd">    this function as they will be consumed by this function.</span>
+
+<span class="sd">    The specs of the returned arrays will _not_ have `mpmd_mesh.mpmd_axis_name` in</span>
+<span class="sd">    them.</span>
+
+<span class="sd">    Limitations: same constraints as jax.jit apply (e.g. _device_assignment must be the</span>
+<span class="sd">    same for all arrays)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mpmd_mesh: The MPMD mesh definition.</span>
+<span class="sd">        spmd_arrays: A pytree of source SPMD arrays.</span>
+<span class="sd">        mpmd_shardings: A pytree of target MPMD shardings, matching the structure of</span>
+<span class="sd">                        spmd_arrays.</span>
+<span class="sd">        threshold: Memory threshold in bytes for grouping operations.</span>
+<span class="sd">                   If None, calculated based on available memory.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A pytree of MpmdArray objects with the same structure as spmd_arrays.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">spmd_arrays_with_path</span><span class="p">,</span> <span class="n">spmd_tree_def</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">flatten_with_path</span><span class="p">(</span><span class="n">spmd_arrays</span><span class="p">)</span>
+    <span class="n">mpmd_shardings_flat</span><span class="p">,</span> <span class="n">mpmd_tree_def</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">flatten</span><span class="p">(</span><span class="n">mpmd_shardings</span><span class="p">)</span>
+
+    <span class="c1"># For unused arrays (len(dsh.mesh_ids) == 0), we default their placement</span>
+    <span class="c1"># to mpmd rank 0</span>
+    <span class="n">mpmd_shardings_flat</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">MpmdSharding</span><span class="p">(</span><span class="n">mpmd_mesh</span><span class="o">=</span><span class="n">dsh</span><span class="o">.</span><span class="n">mpmd_mesh</span><span class="p">,</span> <span class="n">mesh_ids</span><span class="o">=</span><span class="p">{</span><span class="mi">0</span><span class="p">},</span> <span class="n">spec</span><span class="o">=</span><span class="n">dsh</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dsh</span><span class="o">.</span><span class="n">mesh_ids</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">else</span> <span class="n">dsh</span>
+        <span class="k">for</span> <span class="n">dsh</span> <span class="ow">in</span> <span class="n">mpmd_shardings_flat</span>
+    <span class="p">]</span>
+
+    <span class="k">assert</span> <span class="n">spmd_tree_def</span> <span class="o">==</span> <span class="n">mpmd_tree_def</span>
+
+    <span class="n">_</span><span class="p">,</span> <span class="n">spmd_arrays_flat</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">_src</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">unzip2</span><span class="p">(</span><span class="n">spmd_arrays_with_path</span><span class="p">)</span>
+    <span class="n">spmd_arrays_flat_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">spmd_arrays_flat</span><span class="p">)</span>
+
+    <span class="c1"># Build interleaved order by mpmd_idx (largest first within each idx)</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">_build_mpmd_interleaved_order</span><span class="p">(</span><span class="n">spmd_arrays_flat_list</span><span class="p">,</span> <span class="n">mpmd_shardings_flat</span><span class="p">)</span>
+    <span class="n">ordered_arrays</span> <span class="o">=</span> <span class="p">[</span><span class="n">spmd_arrays_flat_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">order</span><span class="p">]</span>
+
+    <span class="c1"># Group by memory threshold</span>
+    <span class="n">threshold</span> <span class="o">=</span> <span class="n">threshold</span> <span class="k">if</span> <span class="n">threshold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">_get_working_memory_threshold</span><span class="p">()</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="n">_group_by_size_threshold</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">a</span><span class="o">.</span><span class="n">addressable_shards</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">nbytes</span> <span class="o">*</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_dim</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">ordered_arrays</span>
+        <span class="p">],</span>
+        <span class="n">threshold</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">resharded_arrays_by_index</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">MpmdArray</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">group_idx</span><span class="p">,</span> <span class="n">group_indices</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">groups</span><span class="p">):</span>
+        <span class="c1"># Map group indices back to original indices</span>
+        <span class="n">orig_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">order</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">group_indices</span><span class="p">]</span>
+        <span class="n">group_arrays</span> <span class="o">=</span> <span class="p">[</span><span class="n">spmd_arrays_flat_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">orig_indices</span><span class="p">]</span>
+        <span class="n">group_mpmd_shardings</span> <span class="o">=</span> <span class="p">[</span><span class="n">mpmd_shardings_flat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">orig_indices</span><span class="p">]</span>
+
+        <span class="n">group_results</span> <span class="o">=</span> <span class="n">_spmd_to_mpmd_reshard</span><span class="p">(</span>
+            <span class="n">mpmd_mesh</span><span class="p">,</span>
+            <span class="n">group_arrays</span><span class="p">,</span>
+            <span class="n">group_mpmd_shardings</span><span class="p">,</span>
+            <span class="n">donate</span><span class="o">=</span><span class="p">[</span><span class="kc">True</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">group_arrays</span><span class="p">),</span>  <span class="c1"># FIXME: Maybe make it a kwarg</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">orig_idx</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">orig_indices</span><span class="p">,</span> <span class="n">group_results</span><span class="p">):</span>
+            <span class="n">resharded_arrays_by_index</span><span class="p">[</span><span class="n">orig_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span>
+
+    <span class="n">resharded_flat</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">resharded_arrays_by_index</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">spmd_arrays_flat_list</span><span class="p">))</span>
+    <span class="p">]</span>
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">unflatten</span><span class="p">(</span><span class="n">spmd_tree_def</span><span class="p">,</span> <span class="n">resharded_flat</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_group_by_size_threshold</span><span class="p">(</span>
+    <span class="n">sizes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">threshold</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Group indices by size threshold.</span>
+
+<span class="sd">    Groups are formed sequentially - entries are added to the current group</span>
+<span class="sd">    until adding another would exceed the threshold, then a new group starts.</span>
+<span class="sd">    Returns groups of indices into the input sizes list.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">groups</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">current_group</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">current_size</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">size</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">sizes</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">current_size</span> <span class="o">+</span> <span class="n">size</span> <span class="o">&gt;</span> <span class="n">threshold</span> <span class="ow">and</span> <span class="n">current_group</span><span class="p">:</span>
+            <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current_group</span><span class="p">)</span>
+            <span class="n">current_group</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">current_size</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">current_group</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">current_size</span> <span class="o">+=</span> <span class="n">size</span>
+
+    <span class="k">if</span> <span class="n">current_group</span><span class="p">:</span>
+        <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current_group</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">groups</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_axis_name_in_spec</span><span class="p">(</span><span class="n">axis_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">spec</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">spec</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">elem</span> <span class="o">==</span> <span class="n">axis_name</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elem</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">and</span> <span class="n">axis_name</span> <span class="ow">in</span> <span class="n">elem</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">logically_stacked</span><span class="p">(</span>
+    <span class="n">array</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">comm_mesh</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">Mesh</span><span class="p">,</span>
+    <span class="n">mesh_axis_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">array_axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Logically stacks an array along a new axis corresponding to the MPMD dimension.</span>
+
+<span class="sd">    This function expands the input array&#39;s dimensions and reshards it across</span>
+<span class="sd">    the communication mesh, effectively treating distributed shards as a single</span>
+<span class="sd">    logical array with an extra dimension.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">sharding</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">spec</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">_axis_name_in_spec</span><span class="p">(</span>
+            <span class="n">mesh_axis_name</span><span class="p">,</span> <span class="n">spec</span>
+        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;axis_name </span><span class="si">{</span><span class="n">mesh_axis_name</span><span class="si">!r}</span><span class="s2"> already exists in spec </span><span class="si">{</span><span class="n">spec</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">filter_axes</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">spec</span><span class="p">,</span> <span class="p">{</span><span class="n">mesh_axis_name</span><span class="p">})</span>
+
+    <span class="n">expanded_array</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="n">array_axis</span><span class="p">)</span>
+    <span class="n">in_sharding</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">NamedSharding</span><span class="p">(</span>
+        <span class="n">comm_mesh</span><span class="p">,</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">sharding</span><span class="o">.</span><span class="n">PartitionSpec</span><span class="p">(</span>
+            <span class="o">*</span><span class="n">spec</span><span class="p">[:</span><span class="n">array_axis</span><span class="p">],</span> <span class="n">mesh_axis_name</span><span class="p">,</span> <span class="o">*</span><span class="n">spec</span><span class="p">[</span><span class="n">array_axis</span><span class="p">:]</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">global_array</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_array_from_single_device_arrays</span><span class="p">(</span>
+        <span class="p">(</span>
+            <span class="o">*</span><span class="n">array</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="n">array_axis</span><span class="p">],</span>
+            <span class="n">comm_mesh</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">mesh_axis_name</span><span class="p">],</span>
+            <span class="o">*</span><span class="n">array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">array_axis</span><span class="p">:],</span>
+        <span class="p">),</span>
+        <span class="n">in_sharding</span><span class="p">,</span>
+        <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">data</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">expanded_array</span><span class="o">.</span><span class="n">addressable_shards</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">global_array</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_mpmd_slice</span><span class="p">(</span><span class="n">arrays</span><span class="p">,</span> <span class="n">mpmd_idxs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Selector function to pick the slice corresponding to the MPMD index.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">array</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="k">for</span> <span class="n">array</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">arrays</span><span class="p">,</span> <span class="n">mpmd_idxs</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="mpmd_to_spmd_reshard">
+<a class="viewcode-back" href="../../jaxpp.html#jaxpp.api.mpmd_to_spmd_reshard">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mpmd_to_spmd_reshard</span><span class="p">(</span>
+    <span class="n">mpmd_mesh</span><span class="p">:</span> <span class="n">MpmdMesh</span><span class="p">,</span> <span class="n">mpmd_arrays</span><span class="p">,</span> <span class="n">spmd_shardings</span><span class="p">,</span> <span class="n">threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reshards a pytree of MPMD arrays to SPMD arrays.</span>
+
+<span class="sd">    This function redistributes data from a Multiple Program Multiple Data (MPMD)</span>
+<span class="sd">    layout back to a Single Program Multiple Data (SPMD) layout. It reconstructs</span>
+<span class="sd">    global arrays from distributed MPMD shards.</span>
+<span class="sd">    It&#39;s the caller&#39;s responsibility to not use the input mpmd_arrays after calling</span>
+<span class="sd">    this function as they will be consumed by this function.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mpmd_mesh: The MPMD mesh definition.</span>
+<span class="sd">        mpmd_arrays: A pytree of source MPMD arrays.</span>
+<span class="sd">        spmd_shardings: A pytree of target SPMD shardings.</span>
+<span class="sd">        threshold: Memory threshold in bytes for grouping operations.</span>
+<span class="sd">                   If None, calculated based on available memory.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A pytree of JAX arrays with the same structure as mpmd_arrays.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="o">.</span><span class="n">is_multi_process</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span>
+            <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">_</span><span class="p">:</span> <span class="n">_</span><span class="o">.</span><span class="n">first_mpmd_replica</span><span class="p">,</span> <span class="n">mpmd_arrays</span><span class="p">),</span> <span class="n">spmd_shardings</span>
+        <span class="p">)</span>
+
+    <span class="n">mpmd_arrays_with_path</span><span class="p">,</span> <span class="n">mpmd_tree_def</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">flatten_with_path</span><span class="p">(</span><span class="n">mpmd_arrays</span><span class="p">)</span>
+    <span class="n">mpmd_arrays_with_path</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">MpmdArray</span><span class="p">]]</span>
+    <span class="n">spmd_shardings_flat</span><span class="p">,</span> <span class="n">spmd_tree_def</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">flatten</span><span class="p">(</span><span class="n">spmd_shardings</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">mpmd_tree_def</span> <span class="o">==</span> <span class="n">spmd_tree_def</span>
+
+    <span class="n">donate</span> <span class="o">=</span> <span class="p">[</span><span class="kc">True</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">mpmd_arrays_with_path</span><span class="p">)</span>  <span class="c1"># FIXME: Maybe make it a kwarg</span>
+
+    <span class="c1"># Collect metadata without building stacked arrays yet</span>
+    <span class="n">mpmd_arr_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">mpmd_arr</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">mpmd_arr</span> <span class="ow">in</span> <span class="n">mpmd_arrays_with_path</span><span class="p">]</span>
+    <span class="n">mpmd_idxs</span> <span class="o">=</span> <span class="p">[</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">_mpmd_idxs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">mpmd_arr</span> <span class="ow">in</span> <span class="n">mpmd_arr_list</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_shard_size</span><span class="p">(</span><span class="n">mpmd_arr</span><span class="p">:</span> <span class="n">MpmdArray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">_mpmd_local_sharding</span><span class="o">.</span><span class="n">shard_shape</span><span class="p">(</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+            <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">itemsize</span>
+        <span class="p">)</span>
+
+    <span class="n">sizes</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_shard_size</span><span class="p">(</span><span class="n">mpmd_arr</span><span class="p">)</span> <span class="k">for</span> <span class="n">mpmd_arr</span> <span class="ow">in</span> <span class="n">mpmd_arr_list</span><span class="p">]</span>
+    <span class="c1"># Sort by size (largest first) for better memory efficiency</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mpmd_arr_list</span><span class="p">)),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="n">_group_by_size_threshold</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">sizes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_dim</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">order</span><span class="p">],</span>
+        <span class="n">threshold</span> <span class="k">if</span> <span class="n">threshold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">_get_working_memory_threshold</span><span class="p">(),</span>
+    <span class="p">)</span>
+
+    <span class="n">resharded_arrays_by_index</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">group_indices</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
+        <span class="n">orig_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">order</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">group_indices</span><span class="p">]</span>
+
+        <span class="c1"># Build stacked arrays for this group</span>
+        <span class="n">group_stacked</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">orig_idx</span> <span class="ow">in</span> <span class="n">orig_indices</span><span class="p">:</span>
+            <span class="n">mpmd_arr</span> <span class="o">=</span> <span class="n">mpmd_arr_list</span><span class="p">[</span><span class="n">orig_idx</span><span class="p">]</span>
+            <span class="n">local_array</span> <span class="o">=</span> <span class="n">mpmd_arr</span><span class="o">.</span><span class="n">first_mpmd_replica</span>
+            <span class="k">if</span> <span class="n">local_array</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># Create zeros if this rank doesn&#39;t hold data for this array</span>
+                <span class="n">local_array</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span>
+                    <span class="n">jax</span><span class="o">.</span><span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">,</span>
+                    <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                    <span class="n">out_shardings</span><span class="o">=</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">_mpmd_local_sharding</span><span class="p">,</span>
+                <span class="p">)(</span><span class="n">mpmd_arr</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">mpmd_arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+            <span class="n">stacked</span> <span class="o">=</span> <span class="n">logically_stacked</span><span class="p">(</span>
+                <span class="n">local_array</span><span class="p">,</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">jax_mesh</span><span class="p">,</span> <span class="n">mpmd_mesh</span><span class="o">.</span><span class="n">mpmd_axis_name</span>
+            <span class="p">)</span>
+            <span class="c1"># logically_stacked creates a new array, so we can delete the local array</span>
+            <span class="k">if</span> <span class="n">donate</span><span class="p">[</span><span class="n">orig_idx</span><span class="p">]:</span>
+                <span class="n">local_array</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+            <span class="n">group_stacked</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stacked</span><span class="p">)</span>
+
+        <span class="n">group_stacked</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">group_stacked</span><span class="p">)</span>
+        <span class="n">group_mpmd_idxs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">mpmd_idxs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">orig_indices</span><span class="p">)</span>
+        <span class="n">group_spmd_shardings</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">spmd_shardings_flat</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">orig_indices</span><span class="p">)</span>
+
+        <span class="n">in_shardings</span> <span class="o">=</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">_</span><span class="o">.</span><span class="n">sharding</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">group_stacked</span><span class="p">),)</span>
+        <span class="n">group_results</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span>
+            <span class="n">_select_mpmd_slice</span><span class="p">,</span>
+            <span class="n">in_shardings</span><span class="o">=</span><span class="n">in_shardings</span><span class="p">,</span>
+            <span class="n">out_shardings</span><span class="o">=</span><span class="n">group_spmd_shardings</span><span class="p">,</span>
+            <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,),</span>
+        <span class="p">)(</span><span class="n">group_stacked</span><span class="p">,</span> <span class="n">group_mpmd_idxs</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">orig_idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">orig_indices</span><span class="p">):</span>
+            <span class="n">resharded_arrays_by_index</span><span class="p">[</span><span class="n">orig_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">group_results</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">group_stacked</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+
+    <span class="n">resharded_flat</span> <span class="o">=</span> <span class="p">[</span><span class="n">resharded_arrays_by_index</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mpmd_arr_list</span><span class="p">))]</span>
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">unflatten</span><span class="p">(</span><span class="n">spmd_tree_def</span><span class="p">,</span> <span class="n">resharded_flat</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/">Privacy Policy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/">Manage My Privacy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/preferences/start/">Do Not Sell or Share My Data</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/">Terms of Service</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/accessibility/">Accessibility</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/company-policies/">Corporate Policies</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/product-security/">Product Security</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/contact/">Contact</a>
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2022-2026, NVIDIA CORPORATION. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

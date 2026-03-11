@@ -1,0 +1,852 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>api &#8212; jaxpp</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/nvidia-sphinx-theme.css?v=d0aa047a" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="_static/documentation_options.js?v=ec16d22d"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'jaxpp';</script>
+    <link rel="icon" href="_static/favicon.png"/>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="jaxpp" href="modules.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.8.1" />
+
+
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="jaxpp - Home"/>
+    <img src="_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="jaxpp - Home"/>
+  
+  
+    <p class="title logo__title">jaxpp</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="readme.html">JaxPP</a></li>
+
+
+
+
+
+
+
+
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="modules.html">jaxpp</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">api</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">jaxpp</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">api</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="module-jaxpp.api">
+<span id="api"></span><h1>api<a class="headerlink" href="#module-jaxpp.api" title="Link to this heading">#</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.BaseSchedule">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">BaseSchedule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#BaseSchedule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.BaseSchedule" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.Concat">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">Concat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/training.html#Concat"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.Concat" title="Link to this definition">#</a></dt>
+<dd><p>Represents a concatenation operation along a specified axis.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.DualPipeV">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">DualPipeV</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mpmd_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#DualPipeV"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.DualPipeV" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.Eager1F1B">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">Eager1F1B</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#Eager1F1B"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.Eager1F1B" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.Interleaved1F1B">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">Interleaved1F1B</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">fuse_steady_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#Interleaved1F1B"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.Interleaved1F1B" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdArray">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">MpmdArray</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">partially_addressable_arrays</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_sharding</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MpmdSharding</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/array.html#MpmdArray"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.MpmdArray" title="Link to this definition">#</a></dt>
+<dd><p>An array distributed across one or more MPMD groups.</p>
+<p>MpmdArray represents a logical array that exists in a subset of MPMD groups
+within an <a class="reference internal" href="#jaxpp.api.MpmdMesh" title="jaxpp.mesh.MpmdMesh"><code class="xref py py-class docutils literal notranslate"><span class="pre">MpmdMesh</span></code></a>.
+Unlike standard JAX SPMD arrays where all processes have a shard of the corresponding
+array, an MpmdArray is only “partially addressable”, it exists as sharded in only
+one or more MPMD groups (potentially all of them too).</p>
+<dl class="simple">
+<dt>Properties:</dt><dd><ul class="simple">
+<li><p><cite>mpmd_idxs</cite>: The set of MPMD group indices where this array exists.
+Most computed arrays exist in a single group (len=1), but constants
+and loop invariants may be replicated across multiple groups when
+needed as inputs by multiple pipeline stages.</p></li>
+<li><p><cite>is_partially_addressable</cite>: A process can only access array shards if
+it belongs to one of the MPMD groups in mpmd_idxs.
+Use <cite>to_mpmd_local_array</cite> to get the SPMD JAX array
+(potentially spanning multiple devices) for this MPMD group.</p></li>
+<li><p><cite>is_mpmd_replicated</cite>: When <cite>len(mpmd_idxs) &gt; 1</cite>, the array data is replicated
+across those groups.</p></li>
+</ul>
+</dd>
+</dl>
+<p>The <cite>sharding</cite> property returns a NamedSharding whose mesh spans all devices
+in mpmd_idxs, useful for resharding between SPMD and MPMD layouts.</p>
+<dl>
+<dt>Example:</dt><dd><p>An array with mpmd_idxs={0, 2} on a 4-group MPMD mesh exists in groups
+0 and 2. Processes in groups 1 and 3 cannot access this array’s data
+(is_partially_addressable=False for them).</p>
+</dd>
+<dt>Attributes:</dt><dd><dl class="simple">
+<dt>spec: The PartitionSpec describing how the array is sharded within</dt><dd><p>each MPMD group.</p>
+</dd>
+</dl>
+<p>aval: The abstract value (shape and dtype) of the array.</p>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdArray.is_mpmd_replicated">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_mpmd_replicated</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#jaxpp.api.MpmdArray.is_mpmd_replicated" title="Link to this definition">#</a></dt>
+<dd><p>Returns True if the array is replicated in more than one mpmd rank.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdArray.is_partially_addressable">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_partially_addressable</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#jaxpp.api.MpmdArray.is_partially_addressable" title="Link to this definition">#</a></dt>
+<dd><p>Returns True if the array is partially addressable in the mpmd rank
+this process participates in.
+An array is partially addressable at this rank if this rank holds a shard of
+the array (the shard can potentially be replicated across multiple mpmd ranks).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdArray.sharding">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sharding</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NamedSharding</span></em><a class="headerlink" href="#jaxpp.api.MpmdArray.sharding" title="Link to this definition">#</a></dt>
+<dd><dl class="simple">
+<dt>NOTE: this is different from self.to_mpmd_local_array.sharding</dt><dd><p>if self.is_mpmd_replicated</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdArray.to_mpmd_local_array">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">to_mpmd_local_array</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#jaxpp.api.MpmdArray.to_mpmd_local_array" title="Link to this definition">#</a></dt>
+<dd><p>Returns a jax.Array if the array is partially addressable in the mpmd rank
+this process participates in.
+Otherwise, returns None.
+Returns a list of arrays when it’s a single process, multiple-devices mesh.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.MpmdMesh">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">MpmdMesh</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jax_mesh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mesh</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mpmd_axis_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/mesh.html#MpmdMesh"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.MpmdMesh" title="Link to this definition">#</a></dt>
+<dd><p>A JAX mesh partitioned into MPMD (Multiple Program Multiple Data) groups.</p>
+<p>MpmdMesh wraps a standard JAX mesh and designates one axis as the “MPMD axis”.
+The mesh is conceptually split into multiple independent groups along this axis,
+where each group can execute different computations (e.g., pipeline stages).</p>
+<p>For example, with a mesh of shape {‘mpmd’: 4, ‘data’: 2, ‘model’: 2} and
+mpmd_axis_name=’mpmd’, the mesh is split into 4 MPMD groups, each containing
+4 devices (2 data x 2 model). Each group runs its own computation, and arrays
+can be distributed across one or more groups.</p>
+<dl class="simple">
+<dt>Key concepts:</dt><dd><ul class="simple">
+<li><p>MPMD group: A slice of the mesh along the MPMD axis. Each group
+has an index from 0 to mpmd_dim - 1.</p></li>
+<li><p>Submesh: A subset of MPMD groups combined into a single mesh.
+Used when arrays are replicated across multiple groups.</p></li>
+<li><p>Lowering mesh: The mesh used for XLA compilation, which is the
+local process’s MPMD group mesh in multi-process settings.</p></li>
+</ul>
+</dd>
+</dl>
+<p>In multi-process execution, each process belongs to exactly one MPMD group.
+Arrays may be replicated across multiple groups when needed as inputs by
+multiple pipeline stages (common for constants and loop invariants).</p>
+<dl class="simple">
+<dt>Attributes:</dt><dd><p>jax_mesh: The underlying JAX mesh containing all devices.
+mpmd_axis_name: Name of the axis used to partition into MPMD groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.Std1F1B">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">Std1F1B</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#Std1F1B"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.Std1F1B" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxpp.api.ZeroBubble">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">ZeroBubble</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_stages</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/schedules.html#ZeroBubble"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.ZeroBubble" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxpp.api.collect_task_times_ms">
+<span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">collect_task_times_ms</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Generator</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/jaxpp/jax_primitives.html#collect_task_times_ms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.collect_task_times_ms" title="Link to this definition">#</a></dt>
+<dd><p>Context manager to collect task execution times in milliseconds.</p>
+<p>Example usage:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">collect_task_times_ms</span><span class="p">()</span> <span class="k">as</span> <span class="n">stats</span><span class="p">:</span>
+    <span class="c1"># ... run tasks ...</span>
+
+<span class="k">for</span> <span class="n">task_name</span><span class="p">,</span> <span class="n">times</span> <span class="ow">in</span> <span class="n">stats</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">task_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">times</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Example usage with collection disabled:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">collect_task_times_ms</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">stats</span><span class="p">:</span>
+    <span class="c1"># ... run tasks ...</span>
+
+<span class="k">assert</span> <span class="n">stats</span> <span class="ow">is</span> <span class="kc">None</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxpp.api.mpmd_to_spmd_reshard">
+<span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">mpmd_to_spmd_reshard</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_mesh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxpp.api.MpmdMesh" title="jaxpp.mesh.MpmdMesh"><span class="pre">MpmdMesh</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_arrays</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">spmd_shardings</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span></span></span><a class="reference internal" href="_modules/jaxpp/array.html#mpmd_to_spmd_reshard"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.mpmd_to_spmd_reshard" title="Link to this definition">#</a></dt>
+<dd><p>Reshards a pytree of MPMD arrays to SPMD arrays.</p>
+<p>This function redistributes data from a Multiple Program Multiple Data (MPMD)
+layout back to a Single Program Multiple Data (SPMD) layout. It reconstructs
+global arrays from distributed MPMD shards.
+It’s the caller’s responsibility to not use the input mpmd_arrays after calling
+this function as they will be consumed by this function.</p>
+<dl>
+<dt>Args:</dt><dd><p>mpmd_mesh: The MPMD mesh definition.
+mpmd_arrays: A pytree of source MPMD arrays.
+spmd_shardings: A pytree of target SPMD shardings.
+threshold: Memory threshold in bytes for grouping operations.</p>
+<blockquote>
+<div><p>If None, calculated based on available memory.</p>
+</div></blockquote>
+</dd>
+<dt>Returns:</dt><dd><p>A pytree of JAX arrays with the same structure as mpmd_arrays.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxpp.api.spmd_to_mpmd_reshard">
+<span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">spmd_to_mpmd_reshard</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_mesh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxpp.api.MpmdMesh" title="jaxpp.mesh.MpmdMesh"><span class="pre">MpmdMesh</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">spmd_arrays</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">mpmd_shardings</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="_modules/jaxpp/array.html#spmd_to_mpmd_reshard"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.spmd_to_mpmd_reshard" title="Link to this definition">#</a></dt>
+<dd><p>Reshards a pytree of SPMD arrays to MPMD arrays.</p>
+<p>This function redistributes data from a Single Program Multiple Data (SPMD)
+layout to a Multiple Program Multiple Data (MPMD) layout. It handles
+memory constraints by grouping arrays and processing them in chunks.
+It’s the caller’s responsibility to not use the input spmd_arrays after calling
+this function as they will be consumed by this function.</p>
+<p>The specs of the returned arrays will _not_ have <cite>mpmd_mesh.mpmd_axis_name</cite> in
+them.</p>
+<p>Limitations: same constraints as jax.jit apply (e.g. _device_assignment must be the
+same for all arrays)</p>
+<dl>
+<dt>Args:</dt><dd><p>mpmd_mesh: The MPMD mesh definition.
+spmd_arrays: A pytree of source SPMD arrays.
+mpmd_shardings: A pytree of target MPMD shardings, matching the structure of</p>
+<blockquote>
+<div><p>spmd_arrays.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>threshold: Memory threshold in bytes for grouping operations.</dt><dd><p>If None, calculated based on available memory.</p>
+</dd>
+</dl>
+</dd>
+<dt>Returns:</dt><dd><p>A pytree of MpmdArray objects with the same structure as spmd_arrays.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxpp.api.treduce">
+<span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">treduce</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">fun</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">X</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Y</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">xs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">X</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">schedule</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxpp.api.BaseSchedule" title="jaxpp.schedules.BaseSchedule"><span class="pre">BaseSchedule</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(Concat(axis=0),</span> <span class="pre">AddT())</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Y</span></span></span><a class="reference internal" href="_modules/jaxpp/training.html#treduce"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.treduce" title="Link to this definition">#</a></dt>
+<dd><p>Temporally reduces a sequence of inputs with a pipelined schedule.</p>
+<p>This function behaves like the functional-programming primitive
+<code class="docutils literal notranslate"><span class="pre">reduce</span></code> applied along the leading (time / micro-batch) axis of
+<code class="docutils literal notranslate"><span class="pre">xs</span></code>.  At each timestep <code class="docutils literal notranslate"><span class="pre">i</span></code> it applies <code class="docutils literal notranslate"><span class="pre">fun</span></code> to the slice
+<code class="docutils literal notranslate"><span class="pre">xs[i]</span></code> and combines the resulting values using <code class="docutils literal notranslate"><span class="pre">operation</span></code>, as shown
+in the following example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">treduce</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">xs</span><span class="p">,</span> <span class="n">operation</span><span class="o">=</span><span class="p">(</span><span class="n">Concat</span><span class="p">(),</span> <span class="n">Add</span><span class="p">())):</span>
+  <span class="c1"># xs has shape (T, ...)</span>
+  <span class="n">state</span> <span class="o">=</span> <span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="n">op</span><span class="o">.</span><span class="n">state</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">),</span> <span class="n">a</span><span class="p">),</span>
+                   <span class="n">fun</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">xs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)),</span> <span class="n">operation</span><span class="p">)</span>
+  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)):</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">op</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">op</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                     <span class="n">operation</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">fun</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">xs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">i</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)))</span>
+  <span class="k">return</span> <span class="n">state</span>
+</pre></div>
+</div>
+<p>Unlike a vanilla reduce, the execution of the loop body may be
+interleaved according to <code class="docutils literal notranslate"><span class="pre">schedule</span></code> so that different timesteps can
+overlap on the accelerator.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><dl class="simple">
+<dt>fun: A function that is applied to a single slice. It</dt><dd><p>receives one element <code class="docutils literal notranslate"><span class="pre">xs[i]</span></code> (a PyTree slice with the leading axis
+removed) and returns a PyTree.</p>
+</dd>
+<dt>xs: A PyTree whose leaf nodes are arrays. All leaf arrays must share</dt><dd><p>the same leading dimension size; this leading dimension is the axis
+that is reduced over.</p>
+</dd>
+<dt>schedule: A <a class="reference internal" href="#jaxpp.api.BaseSchedule" title="jaxpp.schedules.BaseSchedule"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseSchedule</span></code></a> specifying how loop</dt><dd><p>iterations should overlap.</p>
+</dd>
+<dt>axis: Integer specifying which axis of every leaf array in <code class="docutils literal notranslate"><span class="pre">xs</span></code></dt><dd><p>represents the micro-batch dimension.
+At iteration <code class="docutils literal notranslate"><span class="pre">i</span></code> the function gathers the slice at index <code class="docutils literal notranslate"><span class="pre">i</span></code> along
+this axis and feeds it to <code class="docutils literal notranslate"><span class="pre">fun</span></code>.</p>
+</dd>
+<dt>operation: A PyTree of <code class="xref py py-class docutils literal notranslate"><span class="pre">Op</span></code> objects (default: <code class="docutils literal notranslate"><span class="pre">default_op</span></code>,</dt><dd><p>i.e., <code class="docutils literal notranslate"><span class="pre">(Concat(),</span> <span class="pre">Add)</span></code>) describing how the per-timestep values are
+aggregated. Each leaf <code class="xref py py-class docutils literal notranslate"><span class="pre">Op</span></code> object defines <code class="docutils literal notranslate"><span class="pre">state</span></code>
+and <code class="docutils literal notranslate"><span class="pre">update</span></code> methods. Convenient predefined ops include:</p>
+<ul class="simple">
+<li><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Add</span></code>: Element-wise sum.</p></li>
+<li><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Max</span></code>: Element-wise maximum.</p></li>
+<li><p><a class="reference internal" href="#jaxpp.api.Concat" title="jaxpp.api.Concat"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Concat</span></code></a><code class="docutils literal notranslate"><span class="pre">(axis=0)</span></code>: Stacks results from each timestep.
+The <code class="docutils literal notranslate"><span class="pre">axis</span></code> parameter specifies the dimension in the output array
+that corresponds to the reduction timesteps.</p></li>
+</ul>
+</dd>
+</dl>
+</dd>
+<dt>Returns:</dt><dd><p>A PyTree containing the aggregated result, with the same structure as <code class="docutils literal notranslate"><span class="pre">Y</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxpp.api.treduce_i">
+<span class="sig-prename descclassname"><span class="pre">jaxpp.api.</span></span><span class="sig-name descname"><span class="pre">treduce_i</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">fun</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Y</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">schedule</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxpp.api.BaseSchedule" title="jaxpp.schedules.BaseSchedule"><span class="pre">BaseSchedule</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(Concat(axis=0),</span> <span class="pre">AddT())</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Y</span></span></span><a class="reference internal" href="_modules/jaxpp/training.html#treduce_i"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxpp.api.treduce_i" title="Link to this definition">#</a></dt>
+<dd><p>Lower-level helper for <a class="reference internal" href="#jaxpp.api.treduce" title="jaxpp.api.treduce"><code class="xref py py-func docutils literal notranslate"><span class="pre">treduce()</span></code></a> that takes an explicit <code class="docutils literal notranslate"><span class="pre">length</span></code>.</p>
+<p>Instead of slicing from a pre-materialised batch this variant invokes
+<code class="docutils literal notranslate"><span class="pre">fun(i)</span></code> directly for each <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">&lt;=</span> <span class="pre">i</span> <span class="pre">&lt;</span> <span class="pre">length</span></code> and reduces the returned
+values using <code class="docutils literal notranslate"><span class="pre">operation</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">treduce_i</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">operation</span><span class="p">):</span>
+  <span class="n">state</span> <span class="o">=</span> <span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="n">op</span><span class="o">.</span><span class="n">state</span><span class="p">(</span><span class="n">length</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span>
+                   <span class="n">fun</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">operation</span><span class="p">)</span>
+  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">length</span><span class="p">):</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">op</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">op</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                     <span class="n">operation</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">fun</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+  <span class="k">return</span> <span class="n">state</span>
+</pre></div>
+</div>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>fun: Function that receives the micro-batch/timestep index <code class="docutils literal notranslate"><span class="pre">i</span></code> (an</dt><dd><p>integer) and returns a PyTree to be reduced.</p>
+</dd>
+</dl>
+<p>length: The number of timesteps / micro-batches.
+schedule: A <a class="reference internal" href="#jaxpp.api.BaseSchedule" title="jaxpp.schedules.BaseSchedule"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseSchedule</span></code></a> determining how</p>
+<blockquote>
+<div><p>iterations may overlap.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>operation: A PyTree of <code class="xref py py-class docutils literal notranslate"><span class="pre">Op</span></code> objects (default: <code class="docutils literal notranslate"><span class="pre">default_op</span></code>,</dt><dd><p>i.e., <code class="docutils literal notranslate"><span class="pre">(Concat(),</span> <span class="pre">Add)</span></code>) controlling the accumulation. See
+<a class="reference internal" href="#jaxpp.api.treduce" title="jaxpp.api.treduce"><code class="xref py py-func docutils literal notranslate"><span class="pre">treduce()</span></code></a> for details. Convenient predefined ops include:</p>
+<ul class="simple">
+<li><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Add</span></code>: Element-wise sum.</p></li>
+<li><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Max</span></code>: Element-wise maximum.</p></li>
+<li><p><a class="reference internal" href="#jaxpp.api.Concat" title="jaxpp.api.Concat"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Concat</span></code></a><code class="docutils literal notranslate"><span class="pre">(axis=0)</span></code>: Stacks results from each timestep.
+The <code class="docutils literal notranslate"><span class="pre">axis</span></code> parameter specifies the dimension in the output array
+that corresponds to the reduction timesteps.</p></li>
+</ul>
+</dd>
+</dl>
+</dd>
+<dt>Returns:</dt><dd><p>A PyTree containing the result of the temporal reduction, with the same
+structure as <code class="docutils literal notranslate"><span class="pre">Y</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="modules.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">jaxpp</p>
+      </div>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.BaseSchedule"><code class="docutils literal notranslate"><span class="pre">BaseSchedule</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.Concat"><code class="docutils literal notranslate"><span class="pre">Concat</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.DualPipeV"><code class="docutils literal notranslate"><span class="pre">DualPipeV</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.Eager1F1B"><code class="docutils literal notranslate"><span class="pre">Eager1F1B</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.Interleaved1F1B"><code class="docutils literal notranslate"><span class="pre">Interleaved1F1B</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdArray"><code class="docutils literal notranslate"><span class="pre">MpmdArray</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdArray.is_mpmd_replicated"><code class="docutils literal notranslate"><span class="pre">is_mpmd_replicated</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdArray.is_partially_addressable"><code class="docutils literal notranslate"><span class="pre">is_partially_addressable</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdArray.sharding"><code class="docutils literal notranslate"><span class="pre">sharding</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdArray.to_mpmd_local_array"><code class="docutils literal notranslate"><span class="pre">to_mpmd_local_array</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.MpmdMesh"><code class="docutils literal notranslate"><span class="pre">MpmdMesh</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.Std1F1B"><code class="docutils literal notranslate"><span class="pre">Std1F1B</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.ZeroBubble"><code class="docutils literal notranslate"><span class="pre">ZeroBubble</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.collect_task_times_ms"><code class="docutils literal notranslate"><span class="pre">collect_task_times_ms()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.mpmd_to_spmd_reshard"><code class="docutils literal notranslate"><span class="pre">mpmd_to_spmd_reshard()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.spmd_to_mpmd_reshard"><code class="docutils literal notranslate"><span class="pre">spmd_to_mpmd_reshard()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.treduce"><code class="docutils literal notranslate"><span class="pre">treduce()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jaxpp.api.treduce_i"><code class="docutils literal notranslate"><span class="pre">treduce_i()</span></code></a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/">Privacy Policy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/">Manage My Privacy</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/preferences/start/">Do Not Sell or Share My Data</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/">Terms of Service</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/accessibility/">Accessibility</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/about-nvidia/company-policies/">Corporate Policies</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/product-security/">Product Security</a>
+   | 
+  
+  
+  
+  <a class="external" href="https://www.nvidia.com/en-us/contact/">Contact</a>
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2022-2026, NVIDIA CORPORATION. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
