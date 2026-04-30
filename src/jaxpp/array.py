@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from collections import OrderedDict, defaultdict
 from typing import Any, cast
 
@@ -22,7 +23,12 @@ import numpy as np
 from jaxpp.jax_compat import core as jcore
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import MpmdSharding
-from jaxpp.utils import filter_axes, get_named_sharding, update_named_sharding
+from jaxpp.utils import (
+    filter_axes,
+    get_named_sharding,
+    rm_size1_axes,
+    update_named_sharding,
+)
 
 
 class MpmdArray:
@@ -120,13 +126,14 @@ class MpmdArray:
             assert all(_ == dtype for _ in dtypes), (dtype, dtypes)
             mpmd_axis = mpmd_sharding.mpmd_mesh.mpmd_axis_name
             specs = [
-                filter_axes(get_named_sharding(a).spec, {mpmd_axis})
+                rm_size1_axes(
+                    filter_axes(get_named_sharding(a).spec, {mpmd_axis}),
+                    mpmd_mesh.lowering_mesh(),
+                )
                 for a in self._partially_addressable_arrays.values()
             ]
-            assert all(_ == mpmd_sharding.spec for _ in specs), (
-                mpmd_sharding.spec,
-                specs,
-            )
+            tgt_spec = rm_size1_axes(mpmd_sharding.spec, mpmd_mesh.lowering_mesh())
+            assert all(_ == tgt_spec for _ in specs), (specs, tgt_spec)
 
         self._spec = mpmd_sharding.spec
         self._sharding = mpmd_sharding.sharding
@@ -587,9 +594,20 @@ def logically_stacked(
     return global_array
 
 
-def _select_mpmd_slice(arrays, mpmd_idxs):
+def _select_mpmd_slice_fn(arrays, mpmd_idxs, shardings):  # pyright: ignore[reportRedeclaration]
     """Selector function to pick the slice corresponding to the MPMD index."""
     return tuple(array[idx] for array, idx in zip(arrays, mpmd_idxs, strict=True))
+
+
+if jax.__version_info__ <= (0, 6, 2):
+    _select_mpmd_slice = _select_mpmd_slice_fn
+else:
+
+    def _select_mpmd_slice(arrays, mpmd_idxs, shardings):
+        return jax.sharding.auto_axes(
+            functools.partial(_select_mpmd_slice_fn, shardings=shardings),
+            out_sharding=shardings,
+        )(arrays, mpmd_idxs)
 
 
 def mpmd_to_spmd_reshard(
@@ -679,8 +697,8 @@ def mpmd_to_spmd_reshard(
             _select_mpmd_slice,
             in_shardings=in_shardings,
             out_shardings=group_spmd_shardings,
-            static_argnums=(1,),
-        )(group_stacked, group_mpmd_idxs)
+            static_argnums=(1, 2),
+        )(group_stacked, group_mpmd_idxs, group_spmd_shardings)
 
         for i, orig_idx in enumerate(orig_indices):
             resharded_arrays_by_index[orig_idx] = group_results[i]

@@ -27,7 +27,7 @@ import jax.numpy as jnp
 
 from jaxpp import jax_compat as jc
 from jaxpp.jax_compat import core as jcore
-from jaxpp.jax_primitives import dax_pscan_p
+from jaxpp.jax_primitives import dax_pscan_p, place_with_p
 from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, substitute, var_is_duplicate
 from jaxpp.jaxpr_utils import gensym as mk_gensym
 from jaxpp.utils import OverwriteableVar, array_bytes
@@ -35,7 +35,9 @@ from jaxpp.utils import OverwriteableVar, array_bytes
 T = TypeVar("T")
 
 
-def freeze_if_set(v: Any):
+def freeze_if_mut(v: Any):
+    if isinstance(v, list):
+        return tuple(v)
     if isinstance(v, set):
         return frozenset(v)
     return v
@@ -45,7 +47,7 @@ def hashable_params(params: dict[str, Any], exclude: set[str] | None = None):
     if exclude is None:
         exclude = set()
 
-    return tuple((k, freeze_if_set(v)) for k, v in params.items() if k not in exclude)
+    return tuple((k, freeze_if_mut(v)) for k, v in params.items() if k not in exclude)
 
 
 class PartialValue(enum.Enum):
@@ -450,6 +452,10 @@ def pe_rule_convert(
     return [(PartialValue.KNOWN, eqn)]
 
 
+def pe_rule_place_with(eqn: jcore.JaxprEqn, in_vals: list[PartialValue]):
+    return [(PartialValue.UNKNOWN, eqn)]
+
+
 def pe_rule_default(eqn: jcore.JaxprEqn, in_vals: list[PartialValue]):
     if all(v == PartialValue.TRIVIALLY_KNOWN for v in in_vals):
         return [(PartialValue.TRIVIALLY_KNOWN, eqn)]
@@ -529,7 +535,10 @@ def partial_eval_loop(
     n_consts = params["n_consts"]
     in_known = (True,) * n_consts + (False,) * (len(tracers) - n_consts)
 
-    rules = {jax.lax.convert_element_type_p: pe_rule_convert}
+    rules = {
+        jax.lax.convert_element_type_p: pe_rule_convert,
+        place_with_p: pe_rule_place_with,
+    }
     if cross_remat:
         rules[jc.remat_p] = pe_rule_remat
 

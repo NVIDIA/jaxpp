@@ -14,10 +14,12 @@
 # limitations under the License.
 
 import contextlib
+import dataclasses
 import logging
 import time
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass, field
 from functools import partial
 from typing import (
     Any,
@@ -83,7 +85,8 @@ def add_multi_impl(
     ), f"{add_multi_p.name} supported only in single-process runtime"
     prev_shardings: list[jax.NamedSharding] = [a.sharding for a in args]
     # TODO: do the stacking similarly to logically_stacked
-    _ = sum(jax.device_put(a, args[0].sharding) for a in args)
+    with jc.set_mesh(args[0].sharding.mesh):
+        _ = sum(jax.device_put(a, args[0].sharding) for a in args)
     return MpmdArray(
         [jax.device_put(_, s) for s in prev_shardings],
         mpmd_sharding=MpmdSharding(mpmd_mesh, mpmd_idxs, prev_shardings[0].spec),
@@ -520,33 +523,31 @@ def recv_impl(*buffers, id, shardings, shape_and_dtype):
     return buffers
 
 
+place_with_p = jcore.Primitive("place_with")
+place_with_p.def_impl(lambda val, with_val: val)
+place_with_p.def_abstract_eval(lambda val, with_val: val)
+batching.defvectorized(place_with_p)
+mlir.register_lowering(place_with_p, lambda ctx, val, with_val: [val])
+
 pipeline_yield_p = jcore.Primitive("pipeline_yield")
 pipeline_yield_p.multiple_results = True
 pipeline_yield_p.def_impl(lambda *args, **kwargs: args)
 pipeline_yield_p.def_abstract_eval(lambda *args, **kwargs: args)
 
 
-def pipeline_yield_batcher(args, dims, **kwargs):
+def _pipeline_yield_batcher(args, dims, **kwargs):
     return pipeline_yield_p.bind(*args, **kwargs), dims
 
 
-batching.primitive_batchers[pipeline_yield_p] = pipeline_yield_batcher
+batching.primitive_batchers[pipeline_yield_p] = _pipeline_yield_batcher
 mlir.register_lowering(pipeline_yield_p, lambda ctx, *args, **kwargs: args)
 
 
-def pipeline_yield_transpose(ts, **kwargs):
-    assert kwargs["task_type"] == TaskType.FWD
+def pipeline_yield_transpose(ts, name: str, task_type: TaskType, stage_id: int):
+    assert task_type == TaskType.FWD
     ts = [ad.instantiate_zeros(t) for t in ts]
     return pipeline_yield_p.bind(
-        *ts,
-        **(
-            kwargs
-            | {
-                "task_type": TaskType.BWD,
-                "from_stage_id": kwargs["to_stage_id"],
-                "to_stage_id": kwargs["from_stage_id"],
-            }
-        ),
+        *ts, name=name, task_type=TaskType.BWD, stage_id=stage_id
     )
 
 
@@ -577,7 +578,7 @@ dax_pscan_p.def_abstract_eval(dax_pscan_abstract_eval)
 
 def dax_pscan_impl(
     *args,
-    jaxpr,
+    jaxpr: jcore.ClosedJaxpr,
     n_mubatches,
     n_consts,
     in_shardings,
@@ -682,32 +683,51 @@ def dce_jaxpr_dax_pscan(
     return used_inputs, new_eqn
 
 
+@dataclass(frozen=True, kw_only=True)
+class PjitKwargs:
+    jaxpr: jcore.ClosedJaxpr
+    in_shardings: tuple[jax.sharding.NamedSharding, ...]
+    out_shardings: tuple[jax.sharding.NamedSharding, ...]
+    in_layouts: tuple
+    out_layouts: tuple
+    donated_invars: tuple[bool, ...]
+    ctx_mesh: jax.sharding.Mesh
+    name: str = field(compare=False, hash=False)
+    keep_unused: bool = True
+    inline: bool = False
+    compiler_options_kvs: tuple = ()
+
+    def asdict(self) -> dict[str, Any]:
+        return {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
+
+
 @jc.cache()
-def callable_task(prim: jcore.Primitive, **params):
-    logging.info(f"Compiling {params['name']}")
+def callable_task(prim: jcore.Primitive, params: PjitKwargs):
+    logging.info(f"Compiling {params.name} ({id(params.jaxpr)})")
+    p = params.asdict()
 
     def prim_fun(*args):
-        return prim.bind(*args, **params)
+        return prim.bind(*args, **p)
 
-    prim_fun.__name__ = params["name"]
-    prim_fun.__qualname__ = params["name"]
+    prim_fun.__name__ = params.name
+    prim_fun.__qualname__ = params.name
     prim_fun._apply_primitive = True
     return jax.jit(
         prim_fun,
-        in_shardings=params["in_shardings"],
-        out_shardings=list(params["out_shardings"]),
+        in_shardings=params.in_shardings,
+        out_shardings=list(params.out_shardings),
         donate_argnums=tuple(
-            idx for idx, donated in enumerate(params["donated_invars"]) if donated
+            idx for idx, donated in enumerate(params.donated_invars) if donated
         ),
     )
 
 
-def apply_task(prim: jcore.Primitive, *args, **params):
-    with jc.set_mesh(params["ctx_mesh"]), warnings.catch_warnings():
+def apply_task(prim: jcore.Primitive, *args, params: PjitKwargs):
+    with jc.set_mesh(params.ctx_mesh), warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="Some donated buffers were not usable.*"
         )
-        return callable_task(prim, **params)(*args)
+        return callable_task(prim, params)(*args)
 
 
 check_in_shardings = False
@@ -768,7 +788,7 @@ def task_impl(
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
     mesh = mpmd_mesh.unstack[mpmd_idx]
 
-    pjit_kwargs = dict(
+    pjit_kwargs = PjitKwargs(
         jaxpr=call_jaxpr,
         in_shardings=tuple(in_shardings),
         out_shardings=tuple(out_shardings),
@@ -777,12 +797,6 @@ def task_impl(
         donated_invars=tuple(donate_invars),
         ctx_mesh=mesh,
         name=task_name,
-        # + (
-        #     f"_{call_counter}" if call_counter is not None else ""
-        # ),  # FIXME: remove call_counter
-        keep_unused=True,
-        inline=False,
-        compiler_options_kvs=tuple(),
     )
 
     # TODO(fixup_multidefs)
@@ -827,10 +841,13 @@ def task_impl(
         arrays = jax.block_until_ready(arrays)
 
     enable_memstats = False
-    with print_memstats(f"task_impl {task_name}", enabled=enable_memstats):
+    with (
+        jax.profiler.TraceAnnotation(f"{task_name}"),
+        print_memstats(f"task_impl {task_name}", enabled=enable_memstats),
+    ):
         start = time.perf_counter_ns() / 1_000_000
 
-        res = apply_task(jc.jit_p, *arrays, **pjit_kwargs)
+        res = apply_task(jc.jit_p, *arrays, params=pjit_kwargs)
         if enable_memstats or statistics is not None:
             jax.block_until_ready(res)
 

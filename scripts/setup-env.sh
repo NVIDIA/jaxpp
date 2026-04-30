@@ -20,4 +20,14 @@ uv pip install pip wheel setuptools
 
 uv pip install --no-cache-dir -e "${jaxpp_pip_path}"
 uv pip install --no-cache-dir pybind11
+
+# nvidia-nccl-cu12 ships only libnccl.so.2; create the unversioned symlink so
+# transformer-engine's sdist build can resolve `-lnccl` via LIBRARY_PATH.
+nccl_lib="${VIRTUAL_ENV}/lib/python3.12/site-packages/nvidia/nccl/lib"
+if [ ! -e "${nccl_lib}/libnccl.so.2" ]; then
+    echo "[failed] ${nccl_lib}/libnccl.so.2 not found; nvidia-nccl-cu12 was not pulled in by '${jaxpp_pip_path}'"
+    exit 1
+fi
+ln -sf libnccl.so.2 "${nccl_lib}/libnccl.so"
+
 uv pip install --no-build-isolation transformer-engine[jax]==2.8.0

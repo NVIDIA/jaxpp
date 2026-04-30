@@ -24,44 +24,112 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from transformers.models.bert.configuration_bert import BertConfig
-from transformers.models.bert.modeling_flax_bert import FlaxBertLayer
 
 import jaxpp.api as jaxpp
 
 
-class JaxBasicBertModel(nn.Module):
-    config: BertConfig
-    args: argparse.Namespace
+# Generic decoder-only Transformer block used as a proxy model for testing
+# the JaxPP pipeline. Not intended to match any specific published architecture.
+class _CausalSelfAttention(nn.Module):
+    hidden_size: int
+    num_heads: int
+    dtype: jnp.dtype = jnp.float32
+
+    @nn.compact
+    def __call__(self, x):
+        assert self.hidden_size % self.num_heads == 0, (
+            "hidden_size must be divisible by num_heads"
+        )
+        head_dim = self.hidden_size // self.num_heads
+
+        q = nn.Dense(self.hidden_size, dtype=self.dtype, name="query")(x)
+        k = nn.Dense(self.hidden_size, dtype=self.dtype, name="key")(x)
+        v = nn.Dense(self.hidden_size, dtype=self.dtype, name="value")(x)
+
+        def split_heads(t):
+            return t.reshape(t.shape[:-1] + (self.num_heads, head_dim))
+
+        q, k, v = map(split_heads, (q, k, v))
+
+        scale = jnp.asarray(head_dim, dtype=self.dtype) ** -0.5
+        attn = jnp.einsum("...qhd,...khd->...hqk", q, k) * scale
+
+        seq_len = q.shape[-3]
+        causal_mask = jnp.triu(jnp.ones((seq_len, seq_len), dtype=bool), k=1)
+        attn = jnp.where(causal_mask, jnp.finfo(self.dtype).min, attn)
+
+        attn = jax.nn.softmax(attn, axis=-1).astype(self.dtype)
+        ctx = jnp.einsum("...hqk,...khd->...qhd", attn, v)
+        return ctx.reshape(ctx.shape[:-2] + (self.hidden_size,))
+
+
+class DecoderBlock(nn.Module):
+    """Minimal decoder-only Transformer block (proxy model)."""
+
+    hidden_size: int
+    num_heads: int
+    intermediate_size: int
+    dtype: jnp.dtype = jnp.float32
+
+    @nn.compact
+    def __call__(self, x):
+        attn_in = nn.LayerNorm(dtype=self.dtype, name="attention_norm")(x)
+        attn = _CausalSelfAttention(
+            hidden_size=self.hidden_size,
+            num_heads=self.num_heads,
+            dtype=self.dtype,
+            name="attention",
+        )(attn_in)
+        attn = nn.Dense(self.hidden_size, dtype=self.dtype, name="attention_proj")(attn)
+        x = x + attn
+
+        ffn_in = nn.LayerNorm(dtype=self.dtype, name="ffn_norm")(x)
+        ffn = nn.Dense(self.intermediate_size, dtype=self.dtype, name="ffn_in")(ffn_in)
+        ffn = jax.nn.gelu(ffn)
+        ffn = nn.Dense(self.hidden_size, dtype=self.dtype, name="ffn_out")(ffn)
+        x = x + ffn
+        return x
+
+
+class JaxBasicModel(nn.Module):
+    num_layers: int
+    hidden_size: int
+    num_heads: int
+    intermediate_size: int
+    pp: int
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         self.layers = [
-            FlaxBertLayer(self.config, name=f"flax_bert_layer_{i}", dtype=self.dtype)
-            for i in range(self.config.num_hidden_layers)
+            DecoderBlock(
+                hidden_size=self.hidden_size,
+                num_heads=self.num_heads,
+                intermediate_size=self.intermediate_size,
+                dtype=self.dtype,
+                name=f"decoder_block_{i}",
+            )
+            for i in range(self.num_layers)
         ]
 
-    def __call__(self, hidden_states):
+    def __call__(self, x):
         for layer in self.layers:
-            outs = layer(hidden_states, None, None)
-            hidden_states = outs[0]
-        return hidden_states
+            x = layer(x)
+        return x
 
 
-class JaxPPBasicBertModel(JaxBasicBertModel):
-    def __call__(self, hidden_states):
-        num_layers_per_stage = self.config.num_hidden_layers // self.args.pp
+class JaxPPBasicModel(JaxBasicModel):
+    def __call__(self, x):
+        num_layers_per_stage = self.num_layers // self.pp
         stage_id = 0
 
         for i, layer in enumerate(self.layers):
-            outs = layer(hidden_states, None, None)
-            hidden_states = outs[0]
+            x = layer(x)
             # Mark the end of a stage
             if i > 0 and i % num_layers_per_stage == 0:
-                hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
+                x = jaxpp.mark_stage_end(x)
                 stage_id += 1
-        hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
-        return hidden_states
+        x = jaxpp.mark_stage_end(x)
+        return x
 
 
 def jax_train_step(loss_fn, optimizer, remote_mesh=None):
@@ -150,18 +218,22 @@ def main(args, process_id=None):
     args.dtype = jax.numpy.dtype(args.dtype)
 
     rng = jax.random.PRNGKey(0)
-    config = BertConfig(
-        num_hidden_layers=args.pp * 2,
-        hidden_size=12 * 2,
+    hidden_size = 12 * 2
+    model_kwargs = dict(
+        num_layers=args.pp * 2,
+        hidden_size=hidden_size,
+        num_heads=12,
         intermediate_size=12 * 2 * 3,
+        pp=args.pp,
+        dtype=args.dtype,
     )
 
-    model = JaxBasicBertModel(config, args, dtype=args.dtype)
-    model_jaxpp = JaxPPBasicBertModel(config, args, dtype=args.dtype)
+    model = JaxBasicModel(**model_kwargs)
+    model_jaxpp = JaxPPBasicModel(**model_kwargs)
 
     optimizer = optax.adam(learning_rate=0.005)
 
-    shape = (args.num_ubatches, 16, 128, config.hidden_size)
+    shape = (args.num_ubatches, 16, 128, hidden_size)
 
     hidden_states = jax.random.uniform(rng, shape, dtype=args.dtype)
 

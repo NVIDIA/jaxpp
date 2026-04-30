@@ -49,7 +49,7 @@ class ModelWithPassthrough(nn.Module):
         for _ in range(self.n_layers):
             out = nn.Dense(self.dense_dim)(out)
 
-        out = jaxpp.api.pipeline_enter_stage(out)
+        out = jaxpp.api.mark_stage_end(out)
         return out + y, x, y
 
     @staticmethod

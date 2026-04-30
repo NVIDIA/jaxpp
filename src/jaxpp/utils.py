@@ -116,7 +116,7 @@ def unzip_multi(xs, arity=2):
     if len(xs) == 0:
         return [[] for _ in range(arity)]
     assert all(len(xs_arr) == arity for xs_arr in xs)
-    return jax._src.util.safe_map(list, jax._src.util.safe_zip(*xs))
+    return jc.safe_map(list, jc.safe_zip(*xs))
 
 
 _T = TypeVar("_T")
@@ -316,3 +316,68 @@ def filter_axes(
             raise ValueError(f"Unsupported axis type: {type(axis)}")
 
     return jax.sharding.PartitionSpec(*new_spec)
+
+
+class Dropped:
+    instance = None
+
+    def __new__(cls):
+        if cls.instance is not None:
+            return cls.instance
+        cls.instance = super().__new__(cls)
+        return cls.instance
+
+
+@overload
+def rm_size1_axes(
+    spec: tuple[str | None, ...], mesh: jax.sharding.Mesh
+) -> tuple[str | None, ...]: ...
+
+
+@overload
+def rm_size1_axes(spec: None, mesh: jax.sharding.Mesh) -> None: ...
+
+
+@overload
+def rm_size1_axes(spec: str, mesh: jax.sharding.Mesh) -> str | Dropped: ...
+
+
+@overload
+def rm_size1_axes(
+    spec: jax.sharding.PartitionSpec, mesh: jax.sharding.Mesh
+) -> jax.sharding.PartitionSpec: ...
+
+
+PartitionSpecLike = None | tuple[str | None, ...] | str | jax.sharding.PartitionSpec
+
+
+def rm_size1_axes(
+    spec: PartitionSpecLike, mesh: jax.sharding.Mesh
+) -> PartitionSpecLike | Dropped:
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        if mesh.shape[spec] == 1:
+            return Dropped()
+        return spec
+    if isinstance(spec, tuple):
+        res = tuple(
+            _
+            for axis in spec
+            if not isinstance(_ := rm_size1_axes(axis, mesh), Dropped)
+        )
+        if len(res) == 0:
+            return None  # No sharding on this dimension
+        if len(res) == 1:
+            return res[0]  # Unwrap single-element tuple
+        return res
+
+    # Special handling for PartitionSpec: convert Dropped to None to preserve dimensions
+    assert isinstance(
+        spec, jax.sharding.PartitionSpec
+    ), f"Unexpected type: {type(spec)}"
+    processed = tuple(
+        None if isinstance(_ := rm_size1_axes(axis, mesh), Dropped) else _
+        for axis in spec
+    )
+    return jax.sharding.PartitionSpec(*processed)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,18 +24,25 @@ from jaxpp.array import (
     spmd_to_mpmd_reshard,
 )
 from jaxpp.core import mpmd_jit_by_yield, mpmd_jit_with_loop
-from jaxpp.jax_primitives import add_multi_p, collect_task_times_ms, gather_multi_p
+from jaxpp.jax_primitives import (
+    add_multi_p,
+    collect_task_times_ms,
+    gather_multi_p,
+    place_with_p,
+)
 from jaxpp.mesh import MpmdMesh
-from jaxpp.pipelining import pipeline_enter_stage
+from jaxpp.pipelining import mark_stage_end, pipeline_enter_stage
 from jaxpp.schedules import (
     BaseSchedule,
     DualPipeV,
     Eager1F1B,
     Interleaved1F1B,
+    KimiK2,
     Std1F1B,
     ZeroBubble,
 )
 from jaxpp.training import Add, Concat, Max, treduce, treduce_i
+from jaxpp.types import MpmdSharding
 
 
 def cross_mpmd_all_reduce(*args):
@@ -52,3 +59,7 @@ def cross_mpmd_stack(arrays, axis: int = 0):
 
     expanded = [jax.numpy.expand_dims(a, axis=axis) for a in arrays]
     return gather_multi_p.bind(*expanded, axis=axis)
+
+
+def place_with(val, with_val):
+    return place_with_p.bind(val, with_val)

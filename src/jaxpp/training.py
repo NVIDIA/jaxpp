@@ -46,7 +46,7 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     flat_scan_body, out_tree = jau.flatten_fun_nokwargs(fun, in_tree)
 
     scan_body_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(
-        flat_scan_body, tuple(jcore.get_aval(e) for e in flat_args)
+        flat_scan_body, tuple(jc.get_aval(e) for e in flat_args)
     )
 
     n_consts = len(consts)
@@ -114,7 +114,7 @@ class AddT:
     """Represents an element-wise addition operation."""
 
     def state(self, _: int, a: jax.ShapeDtypeStruct) -> jax.Array:
-        return jax.numpy.zeros(a.shape, dtype=a.dtype)
+        return jax.numpy.zeros_like(a)
 
     def update(self, l: jax.Array, r: jax.Array, _: int) -> jax.Array:
         return jax.lax.add(l, r)
@@ -132,7 +132,17 @@ class Concat:
     def state(self, n: int, a: jax.ShapeDtypeStruct) -> jax.Array:
         assert n > 0
         shape = a.shape[: self.axis] + (n,) + a.shape[self.axis :]
-        return jax.numpy.zeros(shape, dtype=a.dtype)
+        sharding = getattr(a, "sharding", None)
+        if sharding is not None:
+            assert isinstance(a.sharding, jax.sharding.NamedSharding)
+            spec = a.sharding.spec
+            new_spec = jax.sharding.PartitionSpec(
+                *(tuple(spec[: self.axis]) + (None,) + tuple(spec[self.axis :]))
+            )
+            sharding = a.sharding.update(spec=new_spec)
+            if jax.__version_info__ >= (0, 8, 0):
+                return jax.numpy.zeros_like(a, shape=shape, out_sharding=sharding)
+        return jax.numpy.zeros_like(a, shape=shape)
 
     def update(self, state: jax.Array, update: jax.Array, index: int) -> jax.Array:
         return jax.lax.dynamic_update_index_in_dim(state, update, index, axis=self.axis)
@@ -274,7 +284,18 @@ def treduce_i(
     """
     with log_elapsed_time("jaxpr/first_loop_tracing"), yield_scope():
         body_args = jcore.ShapedArray((), dtype=jax.numpy.int32)
-        body_jaxpr, loop_out_shapes = jax.make_jaxpr(fun, return_shape=True)(body_args)
+        flat_args, in_tree = jax.tree_util.tree_flatten((body_args,))
+        trace_debug_info = jau.debug_info(treduce_i.__name__, fun, (body_args,), {})
+        wrapped_fun = lu.wrap_init(fun, debug_info=trace_debug_info)
+        flat_fun, out_tree = jau.flatten_fun_nokwargs(wrapped_fun, in_tree)
+        body_jaxpr, out_avals, consts = pe.trace_to_jaxpr_dynamic(
+            flat_fun, tuple(flat_args)
+        )
+        body_jaxpr = jcore.ClosedJaxpr(body_jaxpr, consts)
+        loop_out_shapes = jax.tree_util.tree_unflatten(
+            out_tree(),
+            [jc.aval_to_shape_dtype_struct(o) for o in out_avals],
+        )
 
     # TODO: maybe use custom definition of `tree_broadcast` and
     #  improve error message if it cannot be broadcasted

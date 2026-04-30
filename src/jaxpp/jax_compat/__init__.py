@@ -13,14 +13,17 @@ import jax
 # core - re-export as module for namespace alias usage
 from jax._src import core  # noqa: F401
 
+# get_aval was removed in JAX 0.10.0; jax.typeof is the equivalent
+if jax.__version_info__ >= (0, 10, 0):
+    get_aval = jax.typeof
+else:
+    get_aval = core.get_aval
+
 # ad_checkpoint
 from jax._src.ad_checkpoint import remat_p
 
 # api_util
 from jax._src.api_util import _ensure_inbounds
-
-# custom_transpose
-from jax._src.custom_transpose import tree_broadcast
 
 # debugging
 from jax._src.debugging import debug_effect, inspect_sharding_p
@@ -84,10 +87,38 @@ else:
     from jax._src.pjit import jit_p
 
 # _infer_params was renamed to _trace_for_jit in JAX 0.8.3
-if jax.__version_info__ < (0, 8, 3) or jax.__version_info__ > (0, 9, 0):
+if jax.__version_info__ < (0, 8, 3) or jax.__version_info__ >= (0, 9, 1):
     from jax._src.pjit import _infer_params
 else:
     from jax._src.pjit import _trace_for_jit as _infer_params
+
+if jax.__version_info__ < (0, 10, 0):
+    from jax._src.custom_transpose import tree_broadcast
+else:
+    from jax.tree_util import tree_broadcast as _tree_broadcast_prefix
+    from jax.tree_util import tree_unflatten as _tree_unflatten
+
+    def tree_broadcast(full_treedef, tree, is_leaf=None):
+        full_tree = _tree_unflatten(full_treedef, [0] * full_treedef.num_leaves)
+        return _tree_broadcast_prefix(tree, full_tree, is_leaf=is_leaf)
+
+
+def aval_to_shape_dtype_struct(aval):
+    """Convert an abstract value to a ``jax.ShapeDtypeStruct``."""
+    # vma was renamed to manual_axis_type in JAX 0.10.0
+    if jax.__version_info__ >= (0, 10, 0):
+        return jax.ShapeDtypeStruct(
+            aval.shape,
+            aval.dtype,
+            sharding=aval.sharding,
+            manual_axis_type=aval.manual_axis_type,
+        )
+    return jax.ShapeDtypeStruct(
+        aval.shape,
+        aval.dtype,
+        sharding=aval.sharding,
+        vma=aval.vma,
+    )
 
 
 def set_mesh(mesh: jax.sharding.Mesh):
@@ -175,6 +206,7 @@ __all__ = [
     "close_jaxpr",
     "convert_constvars_jaxpr",
     # utilities
+    "aval_to_shape_dtype_struct",
     "map_dynamic_args",
     "set_mesh",
 ]

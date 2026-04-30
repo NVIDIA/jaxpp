@@ -32,10 +32,18 @@ ENV USER_GID=${USER_UID}
 
 RUN echo ${CUDA_BASE_IMAGE}
 
+# Purge the apt-installed NCCL and cuDNN that ship with the base CUDA image.
+# We use the venv's nvidia-nccl-cu12 / nvidia-cudnn-cu12 exclusively — keeping
+# both causes transformer_engine / cupy (DT_NEEDED libnccl.so.2 / libcudnn.so.9)
+# to resolve against the apt copy via ldconfig while JAX dlopens the venv copy,
+# mapping two different libs simultaneously and segfaulting inside NCCL.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive                                           \
         apt-get install --allow-change-held-packages -y                         \
         sudo locales nvtop wget git g++ vim libibverbs-dev                      \
+    && DEBIAN_FRONTEND=noninteractive                                           \
+        apt-get purge -y libnccl2 libnccl-dev                                   \
+                         libcudnn9-cuda-12 libcudnn9-dev-cuda-12                \
     && apt-get clean
 
 # Create the user
@@ -57,10 +65,27 @@ COPY --chown=$USER_UID:$USER_GID . jaxpp
 
 ENV VIRTUAL_ENV=/home/$USERNAME/dev-env
 ENV PATH=$VIRTUAL_ENV/bin:$PATH
+
+# Make the compiler / linker prefer the venv-provided NCCL and cuDNN headers
+# and libs so sdist builds (transformer-engine) are built against the same
+# versions they'll load at runtime. setup-env.sh creates libnccl.so as an
+# unversioned symlink (nvidia-nccl-cu12 only ships libnccl.so.2) so -lnccl
+# resolves here.
+ENV CPATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/include:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/include
+ENV LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/lib
+
 RUN bash jaxpp/scripts/setup-env.sh 'jaxpp[dev]'
-# cupy -> nccl from pip
-# te -> cudnn from pip
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/lib:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib
+
+# Register the venv's NCCL and cuDNN lib dirs with ldconfig so libnccl.so.2
+# and libcudnn.so.9 resolve unambiguously at import time, independent of
+# LD_LIBRARY_PATH (enroot/pyxis often strips it).
+USER root
+RUN printf '%s\n'                                                               \
+        "$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/lib"             \
+        "$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib"            \
+        > /etc/ld.so.conf.d/jaxpp-venv.conf                                     \
+    && ldconfig
+USER $USERNAME
 
 
 ENTRYPOINT ["/bin/bash", "--login", "-c"]

@@ -11,7 +11,7 @@ from jax.extend import core as jcore
 from jax.scipy.special import logsumexp
 
 from jaxpp import env_vars
-from jaxpp.api import Add, BaseSchedule, Concat, pipeline_enter_stage, treduce
+from jaxpp.api import Add, BaseSchedule, Concat, mark_stage_end, treduce
 from jaxpp.core import (
     cluster_jaxpr,
     infer_shardings2,
@@ -34,7 +34,7 @@ from jaxpp.schedules import (
 
 def named_computation(fun, name):
     def _fn(*args, **kwargs):
-        return pipeline_enter_stage(fun(*args, **kwargs), name)
+        return mark_stage_end(fun(*args, **kwargs), name)
 
     return _fn
 
@@ -249,6 +249,77 @@ def test_literal_via_constant_folding():
             replicated_sharding,
             skip_propagation=True,
         )
+
+
+def test_parallel_stage_merge_transpose_order():
+    mpmd_dim = 3
+    num_stages = 3
+    n_mubatches = 5
+    schedule = Eager1F1B(num_stages=num_stages)
+
+    key = jax.random.PRNGKey(7)
+    w1_key, w2_key, w3_key, x_key, y_key = jax.random.split(key, 5)
+    params = tuple(jax.random.uniform(k, (10, 10)) for k in (w1_key, w2_key, w3_key))
+    X = jax.random.uniform(x_key, (n_mubatches, 10))
+    Y = jax.random.uniform(y_key, (n_mubatches, 10))
+
+    stage_mesh = jax.sharding.Mesh(np.array(jax.devices()[:1]), ("devs",))
+    replicated_sharding = jax.NamedSharding(stage_mesh, jax.sharding.PartitionSpec())
+
+    def parallel_predict(params, x):
+        w1, w2, w3 = params
+        a = w1 @ x
+        b = w2 @ x
+        a = mark_stage_end(a, "a")
+        b = mark_stage_end(b, "b")
+        c = w3 @ (a + b)
+        c = mark_stage_end(c, "c")
+        return c
+
+    def parallel_loss(params, data):
+        x, y = data
+        preds = parallel_predict(params, x)
+        return jnp.mean((preds - y) ** 2)
+
+    parallel_grads = jax.value_and_grad(parallel_loss)
+
+    def accumulate_parallel_grads(params, X, Y, schedule):
+        losses, total_grads = treduce(
+            partial(parallel_grads, params), (X, Y), schedule=schedule
+        )
+        new_params = jax.tree_util.tree_map(
+            lambda p, g: p - step_size * g, params, total_grads
+        )
+        return ((losses, new_params), 5, X)
+
+    total_grads_fn = jax.jit(partial(accumulate_parallel_grads, schedule=schedule))
+    loop_cjaxpr = total_grads_fn.trace(params, X, Y).jaxpr
+
+    loop_eqn_idx = None
+    for eqn_idx, eqn in enumerate(loop_cjaxpr.eqns):
+        if eqn.primitive is dax_pscan_p:
+            loop_eqn_idx = eqn_idx
+            break
+
+    assert loop_eqn_idx is not None
+
+    scheduled_jaxpr = get_scheduled_jaxpr(
+        loop_cjaxpr,
+        mpmd_dim,
+        stage_mesh,
+        replicated_sharding,
+        skip_propagation=True,
+    )
+
+    MpmdMesh.mesh_stack.append(MpmdMeshLike(stage_mesh, mpmd_dim))
+    with cleanup(lambda: MpmdMesh.mesh_stack.pop()):
+        flat_args = jax.tree_util.tree_leaves((params, X, Y))
+        transformed_res = jcore.jaxpr_as_fun(scheduled_jaxpr)(*flat_args)
+        plain_res = jax.tree_util.tree_leaves(total_grads_fn(params, X, Y))
+        for plain_leaf, transformed_leaf in zip(plain_res, transformed_res):
+            np.testing.assert_allclose(
+                plain_leaf, transformed_leaf, rtol=1e-5, atol=1e-6
+            )
 
 
 def test_skip_propagation_false():

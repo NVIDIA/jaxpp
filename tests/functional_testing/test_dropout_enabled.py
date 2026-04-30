@@ -53,7 +53,7 @@ class DropoutEnabledModel(nn.Module):
                 # Set the dropout layer with a `rate` of 50%.
                 # When the `deterministic` flag is `True`, dropout is turned off.
                 x = nn.Dropout(rate=0.5, deterministic=not training)(x)
-        x = jaxpp.api.pipeline_enter_stage(x)
+        x = jaxpp.api.mark_stage_end(x)
         return x
 
     @staticmethod

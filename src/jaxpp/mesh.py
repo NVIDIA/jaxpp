@@ -105,7 +105,11 @@ class MpmdMesh:
     @cached_property
     def unstack(self) -> list[jax.sharding.Mesh]:
         return [
-            jax.sharding.Mesh(mpmd_group_devices, self.jax_mesh.axis_names)
+            jax.sharding.Mesh(
+                mpmd_group_devices,
+                self.jax_mesh.axis_names,
+                axis_types=self.jax_mesh.axis_types,
+            )
             for mpmd_group_devices in np.split(
                 self.jax_mesh.devices, self.mpmd_dim, self.mpmd_axis
             )
@@ -145,6 +149,7 @@ class MpmdMesh:
                 axis=self.mpmd_axis,
             ),
             self.jax_mesh.axis_names,
+            axis_types=self.jax_mesh.axis_types,
         )
 
     def lowering_mesh(self) -> jax.sharding.Mesh:
@@ -157,5 +162,6 @@ class MpmdMesh:
         jax_mesh = jax.sharding.Mesh(
             np.take(self.jax_mesh.devices, mpmd_indices, self.mpmd_axis),
             self.jax_mesh.axis_names,
+            axis_types=self.jax_mesh.axis_types,
         )
         return MpmdMesh(jax_mesh, self.mpmd_axis_name)

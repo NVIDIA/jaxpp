@@ -1,7 +1,7 @@
 # JaxPP
 
 JaxPP is a JAX library enabling Multiple-Program Multiple-Data (MPMD)
-pipeline parallelism through simple user annotations `pipeline_enter_stage(layer)`
+pipeline parallelism through simple user annotations `mark_stage_end(layer)`
 and decorators `@mpmd_jit_with_loop`.
 
 JaxPP automatically splits JAX computations into multiple SPMD modules that
@@ -13,7 +13,7 @@ JaxPP is under active development, and its APIs are currently unstable and subje
 
 ## Changelog
 
-* [Aug 19, 2025] Users must now add a final `pipeline_enter_stage` to mark the last
+* [Aug 19, 2025] Users must now add a final `mark_stage_end` to mark the last
   stage as well.
 
 # Contacts
@@ -65,7 +65,7 @@ class ManualStagesModel(nn.Module):
 
             # Mark that we are entering a new stage
             if (i + 1) % num_layers_per_stage == 0:
-                hidden_states = jaxpp.pipeline_enter_stage(hidden_states)
+                hidden_states = jaxpp.mark_stage_end(hidden_states)
                 stage_id += 1
 
         return hidden_states
