@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import enum
 import functools
 import itertools as it
@@ -22,7 +23,6 @@ from typing import Any, Iterable, Mapping, Sequence, TypeVar
 
 import jax
 import jax.extend.source_info_util as jsiu
-import jax.interpreters.partial_eval as pe
 import jax.numpy as jnp
 
 from jaxpp import jax_compat as jc
@@ -63,16 +63,35 @@ PartialEvalRule = Callable[[jcore.JaxprEqn, list[PartialValue]], PartialEvalRule
 partial_eval_custom_rules = OverwriteableVar(dict[jcore.Primitive, PartialEvalRule]())
 
 
+@dataclasses.dataclass(frozen=True)
+class _SeededCustomEqn:
+    partial_value: PartialValue
+    eqn: jcore.JaxprEqn
+
+
 def partial_eval_eqns(
-    eqns: list[jcore.JaxprEqn], env: dict[jcore.Var, PartialValue]
+    eqns: Sequence[jcore.JaxprEqn],
+    env: dict[jcore.Var, PartialValue],
+    demanded_outvars: Sequence[jcore.Atom] | None = None,
 ) -> tuple[list[jcore.JaxprEqn], list[jcore.JaxprEqn]]:
-    known_eqns = []
-    unknown_eqns = []
-    remaining_eqns = []
+    """Split equations with seeded partial-eval semantics.
+
+    This is a small local fork of JAX's ``partial_eval_jaxpr_custom`` idea, but
+    with a third provenance state:
+
+    * ``UNKNOWN``: depends on loop-carried values and must stay staged.
+    * ``KNOWN``: depends on a pscan const seed and is worth hoisting.
+    * ``TRIVIALLY_KNOWN``: loop-invariant but unseeded; stage/recompute it only
+      when demanded by the loop, and hoist it only when needed by seeded work.
+
+    ``demanded_outvars=None`` preserves the old equation-local API by treating
+    every non-trivial equation output as demanded.  ``partial_eval_jaxpr`` passes
+    the jaxpr outputs instead, which avoids hoisting dead seeded computations.
+    """
+    expanded_eqns = []
 
     custom_rules = partial_eval_custom_rules.value
-    eqns_to_results = dict[jcore.JaxprEqn, list[tuple[PartialValue, jcore.JaxprEqn]]]()
-    # Propagate partial value information through the equations.
+    # Propagate seeded/unknown provenance through the equations.
     for eqn in eqns:
         in_vals = [
             env[invar] if isinstance(invar, jcore.Var) else PartialValue.TRIVIALLY_KNOWN
@@ -81,49 +100,68 @@ def partial_eval_eqns(
 
         rule = custom_rules.get(eqn.primitive, pe_rule_default)
         results = rule(eqn, in_vals)
-        eqns_to_results[eqn] = results
 
         for ty, e in results:
+            # Effects must stay staged even if a custom rule marks outputs known.
+            if e.effects:
+                ty = PartialValue.UNKNOWN
+            expanded_eqns.append(_SeededCustomEqn(ty, e))
             env.update(zip(e.outvars, it.repeat(ty)))
 
-    # Resolve TRIVIALLY_KNOWN to either KNOWN or UNKNOWN.
-    for eqn in reversed(eqns):
-        results = eqns_to_results[eqn]
+    known_needed = set[jcore.Var]()
+    unknown_needed = set[jcore.Var]()
 
-        # Ignore ty from results intentionally as we want to propagate the partial value type
-        # of the outvars for the equation to the invars.
-        for _, e in results:
-            ty = env[e.outvars[0]]
-            assert all(
-                env[outvar] == ty for outvar in e.outvars
-            ), "Equation outvars have different partial value types"
-            if ty == PartialValue.UNKNOWN:
-                # UNKNOWN equations can have KNOWN invars and UNKNOWN invars.
-                for invar in [
-                    v
-                    for v in e.invars
-                    if isinstance(v, jcore.Var) and env[v] is not PartialValue.KNOWN
-                ]:
-                    env[invar] = PartialValue.UNKNOWN
-            elif ty == PartialValue.KNOWN:
-                # KNOWN equations can have only KNOWN invars.
-                for invar in nonlit(e.invars):
-                    env[invar] = PartialValue.KNOWN
+    if demanded_outvars is None:
+        for item in expanded_eqns:
+            eqn = item.eqn
+            if item.partial_value == PartialValue.KNOWN:
+                known_needed.update(nonlit(eqn.outvars))
+            elif item.partial_value == PartialValue.UNKNOWN:
+                unknown_needed.update(nonlit(eqn.outvars))
+    else:
+        for outvar in demanded_outvars:
+            if not isinstance(outvar, jcore.Var):
+                continue
+            ty = env[outvar]
+            if ty == PartialValue.KNOWN:
+                known_needed.add(outvar)
+            else:
+                # Keep unseeded loop-invariant outputs in the staged jaxpr rather
+                # than hoisting them merely because they are statically known.
+                unknown_needed.add(outvar)
 
-    for eqn in eqns:
-        ty = env[eqn.outvars[0]]
-        into = {
-            PartialValue.KNOWN: known_eqns,
-            PartialValue.UNKNOWN: unknown_eqns,
-            PartialValue.TRIVIALLY_KNOWN: remaining_eqns,
-        }[ty]
-        into.append(eqn)
+    known_eqns_rev = []
+    unknown_eqns_rev = []
 
-    assert len(known_eqns) + len(unknown_eqns) + len(remaining_eqns) == len(eqns)
+    for item in reversed(expanded_eqns):
+        eqn = item.eqn
+        ty = item.partial_value
+        outvars = nonlit(eqn.outvars)
+        needed_known = any(outvar in known_needed for outvar in outvars)
+        needed_unknown = any(outvar in unknown_needed for outvar in outvars)
+        if eqn.effects:
+            needed_unknown = True
 
-    # The eqns in remaining_eqns are not used by any other equation,
-    # so we can safely ignore them.
-    return known_eqns, unknown_eqns
+        if needed_known and ty == PartialValue.UNKNOWN:
+            # This should be unreachable for well-formed provenance, but staging
+            # is the conservative answer if a custom rule misclassifies demand.
+            needed_known = False
+            needed_unknown = True
+
+        if needed_known or (needed_unknown and ty == PartialValue.KNOWN):
+            known_eqns_rev.append(eqn)
+            known_needed.update(nonlit(eqn.invars))
+            continue
+
+        if needed_unknown:
+            unknown_eqns_rev.append(eqn)
+            for invar in nonlit(eqn.invars):
+                if env[invar] == PartialValue.KNOWN:
+                    known_needed.add(invar)
+                else:
+                    unknown_needed.add(invar)
+
+    return known_eqns_rev[::-1], unknown_eqns_rev[::-1]
 
 
 class KeyDefaultDict(defaultdict):
@@ -240,7 +278,7 @@ def inline_jaxpr(
     for outvar in jaxpr.outvars:
         invar_idx = None
         if not isinstance(outvar, jcore.Literal):
-            invar_idx = jaxpr_invars.get(invar_idx)
+            invar_idx = jaxpr_invars.get(outvar)
         outvar_forwards_invar.append(invar_idx)
 
     env = dict(zip(jaxpr.invars, consts + args, strict=True))
@@ -283,7 +321,9 @@ def inline_jaxpr(
 
 
 def partial_eval_jaxpr(
-    jaxpr: jcore.Jaxpr, known_invars: Iterable[bool], memory_scarce: bool = False
+    jaxpr: jcore.Jaxpr,
+    known_invars: Iterable[PartialValue],
+    memory_scarce: bool = False,
 ) -> tuple[
     jcore.Jaxpr | None,
     jcore.Jaxpr | None,
@@ -291,12 +331,13 @@ def partial_eval_jaxpr(
     list[bool],
     list[jcore.AbstractValue],
 ]:
+    jaxpr = outvar_normalization(jaxpr)
+    in_vals = list(known_invars)
+    known_invars = [v is not PartialValue.UNKNOWN for v in in_vals]
     known_eqns, unknown_eqns = partial_eval_eqns(
         jaxpr.eqns,
-        {
-            invar: PartialValue.KNOWN if known else PartialValue.UNKNOWN
-            for invar, known in zip(jaxpr.invars, known_invars)
-        },
+        {invar: val for invar, val in zip(jaxpr.invars, in_vals, strict=True)},
+        demanded_outvars=jaxpr.outvars,
     )
     if memory_scarce:
         new_known_eqns = list[jcore.JaxprEqn]()
@@ -457,6 +498,10 @@ def pe_rule_place_with(eqn: jcore.JaxprEqn, in_vals: list[PartialValue]):
 
 
 def pe_rule_default(eqn: jcore.JaxprEqn, in_vals: list[PartialValue]):
+    if len(eqn.effects) > 0:
+        # Effectful equations, including zero-output debug/inspect callbacks, must
+        # stay in the loop so partial evaluation does not change effect execution.
+        return [(PartialValue.UNKNOWN, eqn)]
     if all(v == PartialValue.TRIVIALLY_KNOWN for v in in_vals):
         return [(PartialValue.TRIVIALLY_KNOWN, eqn)]
     if any(v == PartialValue.UNKNOWN for v in in_vals):
@@ -499,9 +544,9 @@ def pe_rule_remat(
     eqn: jcore.JaxprEqn, in_vals: list[PartialValue]
 ) -> PartialEvalRuleResult:
     jaxpr: jcore.Jaxpr = eqn.params["jaxpr"]
-    in_known = [v == PartialValue.KNOWN for v in in_vals]
+    in_known = [v is not PartialValue.UNKNOWN for v in in_vals]
     known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, residual_avals = (
-        partial_eval_jaxpr(jaxpr, in_known)
+        partial_eval_jaxpr(jaxpr, in_vals)
     )
 
     if known_jaxpr is None:
@@ -533,7 +578,9 @@ def partial_eval_loop(
 ):
     assert primitive is dax_pscan_p
     n_consts = params["n_consts"]
-    in_known = (True,) * n_consts + (False,) * (len(tracers) - n_consts)
+    in_vals = (PartialValue.KNOWN,) * n_consts + (PartialValue.UNKNOWN,) * (
+        len(tracers) - n_consts
+    )
 
     rules = {
         jax.lax.convert_element_type_p: pe_rule_convert,
@@ -544,7 +591,7 @@ def partial_eval_loop(
 
     with partial_eval_custom_rules.set(to=rules):
         (known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, res_avals) = (
-            partial_eval_jaxpr(params["jaxpr"].jaxpr, in_known, memory_scarce=True)
+            partial_eval_jaxpr(params["jaxpr"].jaxpr, in_vals, memory_scarce=True)
         )
         if not all(out_is_unknown):
             raise NotImplementedError()  # FIXME
@@ -630,12 +677,10 @@ def hoist_and_cse_pscan_invariant_equations(
             *(trace.new_arg(a.aval, source_info=jsiu.current()) for a in jaxpr.invars),
         )
 
-    additional_args = ()
-    if jax.__version_info__ > (0, 6, 1):
-        source_info = jsiu.current()
-        additional_args = (source_info,)
-        if jax.__version_info__ >= (0, 8, 0):
-            out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
+    source_info = jsiu.current()
+    additional_args = (source_info,)
+    if jax.__version_info__ >= (0, 8, 0):
+        out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
 
     new_jaxpr, consts, *_ = trace.to_jaxpr(
         out_tracers, jaxpr.debug_info, *additional_args

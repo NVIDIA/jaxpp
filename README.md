@@ -116,12 +116,12 @@ JaxPP provides Docker containers for development and testing. The build process 
 
 ## Building the Base Image
 
-The base image contains all the core dependencies and is built using CUDA 12.8:
+The base image contains all the core dependencies and is built using CUDA 13.2:
 
 ```bash
 docker build --force-rm=true \
   -f scripts/docker/Dockerfile.base \
-  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04 \
+  --build-arg CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:13.2.1-devel-ubuntu24.04 \
   -t jaxpp-base .
 ```
 

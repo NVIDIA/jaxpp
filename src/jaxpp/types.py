@@ -43,6 +43,7 @@ class MpmdSharding:
     # NOTE: It's always converted to a frozenset
     mesh_ids: set[int]
     spec: PartitionSpec
+    memory_kind: str | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "mesh_ids", frozenset(self.mesh_ids))
@@ -63,7 +64,10 @@ class MpmdSharding:
             and the partition spec from this MpmdSharding.
         """
         mesh = self.mpmd_mesh.mpmd_submesh(list(self.mesh_ids)).jax_mesh
-        return NamedSharding(mesh, self.spec)
+        sharding = NamedSharding(mesh, self.spec)
+        if self.memory_kind is not None:
+            sharding = sharding.with_memory_kind(self.memory_kind)
+        return sharding
 
 
 UID = ScalarUid

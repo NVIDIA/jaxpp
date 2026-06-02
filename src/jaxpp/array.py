@@ -167,7 +167,11 @@ class MpmdArray:
 
     @property
     def _mpmd_local_sharding(self) -> jax.sharding.NamedSharding:
-        return jax.sharding.NamedSharding(self._mpmd_mesh.lowering_mesh(), self.spec)
+        return update_named_sharding(
+            self._sharding,
+            mesh=self._mpmd_mesh.lowering_mesh(),
+            spec=self.spec,
+        )
 
     def __repr__(self):
         return (
@@ -340,9 +344,10 @@ def _spmd_to_mpmd_reshard(
 
             _arr = jax.make_array_from_single_device_arrays(
                 _.shape,
-                jax.sharding.NamedSharding(
-                    mpmd_mesh.mpmd_submesh(list(dsh.mesh_ids)).jax_mesh,
-                    _.sharding.spec,
+                update_named_sharding(
+                    dsh.sharding,
+                    mesh=mpmd_mesh.mpmd_submesh(list(dsh.mesh_ids)).jax_mesh,
+                    spec=_.sharding.spec,
                 ),
                 shards,
             )
@@ -353,10 +358,13 @@ def _spmd_to_mpmd_reshard(
     _res = []
     for arr, dsh in zip(res, dist_shardings, strict=True):
         mesh_ids = dsh.mesh_ids
-        # MpmdSharding.__post_init__ canonicalizes the spec by filtering out
-        # the mpmd axis, so we can just use dsh.spec directly
+        # Preserve the target memory kind while letting MpmdSharding
+        # canonicalize the spec by filtering out the MPMD axis.
         mpmd_sharding = MpmdSharding(
-            mpmd_mesh=dsh.mpmd_mesh, mesh_ids=dsh.mesh_ids, spec=dsh.spec
+            mpmd_mesh=dsh.mpmd_mesh,
+            mesh_ids=dsh.mesh_ids,
+            spec=dsh.spec,
+            memory_kind=dsh.memory_kind,
         )
 
         if mpmd_mesh.my_mpmd_axis_index not in mesh_ids:
@@ -372,8 +380,10 @@ def _spmd_to_mpmd_reshard(
         else:
             new_arr = jax.make_array_from_single_device_arrays(
                 arr.shape,
-                jax.sharding.NamedSharding(
-                    mpmd_mesh.my_mpmd_group_mesh, arr.sharding.spec
+                update_named_sharding(
+                    dsh.sharding,
+                    mesh=mpmd_mesh.my_mpmd_group_mesh,
+                    spec=arr.sharding.spec,
                 ),
                 [s.data for s in arr.addressable_shards],
             )
@@ -466,7 +476,12 @@ def spmd_to_mpmd_reshard(
     # For unused arrays (len(dsh.mesh_ids) == 0), we default their placement
     # to mpmd rank 0
     mpmd_shardings_flat = [
-        MpmdSharding(mpmd_mesh=dsh.mpmd_mesh, mesh_ids={0}, spec=dsh.spec)
+        MpmdSharding(
+            mpmd_mesh=dsh.mpmd_mesh,
+            mesh_ids={0},
+            spec=dsh.spec,
+            memory_kind=dsh.memory_kind,
+        )
         if len(dsh.mesh_ids) == 0
         else dsh
         for dsh in mpmd_shardings_flat
@@ -575,9 +590,10 @@ def logically_stacked(
         spec = filter_axes(array.sharding.spec, {mesh_axis_name})
 
     expanded_array = jax.numpy.expand_dims(array, array_axis)
-    in_sharding = jax.sharding.NamedSharding(
-        comm_mesh,
-        jax.sharding.PartitionSpec(
+    in_sharding = update_named_sharding(
+        array.sharding,
+        mesh=comm_mesh,
+        spec=jax.sharding.PartitionSpec(
             *spec[:array_axis], mesh_axis_name, *spec[array_axis:]
         ),
     )

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import contextlib
-import functools
 import logging
 import os
 import time
@@ -32,12 +31,13 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class OverwriteableVar(Generic[T]):
-    MISSING = object()
+_MISSING = object()
 
+
+class OverwriteableVar(Generic[T]):
     def __init__(self, default_value: T | None = None):
         self.default_value = default_value
-        self._set_value = OverwriteableVar.MISSING
+        self._set_value: object = _MISSING
 
     def __bool__(self):
         raise ValueError("Variable used as truthy value")
@@ -52,35 +52,31 @@ class OverwriteableVar(Generic[T]):
             self._set_value = prev_value
 
     @property
-    def value(self):
-        if self._set_value is not OverwriteableVar.MISSING:
-            return self._set_value
-        assert self.default_value
+    def value(self) -> T:
+        if self._set_value is not _MISSING:
+            return self._set_value  # type: ignore[return-value]
+        return self._read_value()
+
+    def _read_value(self) -> T:
+        assert self.default_value is not None
         return self.default_value
 
 
 class EnvVar(ABC, Generic[T], OverwriteableVar[T]):
     def __init__(self, env_key: str, default_value: T | None = None):
         super().__init__(default_value)
-        self.default_value = default_value
         self.env_key = env_key
 
-    @functools.cached_property
-    def value(self) -> T:
-        if self._set_value is not OverwriteableVar.MISSING:
-            return self._set_value
-
-        set_v = os.getenv(self.env_key)
-
-        if set_v is None:
+    def _read_value(self) -> T:
+        raw = os.getenv(self.env_key)
+        if raw is None:
             assert self.default_value is not None
             return self.default_value
 
-        parsed_v = self.parse(set_v)
-        if parsed_v is None:
-            raise ValueError(f"Unsupported value {self.env_key}={set_v}")
-
-        return parsed_v
+        parsed = self.parse(raw)
+        if parsed is None:
+            raise ValueError(f"Unsupported value {self.env_key}={raw}")
+        return parsed
 
     @abstractmethod
     def parse(self, value: str) -> T | None: ...
@@ -212,12 +208,18 @@ def update_named_sharding(
     s: jax.sharding.NamedSharding,
     spec: jax.sharding.PartitionSpec | _Missing = _missing,
     mesh: jax.sharding.Mesh | jax.sharding.AbstractMesh | _Missing = _missing,
+    memory_kind: str | None | _Missing = _missing,
 ) -> jax.sharding.NamedSharding:
     if isinstance(spec, _Missing):
         spec = s.spec
     if isinstance(mesh, _Missing):
         mesh = s.mesh
-    return jax.sharding.NamedSharding(mesh, spec)
+    if isinstance(memory_kind, _Missing):
+        memory_kind = s.memory_kind
+    new_sharding = jax.sharding.NamedSharding(mesh, spec)
+    if memory_kind is not None:
+        new_sharding = new_sharding.with_memory_kind(memory_kind)
+    return new_sharding
 
 
 def updated_named_sharding_mesh(
@@ -233,7 +235,7 @@ def updated_named_sharding_mesh(
         assert isinstance(s, jax.sharding.NamedSharding)
         new_sharding = s
         if not isinstance(s.mesh, jax.sharding.AbstractMesh):
-            new_sharding = jax.sharding.NamedSharding(new_mesh, s.spec)
+            new_sharding = update_named_sharding(s, mesh=new_mesh)
         res.append(new_sharding)
     return res
 
@@ -294,8 +296,8 @@ def filter_axes(
         Same type as input with specified axes filtered out.
     """
     if isinstance(sharding_or_pspec, jax.sharding.NamedSharding):
-        return jax.sharding.NamedSharding(
-            sharding_or_pspec.mesh, filter_axes(sharding_or_pspec.spec, axes)
+        return update_named_sharding(
+            sharding_or_pspec, spec=filter_axes(sharding_or_pspec.spec, axes)
         )
 
     assert isinstance(sharding_or_pspec, jax.sharding.PartitionSpec)

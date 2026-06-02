@@ -70,7 +70,7 @@ def get_distributed_client() -> DistributedRuntimeClient:
 
 
 def get_nccl_id(devs: UniqueDevices):
-    TIMEOUT = 240_000  # FIXME: make it an argument
+    TIMEOUT = env_vars.jaxpp_client_timeout.value
     if devs.leader.process_index == jax.process_index():
         nccl_id = _lazy.nccl.get_unique_id()
         get_distributed_client().key_value_set_bytes(devs.key, pickle.dumps(nccl_id))

@@ -66,6 +66,8 @@ def grads(params, data):
 
 
 step_size = 0.01
+init_minval = -0.1
+init_maxval = 0.1
 
 
 def accumulate_grads(params, X, Y, schedule, skip_apply_grads: bool):
@@ -81,11 +83,19 @@ def accumulate_grads(params, X, Y, schedule, skip_apply_grads: bool):
 
 def get_context(num_stages, n_mubatches):
     key = jax.random.PRNGKey(42)
-    X = jax.random.uniform(key, (n_mubatches, 4, 10))
-    Y = jax.random.uniform(key, (n_mubatches, 4, 10))
+    X = jax.random.uniform(
+        key, (n_mubatches, 4, 10), minval=init_minval, maxval=init_maxval
+    )
+    Y = jax.random.uniform(
+        key, (n_mubatches, 4, 10), minval=init_minval, maxval=init_maxval
+    )
     keys = jax.random.split(key, num_stages)
     params = [
-        (jax.random.uniform(k, (10, 10)), jax.random.uniform(k, (10,))) for k in keys
+        (
+            jax.random.uniform(k, (10, 10), minval=init_minval, maxval=init_maxval),
+            jax.random.uniform(k, (10,), minval=init_minval, maxval=init_maxval),
+        )
+        for k in keys
     ]
 
     stage_mesh = jax.sharding.Mesh(np.array(jax.devices()[:1]), ("devs",))
@@ -259,9 +269,16 @@ def test_parallel_stage_merge_transpose_order():
 
     key = jax.random.PRNGKey(7)
     w1_key, w2_key, w3_key, x_key, y_key = jax.random.split(key, 5)
-    params = tuple(jax.random.uniform(k, (10, 10)) for k in (w1_key, w2_key, w3_key))
-    X = jax.random.uniform(x_key, (n_mubatches, 10))
-    Y = jax.random.uniform(y_key, (n_mubatches, 10))
+    params = tuple(
+        jax.random.uniform(k, (10, 10), minval=init_minval, maxval=init_maxval)
+        for k in (w1_key, w2_key, w3_key)
+    )
+    X = jax.random.uniform(
+        x_key, (n_mubatches, 10), minval=init_minval, maxval=init_maxval
+    )
+    Y = jax.random.uniform(
+        y_key, (n_mubatches, 10), minval=init_minval, maxval=init_maxval
+    )
 
     stage_mesh = jax.sharding.Mesh(np.array(jax.devices()[:1]), ("devs",))
     replicated_sharding = jax.NamedSharding(stage_mesh, jax.sharding.PartitionSpec())

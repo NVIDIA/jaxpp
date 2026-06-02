@@ -13,8 +13,9 @@ import jax
 # core - re-export as module for namespace alias usage
 from jax._src import core  # noqa: F401
 
-# get_aval was removed in JAX 0.10.0; jax.typeof is the equivalent
-if jax.__version_info__ >= (0, 10, 0):
+# get_aval was removed in JAX 0.10.0; jax.typeof is the equivalent.
+# Use (0, 10) — pre-release versions like 0.10.1rc0 parse to (0, 10).
+if jax.__version_info__ >= (0, 10):
     get_aval = jax.typeof
 else:
     get_aval = core.get_aval
@@ -92,7 +93,7 @@ if jax.__version_info__ < (0, 8, 3) or jax.__version_info__ >= (0, 9, 1):
 else:
     from jax._src.pjit import _trace_for_jit as _infer_params
 
-if jax.__version_info__ < (0, 10, 0):
+if jax.__version_info__ < (0, 10):
     from jax._src.custom_transpose import tree_broadcast
 else:
     from jax.tree_util import tree_broadcast as _tree_broadcast_prefix
@@ -106,7 +107,7 @@ else:
 def aval_to_shape_dtype_struct(aval):
     """Convert an abstract value to a ``jax.ShapeDtypeStruct``."""
     # vma was renamed to manual_axis_type in JAX 0.10.0
-    if jax.__version_info__ >= (0, 10, 0):
+    if jax.__version_info__ >= (0, 10):
         return jax.ShapeDtypeStruct(
             aval.shape,
             aval.dtype,

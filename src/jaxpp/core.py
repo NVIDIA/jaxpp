@@ -100,6 +100,7 @@ from jaxpp.utils import (
     hbytes,
     log_elapsed_time,
     rm_size1_axes,
+    update_named_sharding,
     updated_named_sharding_mesh,
 )
 
@@ -398,7 +399,6 @@ def mpmd_unzip_forward(
         last = eqn_idx
         if eqns[0].primitive in cross_mpmd_primitives:
             [cross_mpmd_eqn, *eqns] = eqns
-            eqn_idx += 1
 
         tmp = jaxpr_from_eqns(eqns, set(var_placement.keys()))
 
@@ -676,12 +676,41 @@ def add_jaxpr_parameters(
     )
 
 
+def _updated_named_sharding_mesh_tuple(shardings, new_mesh):
+    return tuple(updated_named_sharding_mesh(shardings, new_mesh))
+
+
+def _bind_task_eqn_to_mesh(
+    eqn: jcore.JaxprEqn, new_mesh: jax.sharding.Mesh
+) -> jcore.JaxprEqn:
+    call_jaxpr = replace_captured_meshes(eqn.params["call_jaxpr"], new_mesh)
+    return eqn.replace(
+        params=eqn.params
+        | {
+            "call_jaxpr": call_jaxpr,
+            # TODO(sharding_store): make {in,out}_shardings Stores to tuples in
+            # `infer_shardings`
+            "in_shardings": _updated_named_sharding_mesh_tuple(
+                eqn.params["in_shardings"], new_mesh
+            ),
+            "out_shardings": _updated_named_sharding_mesh_tuple(
+                eqn.params["out_shardings"], new_mesh
+            ),
+        },
+        effects=call_jaxpr.effects,
+    )
+
+
 @jc.weakref_lru_cache
 def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> AnyJaxpr:
     jaxpr = cjaxpr.jaxpr if isinstance(cjaxpr, jcore.ClosedJaxpr) else cjaxpr
 
     new_eqns = []
     for eqn in jaxpr.eqns:
+        if eqn.primitive is task_p:
+            new_eqns.append(_bind_task_eqn_to_mesh(eqn, new_mesh))
+            continue
+
         param_update = {}
         if eqn.primitive is jax.lax.sharding_constraint_p:
             param_update = {
@@ -691,10 +720,10 @@ def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> An
             }
         elif eqn.primitive is jc.jit_p:
             param_update = {
-                "in_shardings": updated_named_sharding_mesh(
+                "in_shardings": _updated_named_sharding_mesh_tuple(
                     eqn.params["in_shardings"], new_mesh
                 ),
-                "out_shardings": updated_named_sharding_mesh(
+                "out_shardings": _updated_named_sharding_mesh_tuple(
                     eqn.params["out_shardings"], new_mesh
                 ),
             }
@@ -705,7 +734,9 @@ def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> An
             param_update = {"mesh": new_mesh}
         elif eqn.primitive is jax.lax.device_put_p:
             param_update = {
-                "devices": updated_named_sharding_mesh(eqn.params["devices"], new_mesh)
+                "devices": _updated_named_sharding_mesh_tuple(
+                    eqn.params["devices"], new_mesh
+                )
             }
 
         for k, v in eqn.params.items():
@@ -2251,6 +2282,13 @@ def add_send_dones(
 
 _fused_open_jaxprs = weakref.WeakValueDictionary[Hashable, jcore.Jaxpr]()
 _fused_closed_jaxprs = weakref.WeakValueDictionary[Hashable, jcore.ClosedJaxpr]()
+_TASK_METADATA_PARAM_KEYS = {
+    "call_counter",
+    "latency",
+    "mpmd_idx",
+    "task_info",
+    "task_name",
+}
 
 
 def _fused_jaxpr_cache_key(
@@ -2258,6 +2296,8 @@ def _fused_jaxpr_cache_key(
     invars: list[jcore.Var],
     outvars: list[jcore.Atom],
     exclude_param_keys: set[str] | None = None,
+    *,
+    constvars: Sequence[jcore.Var] = (),
 ) -> Hashable:
     if exclude_param_keys is None:
         exclude_param_keys = set()
@@ -2288,9 +2328,10 @@ def _fused_jaxpr_cache_key(
             )
         )
 
+    jaxpr_constvars_key = tuple(_atom_id(v) for v in constvars)
     jaxpr_invars_key = tuple(_atom_id(v) for v in invars)
     jaxpr_outvars_key = tuple(_atom_id(v) for v in outvars)
-    return (jaxpr_invars_key, tuple(eqn_keys), jaxpr_outvars_key)
+    return (jaxpr_constvars_key, jaxpr_invars_key, tuple(eqn_keys), jaxpr_outvars_key)
 
 
 @overload
@@ -2301,6 +2342,8 @@ def _get_fused_jaxpr_cached(
     exclude_param_keys: set[str] | None = None,
     *,
     want_closed: Literal[False],
+    constvars: Sequence[jcore.Var] = (),
+    debug_info=None,
 ) -> jcore.Jaxpr: ...
 
 
@@ -2312,6 +2355,8 @@ def _get_fused_jaxpr_cached(
     exclude_param_keys: set[str] | None = None,
     *,
     want_closed: Literal[True],
+    constvars: Sequence[jcore.Var] = (),
+    debug_info=None,
 ) -> jcore.ClosedJaxpr: ...
 
 
@@ -2322,8 +2367,16 @@ def _get_fused_jaxpr_cached(
     exclude_param_keys: set[str] | None = None,
     *,
     want_closed: bool,
+    constvars: Sequence[jcore.Var] = (),
+    debug_info=None,
 ) -> jcore.Jaxpr | jcore.ClosedJaxpr:
-    cache_key = _fused_jaxpr_cache_key(group_eqns, invars, outvars, exclude_param_keys)
+    cache_key = _fused_jaxpr_cache_key(
+        group_eqns,
+        invars,
+        outvars,
+        exclude_param_keys,
+        constvars=constvars,
+    )
 
     open_jaxpr = _fused_open_jaxprs.get(cache_key)
     closed_jaxpr = _fused_closed_jaxprs.get(cache_key)
@@ -2334,11 +2387,12 @@ def _get_fused_jaxpr_cached(
 
     if open_jaxpr is None:
         open_jaxpr = jcore.Jaxpr(
-            constvars=(),
+            constvars=constvars,
             invars=invars,
             outvars=outvars,
             eqns=group_eqns,
             effects=jcore.join_effects(*(eqn.effects for eqn in group_eqns)),
+            debug_info=debug_info,
         )
         _fused_open_jaxprs[cache_key] = open_jaxpr
 
@@ -2351,7 +2405,10 @@ def _get_fused_jaxpr_cached(
     return closed_jaxpr
 
 
-def _deduplicate_jaxpr_params(cjaxpr: AnyJaxpr) -> AnyJaxpr:
+def _canonicalize_jaxpr(
+    cjaxpr: AnyJaxpr,
+    exclude_param_keys: set[str] | None = None,
+) -> AnyJaxpr:
     """Bottom-up deduplication of Jaxpr/ClosedJaxpr-typed params.
 
     For each equation, recursively normalizes any jaxpr-typed params by
@@ -2372,7 +2429,7 @@ def _deduplicate_jaxpr_params(cjaxpr: AnyJaxpr) -> AnyJaxpr:
         updated_params = {}
         for k, v in eqn.params.items():
             if isinstance(v, (jcore.ClosedJaxpr, jcore.Jaxpr)):
-                deduped = _deduplicate_jaxpr_params(v)
+                deduped = _canonicalize_jaxpr(v, exclude_param_keys)
                 if deduped is not v:
                     updated_params[k] = deduped
 
@@ -2383,62 +2440,62 @@ def _deduplicate_jaxpr_params(cjaxpr: AnyJaxpr) -> AnyJaxpr:
 
     if isinstance(cjaxpr, jcore.ClosedJaxpr):
         return _get_fused_jaxpr_cached(
-            new_eqns, jaxpr.invars, jaxpr.outvars, want_closed=True
+            new_eqns,
+            jaxpr.invars,
+            jaxpr.outvars,
+            exclude_param_keys,
+            want_closed=True,
+            constvars=jaxpr.constvars,
+            debug_info=jaxpr.debug_info,
         )
 
     return _get_fused_jaxpr_cached(
-        new_eqns, jaxpr.invars, jaxpr.outvars, want_closed=False
+        new_eqns,
+        jaxpr.invars,
+        jaxpr.outvars,
+        exclude_param_keys,
+        want_closed=False,
+        constvars=jaxpr.constvars,
+        debug_info=jaxpr.debug_info,
     )
 
 
-def deduplicate_task_jaxprs_in_loop(
+def deduplicate_task_jaxprs(
     closed_jaxpr: jcore.ClosedJaxpr,
 ) -> jcore.ClosedJaxpr:
-    """Deduplicate call_jaxpr of task_p equations inside the loop body.
+    """Deduplicate call_jaxpr of task_p equations.
 
     Ensures structurally equivalent tasks (e.g. fwd_1 and fwd_2) share
     the same call_jaxpr Python object, so that the identity-based cache
     in fuse_groups / _get_fused_jaxpr_cached produces hits after unrolling.
     """
-    jaxpr = closed_jaxpr.jaxpr
-    new_outer_eqns = list(jaxpr.eqns)
     changed = False
+    new_eqns = []
+    for eqn in closed_jaxpr.eqns:
+        params_update = {}
+        if eqn.primitive is task_p:
+            call_jaxpr = eqn.params["call_jaxpr"]
+            assert isinstance(call_jaxpr, jcore.ClosedJaxpr)
+            deduped = _canonicalize_jaxpr(call_jaxpr, _TASK_METADATA_PARAM_KEYS)
+            if deduped is not call_jaxpr:
+                params_update["call_jaxpr"] = deduped
+        elif eqn.primitive is dax_pscan_p:
+            loop_jaxpr = eqn.params["jaxpr"]
+            deduped = deduplicate_task_jaxprs(loop_jaxpr)
+            if deduped is not loop_jaxpr:
+                params_update["jaxpr"] = deduped
 
-    for i, eqn in enumerate(jaxpr.eqns):
-        if eqn.primitive is not dax_pscan_p:
-            continue
-
-        loop_cjaxpr: jcore.ClosedJaxpr = eqn.params["jaxpr"]
-        loop_jaxpr: jcore.Jaxpr = loop_cjaxpr.jaxpr
-
-        new_loop_eqns = []
-        loop_changed = False
-        for loop_eqn in loop_jaxpr.eqns:
-            if loop_eqn.primitive is task_p:
-                call_jaxpr = loop_eqn.params["call_jaxpr"]
-                assert isinstance(call_jaxpr, jcore.ClosedJaxpr)
-                deduped = _deduplicate_jaxpr_params(call_jaxpr)
-                if deduped is not call_jaxpr:
-                    loop_eqn = loop_eqn.replace(
-                        params=loop_eqn.params | {"call_jaxpr": deduped}
-                    )
-                    loop_changed = True
-            new_loop_eqns.append(loop_eqn)
-
-        if loop_changed:
-            new_outer_eqns[i] = eqn.replace(
-                params={
-                    **eqn.params,
-                    "jaxpr": loop_cjaxpr.replace(
-                        jaxpr=loop_jaxpr.replace(eqns=new_loop_eqns)
-                    ),
-                }
-            )
+        if len(params_update) > 0:
+            eqn = eqn.replace(params=eqn.params | params_update)
             changed = True
+        new_eqns.append(eqn)
 
     if not changed:
         return closed_jaxpr
-    return closed_jaxpr.replace(jaxpr=jaxpr.replace(eqns=new_outer_eqns))
+    return closed_jaxpr.replace(jaxpr=closed_jaxpr.jaxpr.replace(eqns=new_eqns))
+
+
+deduplicate_task_jaxprs_in_loop = deduplicate_task_jaxprs
 
 
 def fuse_groups(jaxpr: jcore.Jaxpr, groups: list[list[int]]):
@@ -2484,12 +2541,11 @@ def fuse_groups(jaxpr: jcore.Jaxpr, groups: list[list[int]]):
                     ]
                 )
 
-        _task_exclude_keys = {"call_counter", "task_name", "task_info", "mpmd_idx"}
         fused_task_jaxpr = _get_fused_jaxpr_cached(
             group_eqns,
             invars,
             outvars,
-            exclude_param_keys=_task_exclude_keys,
+            exclude_param_keys=_TASK_METADATA_PARAM_KEYS,
             want_closed=True,
         )
 
@@ -2499,10 +2555,11 @@ def fuse_groups(jaxpr: jcore.Jaxpr, groups: list[list[int]]):
                 outvars=outvars,
                 task_jaxpr=fused_task_jaxpr,
                 mpmd_idx=mpmd_idx,
-                in_shardings=in_shardings,
-                out_shardings=out_shardings,
-                donate_invars=donate_invars,
-                task_name=f"fused_{'_'.join(e.params['task_name'] for e in group_eqns)}",
+                in_shardings=tuple(in_shardings),
+                out_shardings=tuple(out_shardings),
+                donate_invars=tuple(donate_invars),
+                task_name="fused_"
+                + "_".join(e.params["task_name"] for e in group_eqns),
                 task_info=None,
                 latency=sum(e.params["latency"] for e in group_eqns),
             )
@@ -2998,13 +3055,13 @@ def infer_shardings(
                     "xla_backend_optimization_level": 0,
                     "xla_gpu_enable_triton_gemm": False,
                     "xla_gpu_autotune_level": 0,
-                    "xla_gpu_enable_split_k_autotuning": False,
                 }
                 if jax.__version_info__ > (0, 7, 1):
                     compiler_options["xla_gpu_experimental_enable_fusion_autotuner"] = (
                         False
                     )
-                if jax.__version_info__ < (0, 10, 0):
+                if jax.__version_info__ < (0, 10):
+                    compiler_options["xla_gpu_enable_split_k_autotuning"] = False
                     compiler_options["xla_gpu_enable_reduction_epilogue_fusion"] = False
             else:
                 compiler_options = None
@@ -3188,9 +3245,9 @@ class TraceableFunction:
                     return aval
 
                 return aval.update(
-                    sharding=jax.sharding.NamedSharding(
-                        self.mpmd_mesh.lowering_mesh().abstract_mesh,
-                        aval.sharding.spec,
+                    sharding=update_named_sharding(
+                        aval.sharding,
+                        mesh=self.mpmd_mesh.lowering_mesh().abstract_mesh,
                     )
                 )
 
@@ -3263,26 +3320,21 @@ def bind_meshes(cjaxpr: jcore.ClosedJaxpr, mpmd_mesh: MpmdMesh) -> jcore.ClosedJ
     new_eqns = []
     for eqn in cjaxpr.eqns:
         if eqn.primitive is task_p:
-            call_jaxpr = eqn.params["call_jaxpr"]
             new_mesh = mpmd_mesh.unstack[eqn.params["mpmd_idx"]]
-            param_update = {
-                "call_jaxpr": replace_captured_meshes(call_jaxpr, new_mesh=new_mesh),
-                # TODO(sharding_store): make {in,out}_shardings Stores to a list in
-                # `infer_shardings`
-                "in_shardings": updated_named_sharding_mesh(
-                    eqn.params["in_shardings"], new_mesh=new_mesh
-                ),
-                "out_shardings": updated_named_sharding_mesh(
-                    list(eqn.params["out_shardings"]), new_mesh=new_mesh
-                ),
-            }
-            new_eqns.append(eqn.replace(params=eqn.params | param_update))
+            new_eqns.append(_bind_task_eqn_to_mesh(eqn, new_mesh))
+        elif eqn.primitive is dax_pscan_p:
+            loop_cjaxpr = bind_meshes(eqn.params["jaxpr"], mpmd_mesh)
+            new_eqns.append(
+                eqn.replace(
+                    params=eqn.params | {"jaxpr": loop_cjaxpr},
+                    effects=loop_cjaxpr.effects,
+                )
+            )
         elif eqn.primitive is transfer_p:
-            new_mesh = mpmd_mesh.unstack[eqn.params["src_mpmd_idx"]]
             param_update = {
-                "src_shardings": updated_named_sharding_mesh(
+                "src_shardings": _updated_named_sharding_mesh_tuple(
                     eqn.params["src_shardings"],
-                    new_mesh=mpmd_mesh.unstack[eqn.params["src_mpmd_idx"]],
+                    mpmd_mesh.unstack[eqn.params["src_mpmd_idx"]],
                 )
             }
             new_eqns.append(eqn.replace(params=eqn.params | param_update))
@@ -3314,7 +3366,9 @@ class ScalarMpmdFunction:
         # FIXME: self.global_jaxpr.out_avals is the "unpacked" one
         #   (i.e. if an output is replicated over k ranks, there are two out_avals)
         # assert self.in_info.out_avals == self.global_jaxpr.out_avals
-        arg_names = self.global_jaxpr.jaxpr.debug_info.arg_names
+        arg_names = self.global_jaxpr.jaxpr.debug_info.safe_arg_names(
+            len(self.global_jaxpr.in_avals)
+        )
         for name, in_sharding, aval in zip(
             arg_names,
             self.in_info.in_shardings,
@@ -3338,7 +3392,12 @@ class ScalarMpmdFunction:
         res = jax.tree_util.tree_unflatten(
             self.in_info.in_tree,
             [
-                MpmdSharding(self.mpmd_mesh, mpmd_idxs, sharding.spec)
+                MpmdSharding(
+                    self.mpmd_mesh,
+                    mpmd_idxs,
+                    sharding.spec,
+                    memory_kind=sharding.memory_kind,
+                )
                 for mpmd_idxs, sharding in zip(
                     self.in_info.in_mpmd_defs,
                     self.in_info.in_shardings,
@@ -3350,6 +3409,9 @@ class ScalarMpmdFunction:
 
     def _maybe_shard_inputs(self, flat_args: list[jax.Array]):
         local_args = []
+        arg_names = self.global_jaxpr.jaxpr.debug_info.safe_arg_names(
+            len(self.in_info.in_mpmd_defs)
+        )
         for arg_idx, (arg, mpmd_idxs) in enumerate(
             zip(
                 it.chain(self.consts, flat_args), self.in_info.in_mpmd_defs, strict=True
@@ -3362,7 +3424,7 @@ class ScalarMpmdFunction:
             if self.mpmd_mesh.my_mpmd_axis_index not in mpmd_idxs:
                 continue
 
-            arg_name = self.global_jaxpr.jaxpr.debug_info.arg_names[arg_idx]
+            arg_name = arg_names[arg_idx]
 
             # FIXME: in_shardings offset by consts?
             expected_sharding = self.in_info.in_shardings[arg_idx]
@@ -3420,10 +3482,12 @@ class ScalarMpmdFunction:
         results = []
         local_idx = 0
         for global_idx, mpmd_idxs in enumerate(self.in_info.out_mpmd_defs):
+            sharding = self.in_info.out_shardings[global_idx]
             mpmd_sharding = MpmdSharding(
                 self.mpmd_mesh,
                 mpmd_idxs,
-                self.in_info.out_shardings[global_idx].spec,
+                sharding.spec,
+                memory_kind=sharding.memory_kind,
             )
             if self.mpmd_mesh.my_mpmd_axis_index in mpmd_idxs:
                 out = MpmdArray(
@@ -3481,7 +3545,7 @@ def dump_jaxpr(
         output_dir = Path(env_vars.jaxpp_dump_dir.value)
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / f"{name}.{jax.process_index()}.jaxpr.txt"
-        output_file.write_text(jcore.pp_jaxpr(jaxpr, ctx, settings).format())
+        output_file.write_text(jcore.pp_toplevel_jaxpr(jaxpr).format())
 
 
 def common_passes(jaxpr: jcore.Jaxpr, donated_invars):
@@ -3558,6 +3622,22 @@ def infer_shardings_explicit(
         zip(closed_jaxpr.jaxpr.invars, jaxpr_in_shardings, strict=True)
     )
     lowering_mesh = mpmd_mesh.lowering_mesh()
+    requested_out_shardings = {
+        outvar: out_sharding
+        for outvar, out_sharding in zip(
+            closed_jaxpr.jaxpr.outvars, jaxpr_out_shardings, strict=True
+        )
+        if isinstance(outvar, jcore.Var)
+    }
+
+    def maybe_apply_requested_output_memory_kind(
+        outvar: jcore.Atom, sharding: jax.sharding.NamedSharding
+    ) -> jax.sharding.NamedSharding:
+        requested = requested_out_shardings.get(outvar)
+        if requested is None:
+            return sharding
+        return update_named_sharding(sharding, memory_kind=requested.memory_kind)
+
     for eqn in closed_jaxpr.eqns:
         eqn: jcore.JaxprEqn
         if eqn.primitive is task_p:
@@ -3572,13 +3652,22 @@ def infer_shardings_explicit(
             eqn.params["in_shardings"] = ShardingStore(
                 [cast(jcore.ShapedArray, invar.aval) for invar in eqn.invars],
                 _shardings=[
-                    jax.sharding.NamedSharding(lowering_mesh, _) for _ in eqn_in_specs
+                    update_named_sharding(
+                        env[invar],
+                        mesh=lowering_mesh,
+                        spec=spec,
+                    )
+                    for invar, spec in zip(eqn.invars, eqn_in_specs, strict=True)
                 ],
             )
             eqn_out_shardings = [
-                jax.sharding.NamedSharding(
-                    lowering_mesh,
-                    rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
+                maybe_apply_requested_output_memory_kind(
+                    outvar,
+                    update_named_sharding(
+                        cast(jcore.ShapedArray, outvar.aval).sharding,
+                        mesh=lowering_mesh,
+                        spec=rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
+                    ),
                 )
                 for outvar in eqn.outvars
             ]
@@ -3591,9 +3680,13 @@ def infer_shardings_explicit(
 
         elif eqn.primitive is dax_pscan_p:
             out_shardings = [
-                jax.sharding.NamedSharding(
-                    lowering_mesh,
-                    rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
+                maybe_apply_requested_output_memory_kind(
+                    outvar,
+                    update_named_sharding(
+                        cast(jcore.ShapedArray, outvar.aval).sharding,
+                        mesh=lowering_mesh,
+                        spec=rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
+                    ),
                 )
                 for outvar in eqn.outvars
             ]
@@ -3601,9 +3694,10 @@ def infer_shardings_explicit(
                 eqn.params["jaxpr"],
                 mpmd_mesh,
                 [
-                    jax.sharding.NamedSharding(
-                        lowering_mesh,
-                        rm_size1_axes(invar.aval.sharding.spec, lowering_mesh),
+                    update_named_sharding(
+                        env[invar],
+                        mesh=lowering_mesh,
+                        spec=rm_size1_axes(invar.aval.sharding.spec, lowering_mesh),
                     )
                     for invar in eqn.invars
                 ],
@@ -3616,16 +3710,19 @@ def infer_shardings_explicit(
                 rm_size1_axes(invar.aval.sharding.spec, lowering_mesh)
                 for invar in eqn.invars
             ]
-            assert [eqn_in_specs[0] == _ for _ in eqn_in_specs], eqn_in_specs
-            eqn.params["in_shardings"] = [
-                jax.sharding.NamedSharding(lowering_mesh, _) for _ in eqn_in_specs
-            ]
-            eqn.params["out_shardings"] = [
-                jax.sharding.NamedSharding(lowering_mesh, eqn_in_specs[0])
-            ]
-            env[eqn.outvars[0]] = jax.sharding.NamedSharding(
-                lowering_mesh, eqn_in_specs[0]
+            assert all(eqn_in_specs[0] == _ for _ in eqn_in_specs), eqn_in_specs
+            out_source_sharding = maybe_apply_requested_output_memory_kind(
+                eqn.outvars[0],
+                update_named_sharding(
+                    env[eqn.invars[0]], mesh=lowering_mesh, spec=eqn_in_specs[0]
+                ),
             )
+            eqn.params["in_shardings"] = [
+                update_named_sharding(env[invar], mesh=lowering_mesh, spec=spec)
+                for invar, spec in zip(eqn.invars, eqn_in_specs, strict=True)
+            ]
+            eqn.params["out_shardings"] = [out_source_sharding]
+            env[eqn.outvars[0]] = out_source_sharding
         else:
             raise NotImplementedError(
                 f"Unimplemented equation with primitive {eqn.primitive}"
@@ -3696,7 +3793,12 @@ class GlobalMpmdFunction:
         res = jax.tree_util.tree_unflatten(
             self.in_info.in_tree,
             [
-                MpmdSharding(self.mpmd_mesh, mpmd_idxs, sharding.spec)
+                MpmdSharding(
+                    self.mpmd_mesh,
+                    mpmd_idxs,
+                    sharding.spec,
+                    memory_kind=sharding.memory_kind,
+                )
                 for mpmd_idxs, sharding in zip(
                     self.in_info.in_mpmd_defs,
                     self.in_info.in_shardings,
@@ -3754,7 +3856,10 @@ class GlobalMpmdFunction:
                     flat_args[i] = MpmdArray(
                         values.values(),
                         mpmd_sharding=MpmdSharding(
-                            self.mpmd_mesh, expected_mpmd_idx, in_sharding.spec
+                            self.mpmd_mesh,
+                            expected_mpmd_idx,
+                            in_sharding.spec,
+                            memory_kind=in_sharding.memory_kind,
                         ),
                     )
 
@@ -3778,13 +3883,15 @@ class GlobalMpmdFunction:
                     assert output is first, (output, first)
                 actual_outputs.append(first)
             else:
+                sharding = self.in_info.out_shardings[out_idx]
                 actual_outputs.append(
                     MpmdArray(
                         outputs[i : i + len(out_mpmd_def)],
                         mpmd_sharding=MpmdSharding(
                             self.mpmd_mesh,
                             out_mpmd_def,
-                            self.in_info.out_shardings[out_idx].spec,
+                            sharding.spec,
+                            memory_kind=sharding.memory_kind,
                         ),
                     )
                 )
@@ -3797,11 +3904,17 @@ class GlobalMpmdFunction:
         in_mpmd_defs = self.in_info.in_mpmd_defs
         out_mpmd_defs = self.in_info.out_mpmd_defs
 
+        closed_jaxpr = bind_meshes(closed_jaxpr, self.mpmd_mesh)
+        if env_vars.jaxpp_enable_task_jaxpr_deduplication.value:
+            closed_jaxpr = deduplicate_task_jaxprs(closed_jaxpr)
+
+        pp_ctx = jcore.JaxprPpContext()
+        dump_jaxpr(closed_jaxpr, name=f"{self.name}.global", ctx=pp_ctx)
+
         with_transfers = maybe_unroll_loop(closed_jaxpr)
         # TODO: move fixup_multidefs right after coarsening.
         #  This is slightly challenging as we need to deduplicate_invars
         #  for the loop body too
-        pp_ctx = jcore.JaxprPpContext()
         with_transfers, out_placement = fixup_multidefs(with_transfers)
         # TODO: check also `in_mpmd_defs` similarly to out_placement
         assert list(out_placement) == list(out_mpmd_defs), (
@@ -3811,8 +3924,7 @@ class GlobalMpmdFunction:
         with_transfers = with_transfers.map_jaxpr(
             partial(common_passes, donated_invars=self.in_info.in_donated)
         )
-        dump_jaxpr(with_transfers, name=f"{self.name}.global", ctx=pp_ctx)
-        with_transfers = bind_meshes(with_transfers, self.mpmd_mesh)
+        dump_jaxpr(with_transfers, name=f"{self.name}.global.unrolled", ctx=pp_ctx)
 
         if (
             not env_vars.jaxpp_debug_force_mpmdify.value

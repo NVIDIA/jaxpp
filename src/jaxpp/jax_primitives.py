@@ -89,7 +89,12 @@ def add_multi_impl(
         _ = sum(jax.device_put(a, args[0].sharding) for a in args)
     return MpmdArray(
         [jax.device_put(_, s) for s in prev_shardings],
-        mpmd_sharding=MpmdSharding(mpmd_mesh, mpmd_idxs, prev_shardings[0].spec),
+        mpmd_sharding=MpmdSharding(
+            mpmd_mesh,
+            mpmd_idxs,
+            prev_shardings[0].spec,
+            memory_kind=prev_shardings[0].memory_kind,
+        ),
     )
 
 
@@ -136,7 +141,8 @@ def all_reduce(
             all_reduce_fn,
             in_shardings=tuple(a.sharding for a in gas),
             out_shardings=tuple(
-                jax.sharding.NamedSharding(comm_mesh, spec) for spec in out_specs
+                update_named_sharding(sharding, mesh=comm_mesh, spec=spec)
+                for sharding, spec in zip(shardings, out_specs, strict=True)
             ),
             donate_argnums=donated,
         )(gas)
@@ -231,7 +237,12 @@ def gather_multi_impl(
 
     return MpmdArray(
         [jax.device_put(result, s) for s in prev_shardings],
-        mpmd_sharding=MpmdSharding(mpmd_mesh, mpmd_idxs, prev_shardings[0].spec),
+        mpmd_sharding=MpmdSharding(
+            mpmd_mesh,
+            mpmd_idxs,
+            prev_shardings[0].spec,
+            memory_kind=prev_shardings[0].memory_kind,
+        ),
     )
 
 
@@ -300,8 +311,10 @@ def all_gather(
     gas = tuple(plogically_stacked(a) for a in arrs)
 
     out_shardings = tuple(
-        jax.sharding.NamedSharding(comm_mesh, filter_axes(spec, {axis_name}))
-        for spec in out_specs
+        update_named_sharding(
+            sharding, mesh=comm_mesh, spec=filter_axes(spec, {axis_name})
+        )
+        for sharding, spec in zip(shardings, out_specs, strict=True)
     )
 
     with jc.set_mesh(comm_mesh):

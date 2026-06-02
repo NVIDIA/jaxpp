@@ -99,9 +99,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "jax[cuda12]>=0.6.2,<=0.9.2",
-    "cupy-cuda12x",
-    "portpicker==1.6.0",
+    "jax[cuda13]>=0.6.2,<=0.10.1",
+    "cupy-cuda13x",
 ]
 
 [project.optional-dependencies]

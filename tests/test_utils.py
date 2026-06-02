@@ -274,16 +274,26 @@ class TestEnvVarClasses:
             with pytest.raises(AssertionError):
                 _ = var.value
 
-    def test_env_var_caching(self):
+    def test_env_var_reads_live(self):
         with patch.dict(os.environ, {"TEST_VAR": "true"}):
             var = BoolEnvVar("TEST_VAR")
 
-            value1 = var.value
-            assert value1 is True
+            assert var.value is True
 
             os.environ["TEST_VAR"] = "false"
-            value2 = var.value
-            assert value2 is True
+            assert var.value is False
+
+    def test_set_overrides_env(self):
+        with patch.dict(os.environ, {"TEST_VAR": "true"}):
+            var = BoolEnvVar("TEST_VAR")
+            assert var.value is True
+
+            with var.set(False):
+                assert var.value is False
+                os.environ["TEST_VAR"] = "false"
+                assert var.value is False
+
+            assert var.value is False
 
 
 if __name__ == "__main__":
