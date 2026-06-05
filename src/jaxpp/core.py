@@ -49,6 +49,7 @@ from jaxpp import jax_compat as jc
 from jaxpp.array import MpmdArray
 from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import (
+    PjitKwargs,
     PscanJaxpr,
     ShardingStore,
     TaskEqn,
@@ -56,6 +57,7 @@ from jaxpp.jax_primitives import (
     add_multi_p,
     all_gather_p,
     all_reduce_p,
+    callable_task,
     dax_pscan_p,
     delete_p,
     gather_multi_p,
@@ -339,15 +341,11 @@ def propagate_and_rewrite_adds(
     with jcore.set_current_trace(mpmd_trace):
         res = jcore.eval_jaxpr(jaxpr, (), *in_tracers, propagate_source_info=True)
 
-    additional_args = ()
-    if jax.__version_info__ > (0, 6, 1):
-        additional_args = (jsiu.current(),)
-
     # TODO: handle literals in `res`
     # *_ is used to ignore the unused return value as to_jaxpr returns three values for
     # jax < 0.7.0, but two values for jax >= 0.7.0
     jaxpr, consts, *_ = mpmd_trace.parent_trace.to_jaxpr(
-        [v.val for v in res], jaxpr.debug_info, *additional_args
+        [v.val for v in res], jaxpr.debug_info, jsiu.current()
     )
     assert len(consts) == 0
     return jaxpr, [v.placement for v in res]
@@ -2967,7 +2965,63 @@ def ensuring_pgle_disabled():
             jax.config.update("jax_enable_pgle", prev_flag)
 
 
-def infer_shardings2(closed_jaxpr: jcore.ClosedJaxpr, in_shardings, lowering_mesh):
+@jc.cache()
+def _fast_infer_shardings_compiler_options_kvs() -> tuple[tuple[str, Any], ...]:
+    compiler_options = {
+        "xla_gpu_enable_latency_hiding_scheduler": False,
+        "xla_gpu_enable_dynamic_slice_fusion": False,
+        "xla_gpu_enable_pipelined_all_gather": False,
+        "xla_gpu_enable_pipelined_all_reduce": False,
+        "xla_gpu_enable_pipelined_reduce_scatter": False,
+        "xla_gpu_enable_while_loop_double_buffering": False,
+        "xla_llvm_disable_expensive_passes": True,
+        "xla_backend_optimization_level": 0,
+        "xla_gpu_enable_triton_gemm": False,
+        "xla_gpu_autotune_level": 0,
+    }
+    if jax.__version_info__ > (0, 7, 1):
+        compiler_options["xla_gpu_experimental_enable_fusion_autotuner"] = False
+    if jax.__version_info__ < (0, 10):
+        compiler_options["xla_gpu_enable_split_k_autotuning"] = False
+        compiler_options["xla_gpu_enable_reduction_epilogue_fusion"] = False
+    return tuple(compiler_options.items())
+
+
+def _infer_task_output_shardings(
+    call_jaxpr: jcore.ClosedJaxpr,
+    in_shardings: tuple[jax.sharding.NamedSharding, ...],
+    lowering_mesh: jax.sharding.Mesh,
+    compiler_options_kvs: tuple[tuple[str, Any], ...] | None,
+):
+    params = PjitKwargs(
+        jaxpr=call_jaxpr,
+        in_shardings=in_shardings,
+        out_shardings=jc.UNSPECIFIED,
+        in_layouts=(None,) * len(call_jaxpr.in_avals),
+        out_layouts=(None,) * len(call_jaxpr.out_avals),
+        donated_invars=(False,) * len(in_shardings),
+        ctx_mesh=lowering_mesh,
+        name=f"infer_shardings2_{id(call_jaxpr)}",
+        compiler_options_kvs=compiler_options_kvs,
+    )
+
+    with jc.set_mesh(params.ctx_mesh), ensuring_pgle_disabled():
+        compiled = callable_task(jc.jit_p, params).lower(*call_jaxpr.in_avals).compile()
+
+    result_shardings = tuple(jax.tree_util.tree_leaves(compiled.output_shardings))
+    assert len(result_shardings) == len(call_jaxpr.out_avals), (
+        result_shardings,
+        call_jaxpr.out_avals,
+    )
+    return result_shardings
+
+
+def infer_shardings2(
+    closed_jaxpr: jcore.ClosedJaxpr,
+    in_shardings,
+    lowering_mesh,
+    compiler_options_kvs: tuple[tuple[str, Any], ...] | None = None,
+):
     # TODO: add support for layouts
     env = dict(zip(closed_jaxpr.jaxpr.invars, in_shardings, strict=True))
     for eqn in closed_jaxpr.eqns:
@@ -2984,25 +3038,21 @@ def infer_shardings2(closed_jaxpr: jcore.ClosedJaxpr, in_shardings, lowering_mes
                     jax.NamedSharding(lowering_mesh, jax.sharding.PartitionSpec())
                 ] * len(eqn.outvars)
             else:
-
-                def _fn(args):
-                    return task_p.bind(*args, **eqn.params)
-
-                with ensuring_pgle_disabled():
-                    compiled = (
-                        jax.jit(_fn, in_shardings=(_in,))
-                        .lower([_.aval for _ in eqn.invars])
-                        .compile()
-                    )
-
-                result_shardings = compiled.output_shardings
+                result_shardings = _infer_task_output_shardings(
+                    eqn.params["call_jaxpr"],
+                    tuple(_in),
+                    lowering_mesh,
+                    compiler_options_kvs,
+                )
 
         elif eqn.primitive is dax_pscan_p:
-            result_shardings = infer_shardings2(eqn.params["jaxpr"], _in, lowering_mesh)
+            result_shardings = infer_shardings2(
+                eqn.params["jaxpr"], _in, lowering_mesh, compiler_options_kvs
+            )
         elif eqn.primitive is add_multi_p:
             result_shardings = [_in[0]]
         elif eqn.primitive is gather_multi_p:
-            raise NotImplementedError()
+            result_shardings = [_in[0]]
         else:
             raise ValueError(f"Unknown primitive {eqn.primitive}")
 
@@ -3035,42 +3085,33 @@ def infer_shardings(
     assert all(_ is None for _ in in_layouts)
     assert all(_ is None for _ in out_layouts)
 
-    with log_elapsed_time("xla_compilation/driver"):
+    compiler_options_kvs = (
+        _fast_infer_shardings_compiler_options_kvs()
+        if env_vars.jaxpp_fast_infer_shardings.value
+        else None
+    )
+
+    with log_elapsed_time("xla_compilation/infer_shardings"):
         if (
             env_vars.jaxpp_enable_local_propagation.value
             or env_vars.jaxpp_debug_skip_propagation.value
         ):
-            _ = infer_shardings2(closed_jaxpr, in_shardings, lowering_mesh)
+            closed_jaxpr = strip_inspect_sharding_eqns(closed_jaxpr)
+            closed_jaxpr = deduplicate_task_jaxprs(closed_jaxpr)
+            _ = infer_shardings2(
+                closed_jaxpr, in_shardings, lowering_mesh, compiler_options_kvs
+            )
         else:
-            # Trigger first compilation on the driver for inferring intermediate shardings
-            if env_vars.jaxpp_fast_infer_shardings.value:
-                compiler_options = {
-                    "xla_gpu_enable_latency_hiding_scheduler": False,
-                    "xla_gpu_enable_dynamic_slice_fusion": False,
-                    "xla_gpu_enable_pipelined_all_gather": False,
-                    "xla_gpu_enable_pipelined_all_reduce": False,
-                    "xla_gpu_enable_pipelined_reduce_scatter": False,
-                    "xla_gpu_enable_while_loop_double_buffering": False,
-                    "xla_llvm_disable_expensive_passes": True,
-                    "xla_backend_optimization_level": 0,
-                    "xla_gpu_enable_triton_gemm": False,
-                    "xla_gpu_autotune_level": 0,
-                }
-                if jax.__version_info__ > (0, 7, 1):
-                    compiler_options["xla_gpu_experimental_enable_fusion_autotuner"] = (
-                        False
-                    )
-                if jax.__version_info__ < (0, 10):
-                    compiler_options["xla_gpu_enable_split_k_autotuning"] = False
-                    compiler_options["xla_gpu_enable_reduction_epilogue_fusion"] = False
-            else:
-                compiler_options = None
             with ensuring_pgle_disabled():
                 jax.jit(
                     jcore.jaxpr_as_fun(closed_jaxpr),
                     in_shardings=in_shardings,
                     out_shardings=list(out_shardings),
-                    compiler_options=compiler_options,
+                    compiler_options=(
+                        dict(compiler_options_kvs)
+                        if compiler_options_kvs is not None
+                        else None
+                    ),
                 ).lower(*closed_jaxpr.in_avals).compile()
 
     closed_jaxpr = strip_inspect_sharding_eqns(closed_jaxpr)

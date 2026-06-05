@@ -57,7 +57,7 @@ from jax._src.pjit import _parse_jit_arguments
 from jax._src.shard_map import shard_map_p
 
 # sharding_impls
-from jax._src.sharding_impls import UnspecifiedValue
+from jax._src.sharding_impls import UNSPECIFIED, UnspecifiedValue
 
 # tree_util
 from jax._src.tree_util import equality_errors_pytreedef
@@ -193,6 +193,7 @@ __all__ = [
     # shard_map
     "shard_map_p",
     # sharding_impls
+    "UNSPECIFIED",
     "UnspecifiedValue",
     # tree_util
     "equality_errors_pytreedef",

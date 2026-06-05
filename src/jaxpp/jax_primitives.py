@@ -700,7 +700,7 @@ def dce_jaxpr_dax_pscan(
 class PjitKwargs:
     jaxpr: jcore.ClosedJaxpr
     in_shardings: tuple[jax.sharding.NamedSharding, ...]
-    out_shardings: tuple[jax.sharding.NamedSharding, ...]
+    out_shardings: tuple[jax.sharding.NamedSharding, ...] | jc.UnspecifiedValue
     in_layouts: tuple
     out_layouts: tuple
     donated_invars: tuple[bool, ...]
@@ -708,7 +708,7 @@ class PjitKwargs:
     name: str = field(compare=False, hash=False)
     keep_unused: bool = True
     inline: bool = False
-    compiler_options_kvs: tuple = ()
+    compiler_options_kvs: tuple[tuple[str, Any], ...] | None = None
 
     def asdict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
@@ -718,9 +718,12 @@ class PjitKwargs:
 def callable_task(prim: jcore.Primitive, params: PjitKwargs):
     logging.info(f"Compiling {params.name} ({id(params.jaxpr)})")
     p = params.asdict()
+    p["compiler_options_kvs"] = ()
+    if isinstance(params.out_shardings, jc.UnspecifiedValue):
+        p["out_shardings"] = (params.out_shardings,) * len(params.jaxpr.out_avals)
 
     def prim_fun(*args):
-        return prim.bind(*args, **p)
+        return tuple(prim.bind(*args, **p))
 
     prim_fun.__name__ = params.name
     prim_fun.__qualname__ = params.name
@@ -728,9 +731,14 @@ def callable_task(prim: jcore.Primitive, params: PjitKwargs):
     return jax.jit(
         prim_fun,
         in_shardings=params.in_shardings,
-        out_shardings=list(params.out_shardings),
+        out_shardings=params.out_shardings,
         donate_argnums=tuple(
             idx for idx, donated in enumerate(params.donated_invars) if donated
+        ),
+        compiler_options=(
+            dict(params.compiler_options_kvs)
+            if params.compiler_options_kvs is not None
+            else None
         ),
     )
 

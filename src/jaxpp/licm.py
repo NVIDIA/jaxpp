@@ -626,9 +626,9 @@ class CommonSubexpressionEliminationTrace(jc.DynamicJaxprTrace):
         ]()
 
     def default_process_primitive(self, primitive, tracers, params, source_info=None):
-        super_fn = super().default_process_primitive
-        if jax.__version_info__ > (0, 6, 1):
-            super_fn = functools.partial(super_fn, source_info=source_info)
+        super_fn = functools.partial(
+            super().default_process_primitive, source_info=source_info
+        )
         if primitive is dax_pscan_p:
             with jcore.set_current_trace(self):
                 return partial_eval_loop(

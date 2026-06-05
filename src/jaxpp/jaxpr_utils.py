@@ -24,9 +24,7 @@ from jaxpp.jax_compat import core as jcore
 
 
 def gensym(suffix="") -> Callable[[jcore.AbstractValue], jcore.Var]:
-    if jax.__version_info__ > (0, 6, 1):
-        return jcore.Var
-    return jcore.gensym(suffix)
+    return jcore.Var
 
 
 def check_jaxpr(jaxpr: jcore.Jaxpr):
