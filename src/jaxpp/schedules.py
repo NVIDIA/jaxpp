@@ -61,6 +61,26 @@ BWD_A = TaskType.BWD_I
 BWD_W = TaskType.BWD_W
 
 
+def _microbatch_round_sizes(n_microbatches: int, mpmd_dim: int) -> tuple[int, ...]:
+    number_of_rounds = max(1, n_microbatches // mpmd_dim)
+    base_size, extra = divmod(n_microbatches, number_of_rounds)
+    return tuple(
+        base_size + (round_idx < extra) for round_idx in range(number_of_rounds)
+    )
+
+
+def _local_stage_sequence(
+    vp: int, round_sizes: Sequence[int], *, reverse: bool
+) -> tuple[int, ...]:
+    local_stages = range(vp - 1, -1, -1) if reverse else range(vp)
+    return tuple(
+        local_stage
+        for round_size in round_sizes
+        for local_stage in local_stages
+        for _ in range(round_size)
+    )
+
+
 class SequentialMicrobatchesIterator:
     def __init__(self):
         self.task_mubatch = defaultdict[tuple[int, TaskType], int](lambda: 0)
@@ -95,6 +115,89 @@ class ZBSequentialMicrobatchesIterator(SequentialMicrobatchesIterator):
 
     def bwd(self, stage_id) -> FusedTask:
         return FusedTask((self.bwd_a(stage_id), self.bwd_w(stage_id)))
+
+
+def _next_zero_bubble_task_type(task_type: TaskType) -> TaskType:
+    if task_type is TaskType.BWD_I:
+        return TaskType.BWD_W
+    if task_type is TaskType.BWD_W:
+        return TaskType.FWD
+    if task_type is TaskType.FWD:
+        return TaskType.BWD_I
+    raise ValueError(f"Unexpected zero-bubble task type: {task_type}")
+
+
+def _zero_bubble_tasks_for_rank(
+    *, num_stages: int, mpmd_dim: int, mpmd_idx: int, n_mubatches: int
+) -> list[Task]:
+    vp = num_stages // mpmd_dim
+    microbatch_rounds = []
+    round_start = 0
+    for round_size in _microbatch_round_sizes(n_mubatches, mpmd_dim):
+        microbatch_rounds.append(range(round_start, round_start + round_size))
+        round_start += round_size
+
+    def stage_microbatches(*, reverse: bool) -> tuple[tuple[int, int], ...]:
+        local_stages = range(vp - 1, -1, -1) if reverse else range(vp)
+        return tuple(
+            (local_stage * mpmd_dim + mpmd_idx, microbatch)
+            for microbatch_round in microbatch_rounds
+            for local_stage in local_stages
+            for microbatch in microbatch_round
+        )
+
+    forward_tasks = stage_microbatches(reverse=False)
+    backward_tasks = stage_microbatches(reverse=True)
+    max_tasks = len(forward_tasks)
+    assert max_tasks == len(backward_tasks) == vp * n_mubatches
+    task_count = {TaskType.FWD: 0, TaskType.BWD_I: 0, TaskType.BWD_W: 0}
+
+    def maybe_task(task_type: TaskType) -> Task | None:
+        task_idx = task_count[task_type]
+        if task_idx >= max_tasks:
+            return None
+        task_count[task_type] += 1
+        if task_type is TaskType.FWD:
+            stage_id, microbatch = forward_tasks[task_idx]
+        elif task_type in {TaskType.BWD_I, TaskType.BWD_W}:
+            stage_id, microbatch = backward_tasks[task_idx]
+        else:
+            raise ValueError(f"Unexpected zero-bubble task type: {task_type}")
+        return Task.make(stage_id, microbatch, task_type)
+
+    def next_available_task(task_type: TaskType) -> tuple[Task | None, TaskType]:
+        for _ in range(3):
+            task = maybe_task(task_type)
+            next_task_type = _next_zero_bubble_task_type(task_type)
+            if task is not None:
+                return task, next_task_type
+            task_type = next_task_type
+        return None, task_type
+
+    tasks = []
+    for _ in range(num_stages - mpmd_idx):
+        tasks.append(maybe_task(TaskType.FWD))
+
+    task_type = TaskType.BWD_I
+    for _ in range(2 * mpmd_idx):
+        tasks.append(maybe_task(task_type))
+        if task_type is TaskType.BWD_I:
+            task_type = TaskType.FWD
+        elif task_type is TaskType.FWD:
+            task_type = TaskType.BWD_I
+        else:
+            raise ValueError(f"Unexpected zero-bubble warmup task type: {task_type}")
+
+    pivot = num_stages + mpmd_dim
+    steps = max_tasks * 3 + (mpmd_dim - 1)
+    task_type = TaskType.BWD_I
+    for _ in range(pivot - 1 + mpmd_idx, steps):
+        task, task_type = next_available_task(task_type)
+        if task is None:
+            break
+        tasks.append(task)
+
+    return [task for task in tasks if task is not None]
 
 
 def dualpipev_tasks(mpmd_dim: int, mpmd_idx: int, n_mubatches: int):
@@ -237,113 +340,6 @@ class InterleavedBaseSchedule(BaseSchedule):
 
 
 @dataclass(eq=True, frozen=True)
-class Std1F1B(BaseSchedule):
-    def tasks(self, n_mubatches: int) -> ScheduleTasks:
-        steps = n_mubatches + self.num_stages - 1
-        schedule = ScheduleTasks([[None] * (steps * 2) for _ in range(self.num_stages)])
-
-        stage_mubatch = [[0, 0] for _ in range(self.num_stages)]
-
-        # warmup
-        for step in range(self.num_stages):
-            for stage_id in range(self.num_stages):
-                if step >= stage_id:
-                    mubatch_idx = stage_mubatch[stage_id][0]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[stage_id][step] = Task.make(
-                            stage_id, mubatch_idx, TaskType.FWD
-                        )
-                        stage_mubatch[stage_id][0] += 1
-
-        # steady state and cooldown
-        for step in range(self.num_stages, 2 * steps):
-            relative_step = step - self.num_stages
-            for stage_id in range(self.num_stages):
-                inv_stage = self.num_stages - stage_id - 1
-                if relative_step >= inv_stage:
-                    fwd_or_bwd = 1 - (relative_step + inv_stage) % 2
-                    task_type = TaskType.FWD if fwd_or_bwd == 0 else TaskType.BWD
-                    mubatch_idx = stage_mubatch[stage_id][fwd_or_bwd]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[stage_id][step] = Task.make(
-                            stage_id, mubatch_idx, task_type
-                        )
-                        stage_mubatch[stage_id][fwd_or_bwd] += 1
-
-        return schedule
-
-
-@dataclass(eq=True, frozen=True)
-class Eager1F1B(BaseSchedule):
-    def tasks(self, n_mubatches: int) -> ScheduleTasks:
-        steps = n_mubatches + self.num_stages - 1
-        schedule = ScheduleTasks([[None] * (steps * 2) for _ in range(self.num_stages)])
-
-        stage_mubatch = [[0, 0] for _ in range(self.num_stages)]
-
-        # warmup
-        for step in range(2 * self.num_stages - 1):
-            for stage_id in range(self.num_stages):
-                if (step < self.num_stages and step >= stage_id) or (
-                    step >= self.num_stages
-                    and step - self.num_stages < self.num_stages - 1 - stage_id
-                ):
-                    mubatch_idx = stage_mubatch[stage_id][0]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[stage_id][step] = Task.make(
-                            stage_id, mubatch_idx, TaskType.FWD
-                        )
-                        stage_mubatch[stage_id][0] += 1
-
-        # steady state and cooldown
-        for step in range(self.num_stages, 2 * steps):
-            relative_step = step - self.num_stages
-            for stage_id in range(self.num_stages):
-                inv_stage = self.num_stages - stage_id - 1
-                if relative_step >= inv_stage:
-                    fwd_or_bwd = 1 - (relative_step + inv_stage) % 2
-                    task_type = TaskType.FWD if fwd_or_bwd == 0 else TaskType.BWD
-                    mubatch_idx = stage_mubatch[stage_id][fwd_or_bwd]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[stage_id][step] = Task.make(
-                            stage_id, mubatch_idx, task_type
-                        )
-                        stage_mubatch[stage_id][fwd_or_bwd] += 1
-        return schedule
-
-
-@dataclass(eq=True, frozen=True)
-class GPipe(BaseSchedule):
-    @staticmethod
-    def get_num_stages(num_tasks: int) -> int:
-        # There are 2n tasks for n stages.
-        num_stages, rem = divmod(num_tasks, 2)
-        assert rem == 0
-        return num_stages
-
-    def tasks(self, n_mubatches: int) -> ScheduleTasks:
-        steps = n_mubatches + self.num_stages - 1
-        schedule = ScheduleTasks([[None] * (steps * 2) for _ in range(self.num_stages)])
-        for step in range(steps):
-            for stage_id in range(self.num_stages):
-                mubatch_idx = step - stage_id
-                if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                    schedule[stage_id][step] = Task.make(
-                        stage_id, mubatch_idx, TaskType.FWD
-                    )
-
-        for step in range(steps, steps * 2):
-            for stage_id in reversed(range(self.num_stages)):
-                mubatch_idx = (step - steps) - (self.num_stages - stage_id - 1)
-                if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                    schedule[stage_id][step] = Task.make(
-                        stage_id, mubatch_idx, TaskType.BWD
-                    )
-
-        return schedule
-
-
-@dataclass(eq=True, frozen=True)
 class ZeroBubble(BaseSchedule):
     def __post_init__(self):
         super().__post_init__()
@@ -363,87 +359,19 @@ class ZeroBubble(BaseSchedule):
         return self.build_schedule(n_mubatches)
 
     def build_schedule(self, n_mubatches: int) -> ScheduleTasks:
-        assert (
-            n_mubatches >= self.num_stages
-        ), f"Expect num of microbatches >= num of stages, but {n_mubatches} microbatches and {self.num_stages} stages found"
-        steps = n_mubatches * 3 + (self.num_stages - 1)
-        schedule: ScheduleTasks = [([None] * steps) for _ in range(self.num_stages)]
-        fwd_stage_mubatch = [0] * self.num_stages
-        bwd_i_stage_mubatch = [0] * self.num_stages
-        bwd_w_stage_mubatch = [0] * self.num_stages
-        task_type = [TaskType.BWD_I] * self.num_stages
-
-        # warmup - fwd
-        for stage_id in range(self.num_stages):
-            for step_id in range(self.num_stages):
-                if step_id >= stage_id:
-                    mubatch_idx = fwd_stage_mubatch[stage_id]
-                    schedule[stage_id][step_id] = Task.make(
-                        stage_id, mubatch_idx, TaskType.FWD
-                    )
-                    fwd_stage_mubatch[stage_id] += 1
-
-        # warmup - fwd + bwd_i
-        pivot = self.num_stages + self.num_stages
-        for stage_id in range(self.num_stages):
-            for step_id in range(pivot - 1 - stage_id, pivot - 1 + stage_id):
-                cur_kind = task_type[stage_id]
-                mubatch_idx = None
-                if cur_kind is TaskType.BWD_I:
-                    mubatch_idx = bwd_i_stage_mubatch[stage_id]
-                    bwd_i_stage_mubatch[stage_id] += 1
-                    next_kind = TaskType.FWD
-                elif cur_kind is TaskType.FWD:
-                    mubatch_idx = fwd_stage_mubatch[stage_id]
-                    fwd_stage_mubatch[stage_id] += 1
-                    next_kind = TaskType.BWD_I
-                else:
-                    raise ValueError(f"Unexpected stage type in warmup: {cur_kind}")
-                schedule[stage_id][step_id] = Task.make(stage_id, mubatch_idx, cur_kind)
-                task_type[stage_id] = next_kind
-
-        # steady state and cooldown
-        def get_next(kind, stage_id):
-            # Rotate through BWD_I -> BWD_W -> FWD to find the task type whose
-            # mubatch_idx is less than n_mubatches.
-            # If kind is the same as next_kind, we know that all task types have been
-            # tried.
-            next_kind = kind
-            while True:
-                curr_kind = next_kind
-                if curr_kind is TaskType.BWD_I:
-                    next_kind = TaskType.BWD_W
-                    if bwd_i_stage_mubatch[stage_id] < n_mubatches:
-                        mubatch_idx = bwd_i_stage_mubatch[stage_id]
-                        bwd_i_stage_mubatch[stage_id] += 1
-                        return mubatch_idx, curr_kind, next_kind
-                elif curr_kind is TaskType.BWD_W:
-                    next_kind = TaskType.FWD
-                    if bwd_w_stage_mubatch[stage_id] < n_mubatches:
-                        mubatch_idx = bwd_w_stage_mubatch[stage_id]
-                        bwd_w_stage_mubatch[stage_id] += 1
-                        return mubatch_idx, curr_kind, next_kind
-                elif curr_kind is TaskType.FWD:
-                    next_kind = TaskType.BWD_I
-                    if fwd_stage_mubatch[stage_id] < n_mubatches:
-                        mubatch_idx = fwd_stage_mubatch[stage_id]
-                        fwd_stage_mubatch[stage_id] += 1
-                        return mubatch_idx, curr_kind, next_kind
-                else:
-                    raise ValueError(f"Unexpected stage type: {curr_kind}")
-                if kind == next_kind:
-                    raise ValueError(
-                        "All tasks have been already scheduled for all mubatches"
-                    )
-
-        assert next_kind is TaskType.BWD_I
-        for stage_id in range(self.num_stages):
-            next_kind = TaskType.BWD_I
-            for step_id in range(pivot - 1 + stage_id, steps):
-                mubatch_idx, cur_kind, next_kind = get_next(next_kind, stage_id)
-                schedule[stage_id][step_id] = Task.make(stage_id, mubatch_idx, cur_kind)
-
-        return schedule
+        assert n_mubatches >= self.num_stages, (
+            "Expect num of microbatches >= num of stages, but "
+            f"{n_mubatches} microbatches and {self.num_stages} stages found"
+        )
+        return [
+            _zero_bubble_tasks_for_rank(
+                num_stages=self.num_stages,
+                mpmd_dim=self.num_stages,
+                mpmd_idx=stage_id,
+                n_mubatches=n_mubatches,
+            )
+            for stage_id in range(self.num_stages)
+        ]
 
 
 # From PyTorch: https://github.com/pytorch/pytorch/blob/e619c6bb90b9dedaccd3cbeed86a288993a4e33f/torch/distributed/pipelining/schedules.py#L2247-L2265
@@ -463,49 +391,44 @@ class Interleaved1F1B(InterleavedBaseSchedule):
         object.__setattr__(self, "vp", vp)
         object.__setattr__(self, "is_partial_bwd", False)
 
+    def microbatch_round_sizes(self, n_microbatches: int) -> tuple[int, ...]:
+        return _microbatch_round_sizes(n_microbatches, self.mpmd_dim)
+
     def microbatches_per_round(self, n_microbatches: int):
-        number_of_rounds = max(1, n_microbatches // self.mpmd_dim)
-        microbatches_per_round, _ = divmod(n_microbatches, number_of_rounds)
-        if _ != 0:
-            raise ValueError("n_microbatches must be divisible by mpmd_dim")
-        return microbatches_per_round
+        return self.microbatch_round_sizes(n_microbatches)[0]
 
-    def _get_rank_warmup_ops(self, mpmd_idx, n_microbatches: int) -> int:
-        microbatches_per_round = self.microbatches_per_round(n_microbatches)
-
+    def _uncapped_rank_warmup_ops(self, mpmd_idx, round_sizes: Sequence[int]) -> int:
         # Warms up operations for last stage
-        warmups_ops_last_stage = (self.vp - 1) * microbatches_per_round
+        warmups_ops_last_stage = (self.vp - 1) * round_sizes[0]
         # Increment warmup operations by 2 for each hop away from the last stage
         multiply_factor = 2
-        warmup_ops = warmups_ops_last_stage + multiply_factor * (
+        return warmups_ops_last_stage + multiply_factor * (
             (self.mpmd_dim - 1) - mpmd_idx
         )
-        return warmup_ops
 
     def get_rank_warmup_ops(self, mpmd_idx, n_microbatches: int) -> int:
-        warmup_ops = self._get_rank_warmup_ops(mpmd_idx, n_microbatches)
+        warmup_ops = self._uncapped_rank_warmup_ops(
+            mpmd_idx, self.microbatch_round_sizes(n_microbatches)
+        )
         # We cannot have more warmup operations than there are number of microbatches,
         # so cap it there
         return min(warmup_ops, n_microbatches * self.vp)
 
-    def forward_stage_index(
-        self, mpmd_idx: int, step: int, microbatches_per_round: int
-    ):
-        # Get the local index from 0 to n_local_stages-1
-        local_index = (step // microbatches_per_round) % self.vp
-        return (local_index * self.mpmd_dim) + mpmd_idx
-
-    def backward_stage_index(self, step, warmup_ops, microbatches_per_round, mpmd_idx):
-        local_index = (
-            self.vp - 1 - ((step - warmup_ops) // microbatches_per_round) % self.vp
+    def _tasks_for_rank(
+        self, mpmd_idx: int, n_mubatches: int
+    ) -> list[Task | FusedTask]:
+        round_sizes = self.microbatch_round_sizes(n_mubatches)
+        forward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=False
         )
-        return (local_index * self.mpmd_dim) + mpmd_idx
-
-    def _tasks_for_rank(self, mpmd_idx: int, n_mubatches: int) -> ScheduleTasks:
-        microbatch_ops = self.vp * n_mubatches
+        backward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=True
+        )
+        microbatch_ops = len(forward_local_stages)
+        assert microbatch_ops == len(backward_local_stages)
+        assert microbatch_ops == self.vp * n_mubatches
         warmup_ops = self.get_rank_warmup_ops(mpmd_idx, n_mubatches)
         fwd_bwd_ops = microbatch_ops - warmup_ops
-        cooldown_ops = microbatch_ops - fwd_bwd_ops
 
         it = (
             ZBSequentialMicrobatchesIterator()
@@ -513,19 +436,17 @@ class Interleaved1F1B(InterleavedBaseSchedule):
             else SequentialMicrobatchesIterator()
         )
 
-        microbatches_per_round = self.microbatches_per_round(n_mubatches)
+        def stage_id(local_stage: int) -> int:
+            return (local_stage * self.mpmd_dim) + mpmd_idx
+
         tasks = []
         # Warmup
         for step in range(warmup_ops):
-            tasks.append(
-                it.fwd(self.forward_stage_index(mpmd_idx, step, microbatches_per_round))
-            )
+            tasks.append(it.fwd(stage_id(forward_local_stages[step])))
         # Steady state
         for step in range(warmup_ops, warmup_ops + fwd_bwd_ops):
-            fwd_idx = self.forward_stage_index(mpmd_idx, step, microbatches_per_round)
-            bwd_idx = self.backward_stage_index(
-                step, warmup_ops, microbatches_per_round, mpmd_idx
-            )
+            fwd_idx = stage_id(forward_local_stages[step])
+            bwd_idx = stage_id(backward_local_stages[step - warmup_ops])
             fwd = it.fwd(fwd_idx)
             bwd = it.bwd(bwd_idx)
 
@@ -537,16 +458,8 @@ class Interleaved1F1B(InterleavedBaseSchedule):
                 tasks.append(FusedTask((fwd, *bwd)))
 
         # Cooldown
-        for step in range(
-            warmup_ops + fwd_bwd_ops, warmup_ops + fwd_bwd_ops + cooldown_ops
-        ):
-            tasks.append(
-                it.bwd(
-                    self.backward_stage_index(
-                        step, warmup_ops, microbatches_per_round, mpmd_idx
-                    ),
-                )
-            )
+        for step in range(microbatch_ops, microbatch_ops + warmup_ops):
+            tasks.append(it.bwd(stage_id(backward_local_stages[step - warmup_ops])))
         return tasks
 
     def tasks(self, n_mubatches: int) -> ScheduleTasks:
@@ -556,65 +469,140 @@ class Interleaved1F1B(InterleavedBaseSchedule):
         ]
 
 
+@dataclass(eq=True, frozen=True)
+class Eager1F1B(Interleaved1F1B):
+    mpmd_dim: int | None = None
+    fuse_steady_state: bool = field(default=False, init=False)
+
+    def __post_init__(self):
+        if self.mpmd_dim is None:
+            object.__setattr__(self, "mpmd_dim", self.num_stages)
+        super().__post_init__()
+        if self.mpmd_dim != self.num_stages:
+            raise ValueError(
+                f"{Eager1F1B.__name__} requires mpmd_dim == num_stages, got "
+                f"{self.mpmd_dim=} and {self.num_stages=}"
+            )
+
+    def microbatch_round_sizes(self, n_microbatches: int) -> tuple[int, ...]:
+        return (n_microbatches,)
+
+
+@dataclass(eq=True, frozen=True)
+class Std1F1B(Interleaved1F1B):
+    mpmd_dim: int | None = None
+    fuse_steady_state: bool = field(default=False, init=False)
+
+    def __post_init__(self):
+        if self.mpmd_dim is None:
+            object.__setattr__(self, "mpmd_dim", self.num_stages)
+        super().__post_init__()
+        if self.mpmd_dim != self.num_stages:
+            raise ValueError(
+                f"{Std1F1B.__name__} requires mpmd_dim == num_stages, got "
+                f"{self.mpmd_dim=} and {self.num_stages=}"
+            )
+
+    def microbatch_round_sizes(self, n_microbatches: int) -> tuple[int, ...]:
+        return (n_microbatches,)
+
+    def _uncapped_rank_warmup_ops(self, mpmd_idx, round_sizes: Sequence[int]) -> int:
+        return self.num_stages - mpmd_idx
+
+    def _tasks_for_rank(
+        self, mpmd_idx: int, n_mubatches: int
+    ) -> list[Task | FusedTask]:
+        round_sizes = self.microbatch_round_sizes(n_mubatches)
+        forward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=False
+        )
+        backward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=True
+        )
+        microbatch_ops = len(forward_local_stages)
+        assert microbatch_ops == len(backward_local_stages)
+        assert microbatch_ops == self.vp * n_mubatches
+        warmup_ops = self.get_rank_warmup_ops(mpmd_idx, n_mubatches)
+        fwd_bwd_ops = microbatch_ops - warmup_ops
+
+        it = SequentialMicrobatchesIterator()
+
+        def stage_id(local_stage: int) -> int:
+            return (local_stage * self.mpmd_dim) + mpmd_idx
+
+        tasks = [
+            it.fwd(stage_id(forward_local_stages[step])) for step in range(warmup_ops)
+        ]
+
+        for step in range(warmup_ops, warmup_ops + fwd_bwd_ops):
+            tasks.append(it.bwd(stage_id(backward_local_stages[step - warmup_ops])))
+            tasks.append(it.fwd(stage_id(forward_local_stages[step])))
+
+        for step in range(microbatch_ops, microbatch_ops + warmup_ops):
+            tasks.append(it.bwd(stage_id(backward_local_stages[step - warmup_ops])))
+
+        return tasks
+
+
 class KimiK2(Interleaved1F1B):
-    def _get_rank_warmup_ops(self, mpmd_idx, n_microbatches):
-        return super()._get_rank_warmup_ops(mpmd_idx, n_microbatches) + 1
+    def _uncapped_rank_warmup_ops(self, mpmd_idx, round_sizes):
+        return super()._uncapped_rank_warmup_ops(mpmd_idx, round_sizes) + 1
 
 
 @dataclass(eq=True, frozen=True)
 class InterleavedGPipe(InterleavedBaseSchedule):
-    def tasks(self, n_mubatches: int) -> ScheduleTasks:
-        FWD, BWD = 0, 1
-        half_steps = n_mubatches * 2 + self.mpmd_dim - 1
-        n_steps = half_steps * 2
-        schedule = ScheduleTasks([([None] * n_steps) for _ in range(self.mpmd_dim)])
-        stage_mubatch = list[list[tuple[int, int, int]]](
-            [(dim_id, 0, 0), (dim_id + self.mpmd_dim, 0, 0)]
-            for dim_id in range(self.mpmd_dim)
+    def __post_init__(self):
+        super().__post_init__()
+        object.__setattr__(self, "vp", self.num_stages // self.mpmd_dim)
+
+    def microbatch_round_sizes(self, n_microbatches: int) -> tuple[int, ...]:
+        return _microbatch_round_sizes(n_microbatches, self.mpmd_dim)
+
+    def _tasks_for_rank(self, mpmd_idx: int, n_mubatches: int) -> list[Task]:
+        round_sizes = self.microbatch_round_sizes(n_mubatches)
+        forward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=False
         )
+        backward_local_stages = _local_stage_sequence(
+            self.vp, round_sizes, reverse=True
+        )
+        assert len(forward_local_stages) == len(backward_local_stages)
+        assert len(forward_local_stages) == self.vp * n_mubatches
 
-        def get_next(n_stages, mpmd_idx, fwd_or_bwd, value, stage_id, count):
-            assert value == 1, f"Expect an update by increasing 1, but `{value}` found."
-            count += value
-            rem_stages = count % n_stages
-            is_fwd = fwd_or_bwd == 0
-            stage_id = (
-                (mpmd_idx if is_fwd else mpmd_idx + self.mpmd_dim)
-                if rem_stages < self.mpmd_dim
-                else (mpmd_idx + self.mpmd_dim if is_fwd else mpmd_idx)
+        it = SequentialMicrobatchesIterator()
+
+        def stage_id(local_stage: int) -> int:
+            return (local_stage * self.mpmd_dim) + mpmd_idx
+
+        tasks = [it.fwd(stage_id(local_stage)) for local_stage in forward_local_stages]
+        tasks.extend(
+            it.bwd(stage_id(local_stage)) for local_stage in backward_local_stages
+        )
+        return tasks
+
+    def tasks(self, n_mubatches: int) -> ScheduleTasks:
+        return [
+            self._tasks_for_rank(mpmd_idx, n_mubatches)
+            for mpmd_idx in range(self.mpmd_dim)
+        ]
+
+
+@dataclass(eq=True, frozen=True)
+class GPipe(InterleavedGPipe):
+    mpmd_dim: int | None = None
+
+    def __post_init__(self):
+        if self.mpmd_dim is None:
+            object.__setattr__(self, "mpmd_dim", self.num_stages)
+        super().__post_init__()
+        if self.mpmd_dim != self.num_stages:
+            raise ValueError(
+                f"{GPipe.__name__} requires mpmd_dim == num_stages, got "
+                f"{self.mpmd_dim=} and {self.num_stages=}"
             )
-            mubatch_idx = (count // n_stages) * self.mpmd_dim + (count % self.mpmd_dim)
-            return (stage_id, mubatch_idx, count)
 
-        # fwd: the first half
-        for step in range(half_steps):
-            for mpmd_idx in range(self.mpmd_dim):
-                if step >= mpmd_idx:
-                    stage_id, mubatch_idx, count = stage_mubatch[mpmd_idx][0]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[mpmd_idx][step] = Task.make(
-                            stage_id, mubatch_idx, TaskType.FWD
-                        )
-                        stage_mubatch[mpmd_idx][0] = get_next(
-                            self.num_stages, mpmd_idx, FWD, 1, stage_id, count
-                        )
-
-        # bwd: the second half
-        for step in range(half_steps, n_steps):
-            relative_step = step - half_steps
-            for mpmd_idx in range(self.mpmd_dim):
-                inv_step = self.mpmd_dim - mpmd_idx - 1
-                if relative_step >= inv_step:
-                    stage_id, mubatch_idx, count = stage_mubatch[mpmd_idx][BWD]
-                    if mubatch_idx >= 0 and mubatch_idx < n_mubatches:
-                        schedule[mpmd_idx][step] = Task.make(
-                            stage_id, mubatch_idx, TaskType.BWD
-                        )
-                        stage_mubatch[mpmd_idx][0] = get_next(
-                            self.num_stages, mpmd_idx, BWD, 1, stage_id, count
-                        )
-
-        return schedule
+    def microbatch_round_sizes(self, n_microbatches: int) -> tuple[int, ...]:
+        return (n_microbatches,)
 
 
 

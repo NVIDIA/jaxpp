@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +14,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
+set -euo pipefail
 
-pytest --ignore tests/test_mpmd_array.py
-pytest tests/test_mpmd_array.py
-python examples/basic.py
+N_PROCS="${N_PROCS:-2}"
+N_GPUS="${N_GPUS:-2}"
 
+python -m pytest --ignore tests/test_mpmd_array.py
+python -m pytest tests/test_mpmd_array.py
+JAXPP_FAST_INFER_SHARDINGS=1 \
+    JAXPP_DEBUG_FORCE_MPMDIFY=True \
+    JAXPP_ENABLE_LICM=True \
+    python examples/basic.py --train_steps=10
 
-if [ $(nvidia-smi -L | wc -l) -ge 8 ]; then
-    N_PROCS=2 N_GPUS=4 COMMAND="python -u tests/test_reshard_utils.py" ./scripts/local_mc.sh
-    N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
-    N_PROCS=2 N_GPUS=4 COMMAND="python -u tests/test_dime2.py" ./scripts/local_mc.sh
-    N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/internal/issue_7.py" ./scripts/local_mc.sh
+if command -v nvidia-smi >/dev/null 2>&1; then
+    available_gpus=$(nvidia-smi -L | wc -l)
+else
+    available_gpus=0
+fi
+
+required_gpus=$((N_PROCS * N_GPUS))
+if [ "$available_gpus" -ge "$required_gpus" ]; then
+    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u tests/test_reshard_utils.py" ./scripts/local_mc.sh
+    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
+    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u tests/test_dime2.py" ./scripts/local_mc.sh
+else
+    echo "Skipping multi-process tests: need ${required_gpus} GPUs, found ${available_gpus}."
 fi

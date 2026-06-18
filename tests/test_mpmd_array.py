@@ -116,6 +116,36 @@ class TestMpmdArray(unittest.TestCase):
             == self.mpmd_mesh.mpmd_submesh([2]).jax_mesh
         )
 
+    def test_delete_is_idempotent_for_single_local_array(self):
+        sharding_0 = MpmdSharding(
+            self.mpmd_mesh, {0}, self.array_at_submesh_0.sharding.spec
+        )
+        mpmd_array = MpmdArray([self.array_at_submesh_0], sharding_0)
+
+        mpmd_array.delete()
+        mpmd_array.delete()
+
+        assert mpmd_array.is_deleted()
+
+    def test_delete_is_idempotent_for_partially_deleted_replicas(self):
+        sharding_0_2 = MpmdSharding(
+            self.mpmd_mesh, {0, 2}, self.array_at_submesh_0.sharding.spec
+        )
+        mpmd_array = MpmdArray(
+            [self.array_at_submesh_0, self.array_at_submesh_2],
+            sharding_0_2,
+        )
+
+        self.array_at_submesh_0.delete()
+
+        assert mpmd_array.is_deleted()
+        mpmd_array.delete()
+        mpmd_array.delete()
+
+        assert self.array_at_submesh_0.is_deleted()
+        assert self.array_at_submesh_2.is_deleted()
+        assert mpmd_array.is_deleted()
+
 
 if __name__ == "__main__":
     unittest.main()

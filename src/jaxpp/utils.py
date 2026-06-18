@@ -20,7 +20,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
-from typing import Generic, TypeVar, overload
+from typing import Generic, Protocol, TypeVar, overload
 
 import jax
 
@@ -29,6 +29,11 @@ from jaxpp import jax_compat as jc
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+_PyTreeLeaf_co = TypeVar("_PyTreeLeaf_co", covariant=True)
+
+
+class PyTree(Protocol[_PyTreeLeaf_co]):
+    pass
 
 
 _MISSING = object()
@@ -223,21 +228,18 @@ def update_named_sharding(
 
 
 def updated_named_sharding_mesh(
-    shardings: Iterable[jax.sharding.NamedSharding | jc.UnspecifiedValue | None],
-    new_mesh,
+    sharding: PyTree[jax.sharding.NamedSharding | jc.UnspecifiedValue | None], new_mesh
 ):
-    res = []
-    for s in shardings:
+    def update_leaf(s):
         if s is None or isinstance(s, jc.UnspecifiedValue):
-            res.append(s)
-            continue
+            return s
 
         assert isinstance(s, jax.sharding.NamedSharding)
-        new_sharding = s
-        if not isinstance(s.mesh, jax.sharding.AbstractMesh):
-            new_sharding = update_named_sharding(s, mesh=new_mesh)
-        res.append(new_sharding)
-    return res
+        if isinstance(s.mesh, jax.sharding.AbstractMesh):
+            return s
+        return update_named_sharding(s, mesh=new_mesh)
+
+    return jax.tree_util.tree_map(update_leaf, sharding)
 
 
 @contextlib.contextmanager
@@ -300,86 +302,22 @@ def filter_axes(
             sharding_or_pspec, spec=filter_axes(sharding_or_pspec.spec, axes)
         )
 
-    assert isinstance(sharding_or_pspec, jax.sharding.PartitionSpec)
-
     new_spec = []
     for axis in sharding_or_pspec:
         if axis is None:
             new_spec.append(None)
         elif isinstance(axis, str):
-            if axis not in axes:
-                new_spec.append(axis)
-            else:
-                new_spec.append(None)
+            new_spec.append(None if axis in axes else axis)
         elif isinstance(axis, (list, tuple)):
-            new_axis = [a for a in axis if a not in axes]
-            new_spec.append(type(axis)(new_axis))
+            new_spec.append(type(axis)(a for a in axis if a not in axes))
         else:
             raise ValueError(f"Unsupported axis type: {type(axis)}")
 
     return jax.sharding.PartitionSpec(*new_spec)
 
 
-class Dropped:
-    instance = None
-
-    def __new__(cls):
-        if cls.instance is not None:
-            return cls.instance
-        cls.instance = super().__new__(cls)
-        return cls.instance
-
-
-@overload
-def rm_size1_axes(
-    spec: tuple[str | None, ...], mesh: jax.sharding.Mesh
-) -> tuple[str | None, ...]: ...
-
-
-@overload
-def rm_size1_axes(spec: None, mesh: jax.sharding.Mesh) -> None: ...
-
-
-@overload
-def rm_size1_axes(spec: str, mesh: jax.sharding.Mesh) -> str | Dropped: ...
-
-
-@overload
 def rm_size1_axes(
     spec: jax.sharding.PartitionSpec, mesh: jax.sharding.Mesh
-) -> jax.sharding.PartitionSpec: ...
-
-
-PartitionSpecLike = None | tuple[str | None, ...] | str | jax.sharding.PartitionSpec
-
-
-def rm_size1_axes(
-    spec: PartitionSpecLike, mesh: jax.sharding.Mesh
-) -> PartitionSpecLike | Dropped:
-    if spec is None:
-        return None
-    if isinstance(spec, str):
-        if mesh.shape[spec] == 1:
-            return Dropped()
-        return spec
-    if isinstance(spec, tuple):
-        res = tuple(
-            _
-            for axis in spec
-            if not isinstance(_ := rm_size1_axes(axis, mesh), Dropped)
-        )
-        if len(res) == 0:
-            return None  # No sharding on this dimension
-        if len(res) == 1:
-            return res[0]  # Unwrap single-element tuple
-        return res
-
-    # Special handling for PartitionSpec: convert Dropped to None to preserve dimensions
-    assert isinstance(
-        spec, jax.sharding.PartitionSpec
-    ), f"Unexpected type: {type(spec)}"
-    processed = tuple(
-        None if isinstance(_ := rm_size1_axes(axis, mesh), Dropped) else _
-        for axis in spec
-    )
-    return jax.sharding.PartitionSpec(*processed)
+) -> jax.sharding.PartitionSpec:
+    size1_axes = {axis for axis, size in mesh.shape.items() if size == 1}
+    return filter_axes(spec, size1_axes)

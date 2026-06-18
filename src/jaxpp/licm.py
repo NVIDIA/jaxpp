@@ -679,8 +679,7 @@ def hoist_and_cse_pscan_invariant_equations(
 
     source_info = jsiu.current()
     additional_args = (source_info,)
-    if jax.__version_info__ >= (0, 8, 0):
-        out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
+    out_tracers = [trace.to_jaxpr_tracer(t, source_info) for t in out_tracers]
 
     new_jaxpr, consts, *_ = trace.to_jaxpr(
         out_tracers, jaxpr.debug_info, *additional_args

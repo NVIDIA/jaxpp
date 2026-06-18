@@ -17,6 +17,7 @@
 Example of using spmd_to_mpmd_reshard to reshard the data between SPMD and MPMD meshes.
 
 Example usage:
+N_PROCS=2 N_GPUS=2 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
 N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
 N_PROCS=4 N_GPUS=2 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
 """
@@ -30,7 +31,11 @@ import jaxpp.distributed_utils as jppdu
 
 
 def main():
-    spmd_mesh = jax.make_mesh((2, 2, 2), ("stage", "fsdp", "tensor"))
+    if jax.device_count() % 4 != 0:
+        raise ValueError("mpmd_reshard example requires a multiple of 4 global devices")
+    spmd_mesh = jax.make_mesh(
+        (2, 2, jax.device_count() // 4), ("stage", "fsdp", "tensor")
+    )
     mpmd_mesh = jaxpp.MpmdMesh(spmd_mesh, "stage")
 
     embed_dim = 1024
@@ -105,9 +110,7 @@ def main():
 
     # This reshard makes
     _W1, _W2, _x, _unused = jaxpp.spmd_to_mpmd_reshard(
-        mpmd_mesh,
-        [W1, W2, x, x],
-        list(args_mpmd_shardings),
+        mpmd_mesh, [W1, W2, x, x], list(args_mpmd_shardings)
     )
 
     # The arguments to spmd_to_mpmd_reshard are deleted and should not be used

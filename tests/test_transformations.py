@@ -14,9 +14,7 @@ from jaxpp import env_vars
 from jaxpp.api import Add, BaseSchedule, Concat, mark_stage_end, treduce
 from jaxpp.core import (
     cluster_jaxpr,
-    infer_shardings2,
     maybe_unroll_loop,
-    strip_inspect_sharding_eqns,
     wrap_into_tasks,
 )
 from jaxpp.jax_primitives import dax_pscan_p
@@ -25,11 +23,14 @@ from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import (
     DualPipeV,
     Eager1F1B,
+    GPipe,
     Interleaved1F1B,
+    InterleavedGPipe,
     KimiK2,
     Std1F1B,
     ZeroBubble,
 )
+from jaxpp.sharding_inference import infer_shardings2
 
 
 def named_computation(fun, name):
@@ -124,7 +125,6 @@ def get_scheduled_jaxpr(
         infer_shardings2(
             wrapped_cjaxpr, [replicated_sharding] * len(cjaxpr.in_avals), stage_mesh
         )
-        wrapped_cjaxpr = strip_inspect_sharding_eqns(wrapped_cjaxpr)
 
     return maybe_unroll_loop(wrapped_cjaxpr)
 
@@ -153,9 +153,12 @@ def cleanup(fn):
         (1, 1, 4, Std1F1B(num_stages=1)),
         (2, 2, 4, Std1F1B(num_stages=2)),
         (3, 3, 5, Eager1F1B(num_stages=3)),
+        (2, 2, 4, GPipe(num_stages=2)),
         (1, 1, 1, Interleaved1F1B(num_stages=1, mpmd_dim=1)),
+        (2, 4, 5, InterleavedGPipe(num_stages=4, mpmd_dim=2)),
         (4, 8, 1, Interleaved1F1B(num_stages=8, mpmd_dim=4)),
         (4, 8, 1, KimiK2(num_stages=8, mpmd_dim=4, fuse_steady_state=True)),
+        (2, 4, 5, Interleaved1F1B(num_stages=4, mpmd_dim=2)),
         (2, 4, 12, Interleaved1F1B(num_stages=4, mpmd_dim=2)),
         (4, 4, 4, ZeroBubble(num_stages=4)),
         (4, 4, 8, ZeroBubble(num_stages=4)),

@@ -99,7 +99,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "jax[cuda13]>=0.6.2,<=0.10.1",
+    "jax[cuda13]>=0.8.0,<=0.10.2",
     "cupy-cuda13x",
 ]
 
@@ -184,5 +184,9 @@ extend-unsafe-fixes = ["UP038"]
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
 [tool.ruff.format]
 indent-style = "space"
+skip-magic-trailing-comma = true

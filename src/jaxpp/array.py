@@ -19,7 +19,10 @@ from typing import Any, cast
 
 import jax
 import numpy as np
+from jax.experimental import multihost_utils
 
+from jaxpp import array_ops
+from jaxpp import jax_compat as jc
 from jaxpp.jax_compat import core as jcore
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import MpmdSharding
@@ -36,9 +39,9 @@ class MpmdArray:
 
     MpmdArray represents a logical array that exists in a subset of MPMD groups
     within an :class:`~jaxpp.mesh.MpmdMesh`.
-    Unlike standard JAX SPMD arrays where all processes have a shard of the corresponding
-    array, an MpmdArray is only "partially addressable", it exists as sharded in only
-    one or more MPMD groups (potentially all of them too).
+    Unlike standard JAX SPMD arrays where all processes have a shard of the
+    corresponding array, an MpmdArray is only "partially addressable", it exists
+    as sharded in only one or more MPMD groups (potentially all of them too).
 
     Properties:
         - `mpmd_idxs`: The set of MPMD group indices where this array exists.
@@ -168,9 +171,7 @@ class MpmdArray:
     @property
     def _mpmd_local_sharding(self) -> jax.sharding.NamedSharding:
         return update_named_sharding(
-            self._sharding,
-            mesh=self._mpmd_mesh.lowering_mesh(),
-            spec=self.spec,
+            self._sharding, mesh=self._mpmd_mesh.lowering_mesh(), spec=self.spec
         )
 
     def __repr__(self):
@@ -198,7 +199,6 @@ class MpmdArray:
 
     def delete(self):
         assert self.is_partially_addressable, "Array is not partially addressable"
-        assert not self.is_deleted(), "Array is deleted"
         for arr in self._partially_addressable_arrays.values():
             arr.delete()
 
@@ -209,10 +209,7 @@ class MpmdArray:
                 1
             ].is_deleted()
 
-        _ = [a.is_deleted() for a in self._partially_addressable_arrays.values()]
-        deleted = any(_)
-        assert deleted == all(_)
-        return deleted
+        return any(a.is_deleted() for a in self._partially_addressable_arrays.values())
 
     @property
     def to_mpmd_local_array(self) -> jax.Array | list[jax.Array] | None:
@@ -266,29 +263,22 @@ def pytype_aval_mapping(self: MpmdArray) -> jcore.AbstractValue:
 
 
 jcore.pytype_aval_mappings[MpmdArray] = pytype_aval_mapping
+jc.register_canonicalize_value_handler(MpmdArray, None)
 
 
 def _to_global_jax_array(mpmd_array: MpmdArray) -> jax.Array | None:
     if not mpmd_array.is_partially_addressable:
-        if getattr(
-            jax.config, "jax_enable_empty_arrays", False
-        ) or jax.__version_info__ >= (0, 7, 1):
-            return jax.make_array_from_single_device_arrays(
-                shape=mpmd_array.shape,
-                sharding=mpmd_array._sharding,
-                arrays=[],
-                dtype=mpmd_array.dtype,
-            )
-        return None
+        return jax.make_array_from_single_device_arrays(
+            shape=mpmd_array.shape,
+            sharding=mpmd_array._sharding,
+            arrays=[],
+            dtype=mpmd_array.dtype,
+        )
 
-    return jax.make_array_from_single_device_arrays(
+    return array_ops.make_array_from_addressable_shards(
         shape=mpmd_array.shape,
         sharding=mpmd_array._sharding,
-        arrays=[
-            shard.data
-            for arr in mpmd_array._partially_addressable_arrays.values()
-            for shard in arr.addressable_shards
-        ],
+        arrays=mpmd_array._partially_addressable_arrays.values(),
         dtype=mpmd_array.dtype,
     )
 
@@ -331,28 +321,26 @@ def _spmd_to_mpmd_reshard(
         if donated:
             spmd_value.delete()
 
+    from jaxpp.jax_primitives import SliceParams, slice_p
+
     if not mpmd_mesh.jax_mesh.is_multi_process:
         # TODO: return an jaxpp.MpmdArray instead of a list of jax.Array
         _res = []
-        for _, dsh in zip(res, dist_shardings, strict=True):
-            shards = []
-            for s in _.addressable_shards:
-                if mpmd_mesh.device_mpmd_idx[s.device] in dsh.mesh_ids:
-                    shards.append(s.data)
-                else:
+        for arr, dsh in zip(res, dist_shardings, strict=True):
+            group = tuple(sorted(dsh.mesh_ids))
+            target_mesh = mpmd_mesh.mpmd_submesh(list(group)).jax_mesh
+            target_devices = set(target_mesh.devices.flat)
+            (new_arr,) = slice_p.bind(
+                arr,
+                **SliceParams(
+                    in_sharding=arr.sharding, groups=(group,), mpmd_mesh=mpmd_mesh
+                ),
+            )
+            for s in arr.addressable_shards:
+                if s.device not in target_devices:
                     s.data.delete()
 
-            _arr = jax.make_array_from_single_device_arrays(
-                _.shape,
-                update_named_sharding(
-                    dsh.sharding,
-                    mesh=mpmd_mesh.mpmd_submesh(list(dsh.mesh_ids)).jax_mesh,
-                    spec=_.sharding.spec,
-                ),
-                shards,
-            )
-
-            _res.append(_arr)
+            _res.append(new_arr)
         return _res
 
     _res = []
@@ -378,14 +366,13 @@ def _spmd_to_mpmd_reshard(
             )
             arr.delete()
         else:
-            new_arr = jax.make_array_from_single_device_arrays(
-                arr.shape,
-                update_named_sharding(
-                    dsh.sharding,
-                    mesh=mpmd_mesh.my_mpmd_group_mesh,
-                    spec=arr.sharding.spec,
+            (new_arr,) = slice_p.bind(
+                arr,
+                **SliceParams(
+                    in_sharding=arr.sharding,
+                    groups=((mpmd_mesh.my_mpmd_axis_index,),),
+                    mpmd_mesh=mpmd_mesh,
                 ),
-                [s.data for s in arr.addressable_shards],
             )
             _res.append(
                 MpmdArray(
@@ -408,17 +395,14 @@ def _get_working_memory_threshold() -> int:
         # Use process_allgather to collect all local minimums, then compute global min
         # Note: process_allgather requires an array, not a scalar
         local_min_array = jax.numpy.array(min_available, dtype=jax.numpy.float32)
-        all_mins = jax.experimental.multihost_utils.process_allgather(
-            local_min_array, tiled=True
-        )
+        all_mins = multihost_utils.process_allgather(local_min_array, tiled=True)
         min_available = float(jax.numpy.min(all_mins))
 
     return int(min_available // 3)
 
 
 def _build_mpmd_interleaved_order(
-    arrays: list[jax.Array],
-    shardings: list[MpmdSharding],
+    arrays: list[jax.Array], shardings: list[MpmdSharding]
 ) -> list[int]:
     """Build array order interleaved by mpmd_idx, largest first within each idx."""
     by_mpmd_idx: dict[int, list[int]] = defaultdict(list)
@@ -528,10 +512,7 @@ def spmd_to_mpmd_reshard(
     return jax.tree.unflatten(spmd_tree_def, resharded_flat)
 
 
-def _group_by_size_threshold(
-    sizes: list[int],
-    threshold: int,
-) -> list[list[int]]:
+def _group_by_size_threshold(sizes: list[int], threshold: int) -> list[list[int]]:
     """Group indices by size threshold.
 
     Groups are formed sequentially - entries are added to the current group
@@ -556,74 +537,16 @@ def _group_by_size_threshold(
     return groups
 
 
-def _axis_name_in_spec(axis_name: str, spec) -> bool:
-    for elem in spec:
-        if elem == axis_name:
-            return True
-        if isinstance(elem, tuple) and axis_name in elem:
-            return True
-    return False
-
-
-def logically_stacked(
-    array: jax.Array,
-    comm_mesh: jax.sharding.Mesh,
-    mesh_axis_name: str,
-    array_axis: int = 0,
-    strict: bool = False,
-):
-    """
-    Logically stacks an array along a new axis corresponding to the MPMD dimension.
-
-    This function expands the input array's dimensions and reshards it across
-    the communication mesh, effectively treating distributed shards as a single
-    logical array with an extra dimension.
-    """
-    assert isinstance(array.sharding, jax.sharding.NamedSharding)
-
-    if strict:
-        spec = array.sharding.spec
-        assert not _axis_name_in_spec(
-            mesh_axis_name, spec
-        ), f"axis_name {mesh_axis_name!r} already exists in spec {spec}"
-    else:
-        spec = filter_axes(array.sharding.spec, {mesh_axis_name})
-
-    expanded_array = jax.numpy.expand_dims(array, array_axis)
-    in_sharding = update_named_sharding(
-        array.sharding,
-        mesh=comm_mesh,
-        spec=jax.sharding.PartitionSpec(
-            *spec[:array_axis], mesh_axis_name, *spec[array_axis:]
-        ),
-    )
-
-    global_array = jax.make_array_from_single_device_arrays(
-        (
-            *array.shape[:array_axis],
-            comm_mesh.shape[mesh_axis_name],
-            *array.shape[array_axis:],
-        ),
-        in_sharding,
-        [s.data for s in expanded_array.addressable_shards],
-    )
-    return global_array
-
-
-def _select_mpmd_slice_fn(arrays, mpmd_idxs, shardings):  # pyright: ignore[reportRedeclaration]
+def _select_mpmd_slice_fn(arrays, mpmd_idxs, shardings):
     """Selector function to pick the slice corresponding to the MPMD index."""
     return tuple(array[idx] for array, idx in zip(arrays, mpmd_idxs, strict=True))
 
 
-if jax.__version_info__ <= (0, 6, 2):
-    _select_mpmd_slice = _select_mpmd_slice_fn
-else:
-
-    def _select_mpmd_slice(arrays, mpmd_idxs, shardings):
-        return jax.sharding.auto_axes(
-            functools.partial(_select_mpmd_slice_fn, shardings=shardings),
-            out_sharding=shardings,
-        )(arrays, mpmd_idxs)
+def _select_mpmd_slice(arrays, mpmd_idxs, shardings):
+    return jax.sharding.auto_axes(
+        functools.partial(_select_mpmd_slice_fn, shardings=shardings),
+        out_sharding=shardings,
+    )(arrays, mpmd_idxs)
 
 
 def mpmd_to_spmd_reshard(
@@ -680,6 +603,8 @@ def mpmd_to_spmd_reshard(
     )
 
     resharded_arrays_by_index: dict[int, jax.Array] = {}
+    from jaxpp.jax_primitives import StackParams, stack_p
+
     for group_indices in groups:
         orig_indices = [order[i] for i in group_indices]
 
@@ -696,10 +621,15 @@ def mpmd_to_spmd_reshard(
                     out_shardings=mpmd_arr._mpmd_local_sharding,
                 )(mpmd_arr.shape, mpmd_arr.dtype)
 
-            stacked = logically_stacked(
-                local_array, mpmd_mesh.jax_mesh, mpmd_mesh.mpmd_axis_name
+            assert isinstance(local_array.sharding, jax.sharding.NamedSharding)
+            in_sharding = update_named_sharding(
+                local_array.sharding,
+                spec=filter_axes(local_array.sharding.spec, {mpmd_mesh.mpmd_axis_name}),
             )
-            # logically_stacked creates a new array, so we can delete the local array
+            stacked = stack_p.bind(
+                local_array,
+                **StackParams(in_shardings=(in_sharding,), mpmd_mesh=mpmd_mesh, axis=0),
+            )
             if donate[orig_idx]:
                 local_array.delete()
             group_stacked.append(stacked)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.10.2"
+from jaxpp.experimental._mpmd import (
+    LoweredMpmdFun,
+    MpmdFunction,
+    mpmd,
+    slice,
+    stack,
+    task,
+    transfer,
+)
+from jaxpp.mesh import MpmdMesh
 
-from jaxpp import api as api  # noqa: PLC0414
+__all__ = [
+    "MpmdMesh",
+    "mpmd",
+    "slice",
+    "stack",
+    "task",
+    "transfer",
+    "MpmdFunction",
+    "LoweredMpmdFun",
+]

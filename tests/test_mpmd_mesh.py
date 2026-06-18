@@ -90,6 +90,25 @@ class TestMpmdMesh(unittest.TestCase):
                 == m.device_ids
             ).all()
 
+    def test_mpmd_indices_for_submesh(self):
+        mesh = MpmdMesh(
+            Mesh(
+                np.array(self.devices).reshape((4, 2, 1, 2, 1)),
+                ("stage", "data", "sequence", "tensor", "expert"),
+            ),
+            "stage",
+        )
+
+        assert mesh.mpmd_indices_for_mesh(mesh.unstack[1]) == (1,)
+        assert mesh.mpmd_indices_for_mesh(mesh.mpmd_submesh([0, 2]).jax_mesh) == (
+            0,
+            2,
+        )
+        assert mesh.mpmd_indices_for_mesh(mesh.mpmd_submesh([3, 1]).jax_mesh) == (
+            3,
+            1,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

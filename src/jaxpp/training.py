@@ -84,8 +84,8 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
         jaxpr=jc.close_jaxpr(scan_body_jaxpr),
         n_mubatches=length,
         n_consts=n_consts,
-        in_shardings=None,
-        out_shardings=None,
+        in_shardings=(None,) * len(flat_args),
+        out_shardings=(None,) * len(scan_body_jaxpr.outvars),
         in_mpmd_refs=None,
         out_mpmd_defs=None,
         schedule=schedule,
@@ -140,8 +140,7 @@ class Concat:
                 *(tuple(spec[: self.axis]) + (None,) + tuple(spec[self.axis :]))
             )
             sharding = a.sharding.update(spec=new_spec)
-            if jax.__version_info__ >= (0, 8, 0):
-                return jax.numpy.zeros_like(a, shape=shape, out_sharding=sharding)
+            return jax.numpy.zeros_like(a, shape=shape, out_sharding=sharding)
         return jax.numpy.zeros_like(a, shape=shape)
 
     def update(self, state: jax.Array, update: jax.Array, index: int) -> jax.Array:
@@ -293,8 +292,7 @@ def treduce_i(
         )
         body_jaxpr = jcore.ClosedJaxpr(body_jaxpr, consts)
         loop_out_shapes = jax.tree_util.tree_unflatten(
-            out_tree(),
-            [jc.aval_to_shape_dtype_struct(o) for o in out_avals],
+            out_tree(), [jc.aval_to_shape_dtype_struct(o) for o in out_avals]
         )
 
     # TODO: maybe use custom definition of `tree_broadcast` and

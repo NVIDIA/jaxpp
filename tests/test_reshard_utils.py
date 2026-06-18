@@ -185,9 +185,10 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
         print(f"{spmd_pspec=}")
 
         all_devices = np.array(jax.devices())
+        model_axis_size = min(2, local_device_count)
 
         source_jax_mesh = jax.sharding.Mesh(
-            all_devices.reshape(1, 4, 2), ("mpmd", "data", "model")
+            all_devices.reshape(1, -1, model_axis_size), ("mpmd", "data", "model")
         )
 
         target_jax_mesh = jax.sharding.Mesh(

@@ -119,6 +119,24 @@ class MpmdMesh:
     def mpmd_idx_for_mesh(self) -> Mapping[jax.sharding.Mesh, int]:
         return {mesh: idx for idx, mesh in enumerate(self.unstack)}
 
+    def mpmd_indices_for_mesh(self, mesh: jax.sharding.Mesh) -> tuple[int, ...] | None:
+        if (
+            mesh.axis_names != self.jax_mesh.axis_names
+            or mesh.axis_types != self.jax_mesh.axis_types
+        ):
+            return None
+
+        mpmd_indices = []
+        for submesh in MpmdMesh(mesh, self.mpmd_axis_name).unstack:
+            idx = self.mpmd_idx_for_mesh.get(submesh)
+            if idx is None:
+                return None
+            mpmd_indices.append(idx)
+
+        if len(set(mpmd_indices)) != len(mpmd_indices):
+            return None
+        return tuple(mpmd_indices)
+
     @cached_property
     def my_mpmd_axis_index(self) -> int:
         if (
@@ -165,3 +183,34 @@ class MpmdMesh:
             axis_types=self.jax_mesh.axis_types,
         )
         return MpmdMesh(jax_mesh, self.mpmd_axis_name)
+
+
+def _require_mpmd_indices(
+    mpmd_mesh: MpmdMesh, mesh: jax.sharding.Mesh, *, name: str = "mesh"
+) -> tuple[int, ...]:
+    """Like `MpmdMesh.mpmd_indices_for_mesh`, but raise if `mesh` is not contained."""
+    indices = mpmd_mesh.mpmd_indices_for_mesh(mesh)
+    if indices is None:
+        raise ValueError(f"{name} does not belong to the MPMD mesh")
+    return indices
+
+
+def _require_single_mpmd_index(
+    mpmd_mesh: MpmdMesh, mesh: jax.sharding.Mesh, *, name: str = "mesh"
+) -> int:
+    """Resolve `mesh` to the single MPMD group index it covers, else raise."""
+    indices = _require_mpmd_indices(mpmd_mesh, mesh, name=name)
+    if len(indices) != 1:
+        raise ValueError(f"{name} must use a single MPMD group mesh")
+    return indices[0]
+
+
+def _resolve_placement(
+    mpmd_mesh: MpmdMesh, placement: int | jax.sharding.Mesh, *, name: str = "placement"
+) -> tuple[tuple[int, ...], jax.sharding.Mesh]:
+    """Resolve an `int | Mesh` placement to its MPMD indices and physical mesh."""
+    if isinstance(placement, int):
+        return (placement,), mpmd_mesh.unstack[placement]
+    if isinstance(placement, jax.sharding.Mesh):
+        return _require_mpmd_indices(mpmd_mesh, placement, name=name), placement
+    raise TypeError(f"{name} must be an int or Mesh, got {type(placement)}")

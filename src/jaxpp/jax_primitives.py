@@ -23,36 +23,78 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import (
     Any,
-    Callable,
     Generator,
-    Optional,
-    ParamSpec,
+    Generic,
+    NotRequired,
+    Protocol,
     Sequence,
     TypedDict,
     TypeVar,
+    Unpack,
     cast,
 )
 
 import jax
 import jax.extend.source_info_util as jsiu
+from jax._src import effects
 from jax.interpreters import ad, batching, mlir
 from jax.interpreters import partial_eval as pe
 
+from jaxpp import array_ops
 from jaxpp import jax_compat as jc
-from jaxpp.array import MpmdArray, logically_stacked
-from jaxpp.dime2 import send_or_recv
+from jaxpp.array import MpmdArray
+from jaxpp.dime2 import start_transfer
 from jaxpp.jax_compat import core as jcore
-from jaxpp.mesh import MpmdMesh
+from jaxpp.mesh import MpmdMesh, _require_mpmd_indices, _resolve_placement
 from jaxpp.types import MpmdSharding, TaskType
 from jaxpp.utils import (
     filter_axes,
     get_named_sharding,
     print_memstats,
     update_named_sharding,
-    updated_named_sharding_mesh,
 )
 
 logger = logging.getLogger(__name__)
+
+TOKEN_AVAL = jcore.abstract_token
+
+_CommDoneT = TypeVar("_CommDoneT")
+_CommDoneT_co = TypeVar("_CommDoneT_co", covariant=True)
+
+
+class _CommTransfer(Protocol[_CommDoneT_co]):
+    def done(self) -> _CommDoneT_co: ...
+
+
+class CommToken(Generic[_CommDoneT]):
+    """Runtime token for async communication.
+
+    The token wraps a send or recv transfer handle from `dime2`. The handle owns
+    any DLPack capsules needed to pin external buffer references, so primitive
+    implementations do not duplicate lifetime bookkeeping here.
+    """
+
+    __slots__ = ("transfer",)
+
+    def __init__(self, transfer: _CommTransfer[_CommDoneT]):
+        self.transfer = transfer
+
+    def done(self) -> _CommDoneT:
+        return self.transfer.done()
+
+
+jcore.pytype_aval_mappings[CommToken] = lambda _t: TOKEN_AVAL
+jc.register_canonicalize_value_handler(CommToken, None)
+
+
+class _NoopTransfer:
+    def done(self) -> None:
+        return None
+
+
+ShardingParam = jax.sharding.Sharding | jc.UnspecifiedValue | None
+ShardingTuple = tuple[ShardingParam, ...]
+
 
 add_multi_p = jcore.Primitive("add_multi")
 
@@ -60,8 +102,8 @@ add_multi_p = jcore.Primitive("add_multi")
 @add_multi_p.def_abstract_eval
 def add_multi_abstract_eval(
     *args,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
 ):
@@ -73,8 +115,8 @@ def add_multi_abstract_eval(
 @add_multi_p.def_impl
 def add_multi_impl(
     *args,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
 ):
@@ -84,8 +126,8 @@ def add_multi_impl(
         not mpmd_mesh.jax_mesh.is_multi_process
     ), f"{add_multi_p.name} supported only in single-process runtime"
     prev_shardings: list[jax.NamedSharding] = [a.sharding for a in args]
-    # TODO: do the stacking similarly to logically_stacked
-    with jc.set_mesh(args[0].sharding.mesh):
+    # TODO: do the stacking through stack_p.
+    with jax.set_mesh(args[0].sharding.mesh):
         _ = sum(jax.device_put(a, args[0].sharding) for a in args)
     return MpmdArray(
         [jax.device_put(_, s) for s in prev_shardings],
@@ -100,8 +142,8 @@ def add_multi_impl(
 
 def add_multi_lower(
     *args,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
 ):
@@ -125,38 +167,51 @@ def all_reduce(
     donated: Sequence[int] | None = None,
 ):
     assert mpmd_mesh.my_mpmd_axis_index in mpmd_idxs
-    comm_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs).jax_mesh
-    axis_name = mpmd_mesh.mpmd_axis_name
+    comm_mpmd_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs)
+    comm_mesh = comm_mpmd_mesh.jax_mesh
 
     shardings = [get_named_sharding(a) for a in arrs]
     assert len(set(_.mesh for _ in shardings)) == 1
 
-    plogically_stacked = partial(
-        logically_stacked, comm_mesh=comm_mesh, mesh_axis_name=axis_name
+    stacked_shardings = tuple(
+        array_ops.stack_shape_and_sharding(
+            (a.shape,), (sharding,), mpmd_mesh=comm_mpmd_mesh
+        )[1]
+        for a, sharding in zip(arrs, shardings, strict=True)
     )
-    gas = tuple(plogically_stacked(a) for a in arrs)
+    stacked = tuple(
+        stack_p.bind(
+            a, **StackParams(in_shardings=(sharding,), mpmd_mesh=comm_mpmd_mesh, axis=0)
+        )
+        for a, sharding in zip(arrs, shardings, strict=True)
+    )
+    out_shardings = tuple(
+        update_named_sharding(sharding, mesh=comm_mesh, spec=spec)
+        for sharding, spec in zip(shardings, out_specs, strict=True)
+    )
 
-    with jc.set_mesh(comm_mesh):
+    with jax.set_mesh(comm_mesh):
         all_reduced: tuple[jax.Array, ...] = jax.jit(
             all_reduce_fn,
-            in_shardings=tuple(a.sharding for a in gas),
-            out_shardings=tuple(
-                update_named_sharding(sharding, mesh=comm_mesh, spec=spec)
-                for sharding, spec in zip(shardings, out_specs, strict=True)
-            ),
+            in_shardings=stacked_shardings,
+            out_shardings=out_shardings,
             donate_argnums=donated,
-        )(gas)
+        )(stacked)
 
-    res = []
-    for a, sh in zip(all_reduced, shardings, strict=True):
-        sh = update_named_sharding(sh, mesh=mpmd_mesh.lowering_mesh())
-        res.append(
-            jax.make_array_from_single_device_arrays(
-                a.shape, sh, [s.data for s in a.addressable_shards]
-            )
-        )
-
-    return res
+    local_group = _require_mpmd_indices(
+        comm_mpmd_mesh, mpmd_mesh.lowering_mesh(), name="all_reduce local mesh"
+    )
+    return [
+        slice_p.bind(
+            a,
+            **SliceParams(
+                in_sharding=out_sharding,
+                groups=(local_group,),
+                mpmd_mesh=comm_mpmd_mesh,
+            ),
+        )[0]
+        for a, out_sharding in zip(all_reduced, out_shardings, strict=True)
+    ]
 
 
 all_reduce_p = jcore.Primitive("all_reduce")
@@ -180,8 +235,6 @@ def all_reduce_impl(
     donated: Sequence[int],
     out_spec: jax.sharding.PartitionSpec,
 ):
-    _check_no_attrs(arg)
-
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
     return all_reduce(
         [arg],
@@ -199,8 +252,8 @@ gather_multi_p = jcore.Primitive("gather_multi")
 def gather_multi_abstract_eval(
     *args,
     axis: int = 0,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
     restore_order_perm=None,
@@ -214,8 +267,8 @@ def gather_multi_abstract_eval(
 def gather_multi_impl(
     *args,
     axis: int = 0,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
     restore_order_perm=None,
@@ -249,8 +302,8 @@ def gather_multi_impl(
 def gather_multi_lower(
     *arrays,
     axis: int = 0,
-    in_shardings: Optional["ShardingStore"] = None,
-    out_shardings: Optional["ShardingStore"] = None,
+    in_shardings: ShardingTuple | None = None,
+    out_shardings: ShardingTuple | None = None,
     mpmd_idxs=None,
     donate_invars=None,
     restore_order_perm=None,
@@ -295,21 +348,28 @@ def all_gather(
 ):
     """Gather arrays across MPMD groups, keeping the stacked dimension."""
     assert mpmd_mesh.my_mpmd_axis_index in mpmd_idxs
-    comm_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs).jax_mesh
+    comm_mpmd_mesh = mpmd_mesh.mpmd_submesh(mpmd_idxs)
+    comm_mesh = comm_mpmd_mesh.jax_mesh
     axis_name = mpmd_mesh.mpmd_axis_name
 
     shardings = [get_named_sharding(a) for a in arrs]
     assert len(set(_.mesh for _ in shardings)) == 1
 
-    plogically_stacked = partial(
-        logically_stacked,
-        comm_mesh=comm_mesh,
-        mesh_axis_name=axis_name,
-        array_axis=axis,
+    stacked_shardings = tuple(
+        array_ops.stack_shape_and_sharding(
+            (a.shape,), (sharding,), mpmd_mesh=comm_mpmd_mesh, axis=axis
+        )[1]
+        for a, sharding in zip(arrs, shardings, strict=True)
     )
-
-    gas = tuple(plogically_stacked(a) for a in arrs)
-
+    stacked = tuple(
+        stack_p.bind(
+            a,
+            **StackParams(
+                in_shardings=(sharding,), mpmd_mesh=comm_mpmd_mesh, axis=axis
+            ),
+        )
+        for a, sharding in zip(arrs, shardings, strict=True)
+    )
     out_shardings = tuple(
         update_named_sharding(
             sharding, mesh=comm_mesh, spec=filter_axes(spec, {axis_name})
@@ -317,25 +377,29 @@ def all_gather(
         for sharding, spec in zip(shardings, out_specs, strict=True)
     )
 
-    with jc.set_mesh(comm_mesh):
+    with jax.set_mesh(comm_mesh):
         gathered: tuple[jax.Array, ...] = jax.jit(
             _squeezed,
-            in_shardings=tuple(a.sharding for a in gas),
+            in_shardings=stacked_shardings,
             out_shardings=out_shardings,
             donate_argnums=donated,
             static_argnums=(1, 2),
-        )(gas, axis, restore_order_perm)
+        )(stacked, axis, restore_order_perm)
 
-    res = []
-    for a, sh in zip(gathered, out_shardings, strict=True):
-        sh = update_named_sharding(sh, mesh=mpmd_mesh.lowering_mesh())
-        res.append(
-            jax.make_array_from_single_device_arrays(
-                a.shape, sh, [s.data for s in a.addressable_shards]
-            )
-        )
-
-    return res
+    local_group = _require_mpmd_indices(
+        comm_mpmd_mesh, mpmd_mesh.lowering_mesh(), name="all_gather local mesh"
+    )
+    return [
+        slice_p.bind(
+            a,
+            **SliceParams(
+                in_sharding=out_sharding,
+                groups=(local_group,),
+                mpmd_mesh=comm_mpmd_mesh,
+            ),
+        )[0]
+        for a, out_sharding in zip(gathered, out_shardings, strict=True)
+    ]
 
 
 all_gather_p = jcore.Primitive("all_gather")
@@ -366,8 +430,6 @@ def all_gather_impl(
     out_spec: jax.sharding.PartitionSpec,
     restore_order_perm: Sequence[int],
 ):
-    _check_no_attrs(arg)
-
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
     return all_gather(
         [arg],
@@ -380,29 +442,199 @@ def all_gather_impl(
     )[0]
 
 
+class TransferParams(TypedDict):
+    src_shardings: tuple[jax.sharding.Sharding, ...]
+    tgt_shardings: tuple[jax.sharding.Sharding, ...]
+
+
 transfer_p = jcore.Primitive("transfer")
 transfer_p.multiple_results = True
 
 
-@transfer_p.def_abstract_eval
-def transfer_abstract_eval(*args, src_mpmd_idx, tgt_mpmd_idx, src_shardings):
-    return args
+def _abstract_sharding_for_aval(sharding):
+    if not isinstance(sharding, jax.sharding.NamedSharding):
+        return sharding
+
+    mesh = sharding.mesh
+    if not isinstance(mesh, jax.sharding.AbstractMesh):
+        mesh = mesh.abstract_mesh
+
+    if mesh is not sharding.mesh or sharding.memory_kind is not None:
+        return update_named_sharding(sharding, mesh=mesh, memory_kind=None)
+    return sharding
+
+
+@transfer_p.def_effectful_abstract_eval
+def transfer_abstract_eval(*args, **params: Unpack[TransferParams]):
+    src_shardings = params["src_shardings"]
+    del src_shardings
+    out_avals = tuple(
+        arg.update(sharding=_abstract_sharding_for_aval(tgt_sharding))
+        if isinstance(arg, jcore.ShapedArray)
+        else arg
+        for arg, tgt_sharding in zip(args, params["tgt_shardings"], strict=True)
+    )
+    return (TOKEN_AVAL, *out_avals), frozenset({communication_effect})
 
 
 @transfer_p.def_impl
-def transfer_impl(*args, src_mpmd_idx, tgt_mpmd_idx, src_shardings):
-    args = list(args)
-    mpmd_mesh = MpmdMesh.mesh_stack[-1]
-
-    for a, sh in zip(args, src_shardings, strict=True):
+def transfer_impl(*args, **params: Unpack[TransferParams]):
+    for a, sh in zip(args, params["src_shardings"], strict=True):
         assert isinstance(a, jax.Array)
         assert a.sharding == sh
 
-    tgt_shardings = updated_named_sharding_mesh(
-        [a.sharding for a in args], mpmd_mesh.unstack[tgt_mpmd_idx]
+    res = jax.device_put(args, params["tgt_shardings"])
+    return (CommToken(_NoopTransfer()), *res)
+
+
+def _aval_with_shape_and_sharding(
+    arg, shape: tuple[int, ...], sharding: jax.sharding.Sharding
+):
+    if isinstance(arg, jcore.ShapedArray):
+        return arg.update(shape=shape, sharding=_abstract_sharding_for_aval(sharding))
+    return arg
+
+
+class StackParams(TypedDict):
+    in_shardings: tuple[jax.sharding.NamedSharding, ...]
+    mpmd_mesh: MpmdMesh
+    axis: int
+
+
+class LocalStackParams(TypedDict):
+    in_sharding: jax.sharding.NamedSharding
+    out_sharding: jax.sharding.NamedSharding
+    out_shape: tuple[int, ...]
+    expand: bool
+    axis: int
+
+
+# `mpmd_mesh` on stack/slice primitives is a coordinate scope, not necessarily
+# the ambient global MPMD mesh. For stack it is the output scope. For slice it is
+# the scope in which `groups` are numbered.
+stack_p = jcore.Primitive("stack")
+local_stack_p = jcore.Primitive("local_stack")
+
+
+def stack_abstract_eval(*args, **params: Unpack[StackParams]):
+    if len(args) == 0:
+        raise ValueError("stack expects at least one argument")
+    dtype = args[0].dtype
+    if any(arg.dtype != dtype for arg in args[1:]):
+        raise ValueError("stack arguments must have the same dtype")
+    _, out_sharding, out_shape, _ = array_ops.stack_shape_and_sharding(
+        tuple(arg.shape for arg in args),
+        params["in_shardings"],
+        mpmd_mesh=params["mpmd_mesh"],
+        axis=params["axis"],
     )
-    res = jax.device_put(args, tgt_shardings)
-    return res
+    return _aval_with_shape_and_sharding(args[0], out_shape, out_sharding)
+
+
+stack_p.def_abstract_eval(stack_abstract_eval)
+
+
+def local_stack_abstract_eval(arg, **params: Unpack[LocalStackParams]):
+    return _aval_with_shape_and_sharding(
+        arg, params["out_shape"], params["out_sharding"]
+    )
+
+
+local_stack_p.def_abstract_eval(local_stack_abstract_eval)
+
+
+@stack_p.def_impl
+def stack_impl(*args, **params: Unpack[StackParams]):
+    for arg, sharding in zip(args, params["in_shardings"], strict=True):
+        assert isinstance(arg, jax.Array)
+        assert jc.shardings_are_equivalent(
+            arg.sharding, sharding, arg.ndim, compare_memkind=True
+        )
+    return array_ops.stack_arrays_with_shardings(
+        args, params["in_shardings"], mpmd_mesh=params["mpmd_mesh"], axis=params["axis"]
+    )
+
+
+@local_stack_p.def_impl
+def local_stack_impl(arg, **params: Unpack[LocalStackParams]):
+    assert isinstance(arg, jax.Array)
+    assert jc.shardings_are_equivalent(
+        arg.sharding, params["in_sharding"], arg.ndim, compare_memkind=True
+    )
+    return array_ops.local_stack_array(
+        arg,
+        out_shape=params["out_shape"],
+        out_sharding=params["out_sharding"],
+        expand=params["expand"],
+        axis=params["axis"],
+    )
+
+
+class SliceParams(TypedDict):
+    in_sharding: jax.sharding.NamedSharding
+    groups: tuple[tuple[int, ...], ...]
+    mpmd_mesh: MpmdMesh
+
+
+class LocalSliceParams(TypedDict):
+    in_sharding: jax.sharding.NamedSharding
+    out_shardings: tuple[jax.sharding.NamedSharding, ...]
+
+
+slice_p = jcore.Primitive("slice")
+slice_p.multiple_results = True
+local_slice_p = jcore.Primitive("local_slice")
+local_slice_p.multiple_results = True
+
+
+def slice_abstract_eval(arg, **params: Unpack[SliceParams]):
+    out_shapes, out_shardings = array_ops.slice_shape_and_shardings(
+        arg.shape,
+        params["in_sharding"],
+        params["groups"],
+        mpmd_mesh=params["mpmd_mesh"],
+    )
+    return tuple(
+        _aval_with_shape_and_sharding(arg, out_shape, out_sharding)
+        for out_shape, out_sharding in zip(out_shapes, out_shardings, strict=True)
+    )
+
+
+def local_slice_abstract_eval(arg, **params: Unpack[LocalSliceParams]):
+    return tuple(
+        _aval_with_shape_and_sharding(
+            arg,
+            array_ops.local_slice_out_shape(
+                arg.shape, params["in_sharding"], out_sharding
+            ),
+            out_sharding,
+        )
+        for out_sharding in params["out_shardings"]
+    )
+
+
+slice_p.def_abstract_eval(slice_abstract_eval)
+local_slice_p.def_abstract_eval(local_slice_abstract_eval)
+
+
+@slice_p.def_impl
+def slice_impl(arg, **params: Unpack[SliceParams]):
+    assert isinstance(arg, jax.Array)
+    assert arg.sharding == params["in_sharding"]
+    return array_ops.slice_arrays(
+        arg,
+        in_sharding=params["in_sharding"],
+        groups=params["groups"],
+        mpmd_mesh=params["mpmd_mesh"],
+    )
+
+
+@local_slice_p.def_impl
+def local_slice_impl(arg, **params: Unpack[LocalSliceParams]):
+    assert isinstance(arg, jax.Array)
+    return array_ops.local_slice_arrays(
+        arg, in_sharding=params["in_sharding"], out_shardings=params["out_shardings"]
+    )
 
 
 delete_p = jcore.Primitive("delete")
@@ -414,126 +646,186 @@ delete_p.multiple_results = True
 
 
 @delete_p.def_abstract_eval
-def delete_abstract_eval(*args, mpmd_idx):
+def delete_abstract_eval(*args):
     return args
 
 
 @delete_p.def_impl
-def delete_impl(*args, mpmd_idx):
+def delete_impl(*args):
     for a in args:
-        assert not hasattr(a, "_ensure_receive_enqueued")
-        # TODO(fixup_multidefs)
-        if isinstance(a, MpmdArray):
-            a._partially_addressable_arrays[mpmd_idx].delete()
-            del a._partially_addressable_arrays[mpmd_idx]
-        else:
-            a.delete()
+        a.delete()
     return args
 
 
-send_done_p = jcore.Primitive("send_done")
-send_done_p.multiple_results = True
+class TransferDoneParams(TypedDict):
+    pass
 
 
-class _LifetimeEndEffect(jcore.Effect):
+transfer_done_p = jcore.Primitive("transfer_done")
+transfer_done_p.multiple_results = True
+
+
+class CommunicationEffect(effects.Effect):
     def __str__(self):
-        return "LifetimeEnd"
+        return "Communication"
+
+    def __hash__(self):
+        return hash(CommunicationEffect)
+
+    def __eq__(self, other):
+        return isinstance(other, CommunicationEffect)
 
 
-LifetimeEndEffect = _LifetimeEndEffect()
+communication_effect = CommunicationEffect()
+effects.lowerable_effects.add_type(CommunicationEffect)
+effects.control_flow_allowed_effects.add_type(CommunicationEffect)
 
 
-@send_done_p.def_effectful_abstract_eval
-def send_done_abstract_eval(*args, mpmd_idx):
-    return args, frozenset({LifetimeEndEffect})
+@transfer_done_p.def_effectful_abstract_eval
+def transfer_done_abstract_eval(tok, *args, **params: Unpack[TransferDoneParams]):
+    del tok, params
+    return args, frozenset({communication_effect})
 
 
-@send_done_p.def_impl
-def send_done_impl(*args, mpmd_idx):
-    mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    if not mpmd_mesh.jax_mesh.is_multi_process:
-        return args
-
-    for a in args:
-        if hasattr(a, "_wait_send_finish"):
-            a._wait_send_finish()
-        # if hasattr(a, "_ensure_receive_enqueued"):
-        #     a._ensure_receive_enqueued()
+@transfer_done_p.def_impl
+def transfer_done_impl(tok: CommToken[Any], *args) -> tuple[Any, ...]:
+    tok.done()
     return args
-
-
-def _check_no_attrs(a: jax.Array):
-    assert not hasattr(a, "_wait_send_finish") and not hasattr(
-        a, "_ensure_receive_enqueued"
-    )
-
-
-send_p = jcore.Primitive("send")
-send_p.multiple_results = True
-
-
-@send_p.def_abstract_eval
-def send_abstract_eval(*args, id, shardings):
-    return args
-
-
-@send_p.def_impl
-def send_impl(*arrs, id, shardings):
-    tgt_mpmd_idxs, receiver_shardings = jc.unzip2(shardings)
-    for a, _wait_send_finish in zip(
-        arrs,
-        send_or_recv(arrs, remote_shardings=receiver_shardings, is_send=True),
-        strict=True,
-    ):
-        if hasattr(a, "_wait_send_finish"):
-            # FIXME(multi_send_done): we overwrite the existing
-            #  send_finish below. We should "join" them.
-            #  This is not an issue now as `send_or_recv` sets a finalizer
-            #  for the returned value that ensures waiting for the send to
-            #  finish before the arrays is deleted.
-            pass
-        a._wait_send_finish = _wait_send_finish
-    return arrs
-
-
-recv_p = jcore.Primitive("recv")
-recv_p.multiple_results = True
-
-
-@recv_p.def_abstract_eval
-def recv_abstract_eval(*args, id, shardings, shape_and_dtype):
-    return (
-        args  # [jcore.ShapedArray(shape, dtype) for (shape, dtype) in shape_and_dtype]
-    )
 
 
 def _zeros(shapes_and_dtype):
     return tuple(jax.numpy.zeros(shape, dtype) for shape, dtype in shapes_and_dtype)
 
 
-@recv_p.def_impl
-def recv_impl(*buffers, id, shardings, shape_and_dtype):
-    src_mpmd_idxs, sender_shardings = jc.unzip2(shardings)
+def _alloc_zeros(shape_and_dtype, shardings):
+    local_shardings = tuple(shardings)
+    mesh_context = contextlib.nullcontext()
+    for sharding in local_shardings:
+        if isinstance(sharding, jax.sharding.NamedSharding):
+            mesh_context = jax.set_mesh(sharding.mesh)
+            break
 
-    mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    my_mesh = mpmd_mesh.unstack[mpmd_mesh.my_mpmd_axis_index]
-    local_shardings = updated_named_sharding_mesh(sender_shardings, new_mesh=my_mesh)
-    if len(buffers) > 0:
-        assert len(buffers) == len(shape_and_dtype), (
-            len(buffers),
-            len(shape_and_dtype),
+    with mesh_context:
+        return jax.jit(
+            _zeros, static_argnums=(0,), out_shardings=tuple(local_shardings)
+        )(tuple(shape_and_dtype))
+
+
+transfer_start_p = jcore.Primitive("transfer_start")
+transfer_start_p.multiple_results = True
+
+# transfer_start groups send starts and recv starts. Send inputs come first;
+# recv-buffer inputs follow. For logical recvs, the impl allocates private
+# buffers described by out_avals; for bufferized recvs, it aliases the input
+# destination buffers. The token and recv buffer aliases are threaded into
+# recv_done so finalize_lifetimes does not delete storage while NCCL is still
+# writing into it.
+
+
+@transfer_start_p.def_effectful_abstract_eval
+def transfer_start_abstract_eval(
+    *args,
+    send_remote_shardings,
+    send_local_shardings,
+    recv_remote_shardings,
+    recv_local_shardings,
+    out_avals=None,
+):
+    del send_remote_shardings, recv_remote_shardings, recv_local_shardings
+    send_count = len(send_local_shardings)
+    if len(args) == send_count and out_avals is not None:
+        return (TOKEN_AVAL, *out_avals), frozenset({communication_effect})
+    return (TOKEN_AVAL, *args[send_count:]), frozenset({communication_effect})
+
+
+@transfer_start_p.def_impl
+def transfer_start_impl(
+    *args: jax.Array,
+    send_remote_shardings,
+    send_local_shardings,
+    recv_remote_shardings,
+    recv_local_shardings,
+    out_avals=None,
+) -> tuple[Any, ...]:
+    send_count = len(send_local_shardings)
+    send_args = args[:send_count]
+    recv_buffers = args[send_count:]
+    if len(recv_buffers) == 0 and out_avals is not None and len(out_avals) > 0:
+        recv_buffers = _alloc_zeros(
+            [(aval.shape, aval.dtype) for aval in out_avals], recv_local_shardings
         )
-    else:
-        with jc.set_mesh(my_mesh):
-            buffers = jax.jit(
-                _zeros, static_argnums=(0,), out_shardings=tuple(local_shardings)
-            )(tuple(shape_and_dtype))
 
-    enqueues = send_or_recv(buffers, remote_shardings=sender_shardings, is_send=False)
-    for buf, _ensure_receive_enqueued in zip(buffers, enqueues, strict=True):
-        buf._ensure_receive_enqueued = _ensure_receive_enqueued
+    transfer = start_transfer(
+        send_args, send_remote_shardings, recv_buffers, recv_remote_shardings
+    )
+    token: CommToken[Sequence[jax.Array]] = CommToken(transfer)
+    return (token, *recv_buffers)
 
-    return buffers
+
+zeros_p = jcore.Primitive("zeros")
+zeros_p.multiple_results = True
+
+
+@zeros_p.def_abstract_eval
+def zeros_abstract_eval(*, shape_and_dtype, shardings, out_avals):
+    return out_avals
+
+
+@zeros_p.def_impl
+def zeros_impl(*, shape_and_dtype, shardings, out_avals):
+    return _alloc_zeros(shape_and_dtype, shardings)
+
+
+reuse_fence_p = jcore.Primitive("reuse_fence")
+reuse_fence_p.skip_canonicalization = True
+
+
+@reuse_fence_p.def_abstract_eval
+def reuse_fence_abstract_eval(x):
+    return x
+
+
+@partial(jax.jit, donate_argnums=(0,))
+def _reuse_fence(x):
+    # This cheap donated identity gives PJRT a fresh output value whose
+    # definition event is ordered after earlier JAX consumers of `x`. When the
+    # output is later exported with `__dlpack__(stream=recv_stream)`, PJRT makes
+    # that recv stream wait for the definition event. Donation normally aliases
+    # the output to the same storage, so recv-buffer reuse gets the needed stream
+    # dependency without a host block or a device copy.
+    return x
+
+
+@reuse_fence_p.def_impl
+def reuse_fence_impl(x: jax.Array):
+    return _reuse_fence(x)
+
+
+recv_done_p = jcore.Primitive("recv_done")
+recv_done_p.multiple_results = True
+
+# recv_done returns arrays backed by the same destination storage passed through
+# transfer_start. The DLPack view keeps that storage alive after deleting the
+# temporary destination handles, so lifetime passes must treat recv_done outvars
+# as aliases of the recv buffer inputs.
+
+
+@recv_done_p.def_effectful_abstract_eval
+def recv_done_abstract_eval(tok, *args):
+    del tok
+    return args, frozenset({communication_effect})
+
+
+@recv_done_p.def_impl
+def recv_done_impl(
+    tok: CommToken[Sequence[jax.Array]], *buffers: jax.Array
+) -> Sequence[jax.Array]:
+    received = tok.done()
+    # The DLPack import now owns a view/external reference for the received
+    # arrays. The original destination buffers are dead after recv_done.
+    for buffer in buffers:
+        buffer.delete()
+    return received
 
 
 place_with_p = jcore.Primitive("place_with")
@@ -638,8 +930,8 @@ def task_lower(
     task_name,
     task_info,
     mpmd_idx,
-    in_shardings: "ShardingStore",
-    out_shardings: "ShardingStore",
+    in_shardings: ShardingTuple,
+    out_shardings: ShardingTuple,
     donate_invars,
     latency: float | None = None,
     call_counter=None,
@@ -744,7 +1036,7 @@ def callable_task(prim: jcore.Primitive, params: PjitKwargs):
 
 
 def apply_task(prim: jcore.Primitive, *args, params: PjitKwargs):
-    with jc.set_mesh(params.ctx_mesh), warnings.catch_warnings():
+    with jax.set_mesh(params.ctx_mesh), warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="Some donated buffers were not usable.*"
         )
@@ -800,19 +1092,19 @@ def task_impl(
     task_name,
     task_info,
     mpmd_idx,
-    in_shardings: list[jax.NamedSharding],
-    out_shardings: list[jax.NamedSharding],
+    in_shardings: tuple[jax.NamedSharding, ...],
+    out_shardings: tuple[jax.NamedSharding, ...],
     donate_invars,
     latency: float | None = None,
     call_counter: int | None = None,
 ):
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    mesh = mpmd_mesh.unstack[mpmd_idx]
+    mpmd_indices, mesh = _resolve_placement(mpmd_mesh, mpmd_idx, name="task mpmd_idx")
 
     pjit_kwargs = PjitKwargs(
         jaxpr=call_jaxpr,
-        in_shardings=tuple(in_shardings),
-        out_shardings=tuple(out_shardings),
+        in_shardings=in_shardings,
+        out_shardings=out_shardings,
         in_layouts=(None,) * len(args),
         out_layouts=(None,) * len(out_shardings),
         donated_invars=tuple(donate_invars),
@@ -821,8 +1113,13 @@ def task_impl(
     )
 
     # TODO(fixup_multidefs)
+    if len(mpmd_indices) != 1 and any(isinstance(a, MpmdArray) for a in args):
+        raise NotImplementedError("MpmdArray task inputs require a single MPMD index")
+    array_mpmd_idx = mpmd_indices[0]
     maybe_pending_arrays = [
-        a._partially_addressable_arrays[mpmd_idx] if isinstance(a, MpmdArray) else a
+        a._partially_addressable_arrays[array_mpmd_idx]
+        if isinstance(a, MpmdArray)
+        else a
         for a in args
     ]
 
@@ -831,31 +1128,16 @@ def task_impl(
             if not _._committed and not mpmd_mesh.jax_mesh.is_multi_process:
                 continue
 
-            if (
-                arg_mpmd_idx := mpmd_mesh.mpmd_idx_for_mesh.get(_.sharding.mesh)
-            ) is None or arg_mpmd_idx != mpmd_idx:
+            arg_mpmd_indices = mpmd_mesh.mpmd_indices_for_mesh(_.sharding.mesh)
+            if arg_mpmd_indices is None or arg_mpmd_indices != mpmd_indices:
+                device_assignment = _.sharding._device_assignment
                 raise ValueError(
-                    f"Argument {arg_idx} for task {task_name} {call_counter=} @ {mpmd_idx=} found in {arg_mpmd_idx} ({_.sharding._device_assignment})"
+                    f"Argument {arg_idx} for task {task_name} {call_counter=} "
+                    f"@ {mpmd_idx=} found in {arg_mpmd_indices} "
+                    f"({device_assignment})"
                 )
 
-    arrays = []
-    for idx, a, is_donated in zip(
-        range(len(maybe_pending_arrays)),
-        maybe_pending_arrays,
-        donate_invars,
-        strict=True,
-    ):
-        if (_wait_send_finish := getattr(a, "_wait_send_finish", None)) is not None:
-            # NOTE: it's fine to continue using an array that
-            #   has been sent
-            pass
-        if (
-            _ensure_receive_enqueued := getattr(a, "_ensure_receive_enqueued", None)
-        ) is not None:
-            assert not is_donated, f"{task_name=} {call_counter=} arg_idx={idx}"
-            arrays.append(_ensure_receive_enqueued())
-        else:
-            arrays.append(a)
+    arrays = list(maybe_pending_arrays)
 
     statistics = current_statistics()
     if statistics is not None:
@@ -887,8 +1169,8 @@ def task_abstract_eval(
     task_name,
     task_info,
     mpmd_idx,
-    in_shardings: "ShardingStore",
-    out_shardings: "ShardingStore",
+    in_shardings: ShardingTuple,
+    out_shardings: ShardingTuple,
     donate_invars,
     latency: float | None = None,
     call_counter=None,
@@ -908,135 +1190,69 @@ task_p.multiple_results = True
 # As of now tasks aren't jitted
 task_p.def_impl(task_impl)
 task_p.def_effectful_abstract_eval(task_abstract_eval)
-T = TypeVar("T")
-P = ParamSpec("P")
-
-
-def _task(fun, name: str, *args, **kwargs):
-    jaxpr, out_shapes = jax.make_jaxpr(partial(fun, **kwargs), return_shape=True)(*args)
-    flat_args = jax.tree_util.tree_leaves(args)
-    out_tree = jax.tree_util.tree_structure(out_shapes)
-    res = task_p.bind(*flat_args, task_type=TaskType.FWD, call_jaxpr=jaxpr)
-    return jax.tree_util.tree_unflatten(out_tree, res)
-
-
-def task(fun: Callable[P, T], *, name: str | None = None) -> Callable[P, T]:
-    return partial(_task, fun, name)
-
 
 mlir.register_lowering(task_p, task_lower)
 
 # FIXME: use closed_call_transpose below
 ad.primitive_transposes[task_p] = partial(jc.call_transpose, task_p)
 jc.call_transpose_param_updaters[task_p] = _task_transpose_update_params
-pe.dce_rules[task_p] = pe.dce_jaxpr_closed_call_rule
 pe.dce_rules[dax_pscan_p] = dce_jaxpr_dax_pscan
 
 
-class ShardingStore:
-    def __init__(
-        self,
-        avals: Sequence[jcore.ShapedArray],
-        _provenance_info=None,
-        _source_info=None,
-        _shardings=None,
-    ):
-        self.avals = avals
-        self._provenance_info = _provenance_info
-        self._source_info = _source_info
-        if _shardings:
-            self._shardings = _shardings
-            self._called_at_least_once = True
-        else:
-            self._shardings = [None] * len(avals)
-            self._called_at_least_once = False
+def _dce_shardings(shardings: ShardingTuple, used: Sequence[bool]) -> ShardingTuple:
+    return tuple(s for s, keep in zip(shardings, used, strict=True) if keep)
 
-    def __len__(self):
-        return len(self.shardings)
 
-    def __getitem__(self, index):
-        return self.shardings[index]
+def _task_dce_rule(
+    used_outputs: list[bool], eqn: jcore.JaxprEqn
+) -> tuple[list[bool], jcore.JaxprEqn | None]:
+    if not any(used_outputs) and not jc.has_effects(eqn):
+        return [False] * len(eqn.invars), None
 
-    def __str__(self):
-        if self._called_at_least_once:
-            metadata = (
-                "["
-                + "\n".join(
-                    [
-                        str(((str(aval.dtype), aval.shape), s.spec))
-                        for aval, s in zip(self.avals, self.shardings, strict=True)
-                    ]
-                )
-                + "]"
-            )
-            return metadata
-        else:
-            return repr(self)
+    call_jaxpr = eqn.params["call_jaxpr"]
+    new_jaxpr, used_inputs = pe.dce_jaxpr(call_jaxpr.jaxpr, used_outputs)
+    new_closed_jaxpr = jcore.ClosedJaxpr(new_jaxpr, call_jaxpr.consts)
 
-    @property
-    def shardings(self) -> list[jax.NamedSharding]:
-        if len(self._shardings) > 0 and not self._called_at_least_once:
-            raise AssertionError(
-                "Shardings can be inspected only after compiling the jaxpr"
-            )
-        assert all(s is not None for s in self._shardings)
-        return self._shardings
+    new_params = dict(eqn.params)
+    new_params["call_jaxpr"] = new_closed_jaxpr
+    new_params["in_shardings"] = _dce_shardings(eqn.params["in_shardings"], used_inputs)
+    new_params["out_shardings"] = _dce_shardings(
+        eqn.params["out_shardings"], used_outputs
+    )
+    new_params["donate_invars"] = tuple(
+        donated
+        for donated, used in zip(eqn.params["donate_invars"], used_inputs, strict=True)
+        if used
+    )
 
-    def _callback_at_index(self, idx: int):
-        def cb(s: jax.sharding.NamedSharding):
-            self._called_at_least_once = True
-            # NOTE: Checks that the inferred sharding is valid
-            #  for this shape
-            s.shard_shape(self.avals[idx].shape)
-            self._shardings[idx] = s
+    new_invars = [v for v, used in zip(eqn.invars, used_inputs, strict=True) if used]
+    new_outvars = [v for v, used in zip(eqn.outvars, used_outputs, strict=True) if used]
+    new_eqn = jcore.new_jaxpr_eqn(
+        new_invars,
+        new_outvars,
+        eqn.primitive,
+        new_params,
+        jc.eqn_effects(new_closed_jaxpr, new_invars),
+        eqn.source_info,
+        eqn.ctx,
+    )
+    return used_inputs, new_eqn
 
-        # This is helpful for debugging when `InspectSharding` fails
-        # cb.info = (self, idx)
-        return cb
 
-    @classmethod
-    def collect(
-        cls, values: Sequence[jax.Array], _provenance_info=None, _source_info=None
-    ) -> "ShardingStore":
-        store = cls(
-            [v.aval for v in values],
-            _provenance_info=_provenance_info,
-            _source_info=_source_info,
-        )
-        for idx, v in enumerate(values):
-            jax.debug.inspect_array_sharding(v, callback=store._callback_at_index(idx))
-        return store
-
-    @classmethod
-    def collect_jaxpr(
-        cls, vars_: Sequence[jcore.Var], _provenance_info=None, _source_info=None
-    ) -> tuple["ShardingStore", list[jcore.JaxprEqn]]:
-        store = cls(
-            [v.aval for v in vars_],
-            _provenance_info=_provenance_info,
-            _source_info=_source_info,
-        )
-
-        res = []
-        for idx, v in enumerate(vars_):
-            res.append(
-                jcore.new_jaxpr_eqn(
-                    invars=[v],
-                    outvars=[],
-                    primitive=jc.inspect_sharding_p,
-                    params={"callback": store._callback_at_index(idx)},
-                    effects=frozenset({jc.debug_effect}),
-                )
-            )
-        return store, res
+pe.dce_rules[task_p] = _task_dce_rule
 
 
 # Refined type annotations for key Jaxprs/Eqns we use in the jaxpr
 class TaskEqnParams(TypedDict):
     call_jaxpr: jcore.ClosedJaxpr
-    task_type: TaskType
-    stage_id: int
-    out_shardings: ShardingStore
+    task_name: str
+    task_info: tuple[int, TaskType] | None
+    mpmd_idx: int | jax.sharding.Mesh
+    in_shardings: ShardingTuple
+    out_shardings: ShardingTuple
+    donate_invars: tuple[bool, ...]
+    latency: float | None
+    call_counter: NotRequired[int | None]
 
 
 class TaskEqn(jcore.JaxprEqn):
