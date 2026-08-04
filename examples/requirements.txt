@@ -15,4 +15,4 @@
 
 flax==0.10.2
 pandas==2.2.2
-pyarrow==16.1.0
+pyarrow==23.0.1
