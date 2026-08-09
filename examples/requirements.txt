@@ -13,6 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-flax==0.10.2
-pandas==2.2.2
-pyarrow==16.1.0
+flax==0.12.7

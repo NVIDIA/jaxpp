@@ -303,7 +303,7 @@ def filter_axes(
         )
 
     new_spec = []
-    for axis in sharding_or_pspec:
+    for axis in jc.spec_partitions(sharding_or_pspec):
         if axis is None:
             new_spec.append(None)
         elif isinstance(axis, str):
@@ -313,11 +313,8 @@ def filter_axes(
         else:
             raise ValueError(f"Unsupported axis type: {type(axis)}")
 
-    return jax.sharding.PartitionSpec(*new_spec)
-
-
-def rm_size1_axes(
-    spec: jax.sharding.PartitionSpec, mesh: jax.sharding.Mesh
-) -> jax.sharding.PartitionSpec:
-    size1_axes = {axis for axis, size in mesh.shape.items() if size == 1}
-    return filter_axes(spec, size1_axes)
+    return sharding_or_pspec.update(
+        partitions=new_spec,
+        unreduced=sharding_or_pspec.unreduced - axes,
+        reduced=sharding_or_pspec.reduced - axes,
+    )

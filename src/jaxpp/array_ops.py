@@ -19,6 +19,7 @@ from typing import Any, NamedTuple, overload
 import jax
 from jax.sharding import NamedSharding, PartitionSpec
 
+from jaxpp import jax_compat as jc
 from jaxpp.mesh import MpmdMesh, _require_mpmd_indices
 from jaxpp.utils import update_named_sharding
 
@@ -30,7 +31,16 @@ def make_array_from_addressable_shards(
     *,
     dtype: Any,
 ) -> jax.Array:
-    devices = tuple(sharding.addressable_devices_indices_map(shape))
+    if isinstance(sharding, NamedSharding) and sharding.spec.unreduced:
+        # JAX does not expose index maps for unreduced shardings here.
+        addressable_devices = sharding.addressable_devices
+        devices = tuple(
+            device
+            for device in sharding.mesh.devices.flat
+            if device in addressable_devices
+        )
+    else:
+        devices = tuple(sharding.addressable_devices_indices_map(shape))
     addressable_devices = set(devices)
     shard_by_device = {}
     for array in arrays:
@@ -60,7 +70,7 @@ def axis_index(spec: NamedSharding, axis_name: str) -> int | None: ...
 def axis_index(spec: PartitionSpec | NamedSharding, axis_name: str) -> int | None:
     if isinstance(spec, NamedSharding):
         spec = spec.spec
-    for idx, part in enumerate(spec):
+    for idx, part in enumerate(jc.spec_partitions(spec)):
         if axis_name in jax.tree_util.tree_leaves(part):
             return idx
     return None
@@ -146,8 +156,14 @@ def stack_shape_and_sharding(
     ):
         spec_axis = axis_index(sharding, axis_name)
         if spec_axis is None:
+            if len(indices) != 1:
+                raise ValueError(
+                    "stack arguments must not mix replicated values from multiple "
+                    f"MPMD indices; argument {idx} without {axis_name!r} in its "
+                    "PartitionSpec must use a single MPMD index"
+                )
             continue
-        spec = tuple(sharding.spec)
+        spec = jc.spec_partitions(sharding.spec)
         if spec_axis != axis or spec[axis] != axis_name:
             raise ValueError(
                 "stack arguments must use "
@@ -189,22 +205,15 @@ def stack_shape_and_sharding(
 
         logical_in_shardings = []
         expand_inputs = []
-        out_spec_parts = tuple(out_spec)
-        no_axis_spec = PartitionSpec(
-            *out_spec_parts[:axis], *out_spec_parts[axis + 1 :]
+        out_spec_parts = jc.spec_partitions(out_spec)
+        no_axis_spec = out_spec.update(
+            partitions=out_spec_parts[:axis] + out_spec_parts[axis + 1 :]
         )
-        for idx, (shape, sharding, indices) in enumerate(
-            zip(shapes, shardings, index_groups, strict=True)
-        ):
+        for idx, (shape, sharding) in enumerate(zip(shapes, shardings, strict=True)):
             if axis_index(sharding, axis_name) is not None:
                 logical_in_shardings.append(sharding)
                 expand_inputs.append(False)
                 continue
-            if len(indices) != 1:
-                raise ValueError(
-                    "stack arguments must not mix replicated and "
-                    "MPMD-sharded multi-index meshes"
-                )
             if shape != tail_shape or per_index_extent != 1:
                 raise ValueError(
                     f"stack argument {idx} must have {axis_name!r} in its "
@@ -226,8 +235,11 @@ def stack_shape_and_sharding(
         )
     else:
         tail_shape = shapes[0]
-        spec = tuple(shardings[0].spec)
-        out_spec = PartitionSpec(*spec[:axis], axis_name, *spec[axis:])
+        spec = shardings[0].spec
+        spec_parts = jc.spec_partitions(spec)
+        out_spec = spec.update(
+            partitions=spec_parts[:axis] + (axis_name,) + spec_parts[axis:]
+        )
         memory_kind = shardings[0].memory_kind
         for shape, sharding in zip(shapes[1:], shardings[1:], strict=True):
             if shape != tail_shape:
@@ -261,10 +273,17 @@ def stack_arrays_with_shardings(
         mpmd_mesh=mpmd_mesh,
         axis=axis,
     )
-    cast_arrays = tuple(
-        jax.numpy.expand_dims(array, axis=axis) if expand else array
-        for array, expand in zip(arrays, expand_inputs, strict=True)
-    )
+    cast_arrays = []
+    for array, expand in zip(arrays, expand_inputs, strict=True):
+        if expand:
+            # NOTE(ambient-mesh): the caller may hold jax.set_mesh of a mesh
+            # that does not contain this array's devices (e.g. a train loop
+            # pinned to one stage's mesh), and eager dispatch rejects arrays
+            # outside the ambient mesh. Expand under the array's own mesh.
+            with jax.set_mesh(array.sharding.mesh):
+                cast_arrays.append(jax.numpy.expand_dims(array, axis=axis))
+        else:
+            cast_arrays.append(array)
     return make_array_from_addressable_shards(
         out_shape, out_sharding, cast_arrays, dtype=arrays[0].dtype
     )
@@ -279,7 +298,9 @@ def local_stack_array(
     axis: int = 0,
 ) -> jax.Array:
     if expand:
-        array = jax.numpy.expand_dims(array, axis=axis)
+        # NOTE(ambient-mesh)
+        with jax.set_mesh(array.sharding.mesh):
+            array = jax.numpy.expand_dims(array, axis=axis)
     return make_array_from_addressable_shards(
         out_shape, out_sharding, (array,), dtype=array.dtype
     )
@@ -302,7 +323,7 @@ def slice_shape_and_shardings(
     axis_name = mpmd_mesh.mpmd_axis_name
     mpmd_axis = axis_index(in_sharding, axis_name)
     if mpmd_axis is not None and (
-        mpmd_axis != 0 or tuple(in_sharding.spec)[0] != axis_name
+        mpmd_axis != 0 or jc.spec_partitions(in_sharding.spec)[0] != axis_name
     ):
         raise ValueError(
             "slice argument must use "
@@ -374,7 +395,7 @@ def local_slice_arrays(arg, *, in_sharding, out_shardings):
 def local_slice_out_shape(
     shape: tuple[int, ...], in_sharding: NamedSharding, out_sharding: NamedSharding
 ) -> tuple[int, ...]:
-    spec = tuple(in_sharding.spec)
+    spec = jc.spec_partitions(in_sharding.spec)
     if len(spec) == 0 or not isinstance(spec[0], str):
         return shape
     axis_name = spec[0]

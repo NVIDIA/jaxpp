@@ -35,7 +35,7 @@ from jaxpp.jax_primitives import (
     task_p,
 )
 from jaxpp.mesh import MpmdMesh
-from jaxpp.utils import log_elapsed_time, rm_size1_axes, update_named_sharding
+from jaxpp.utils import filter_axes, log_elapsed_time, update_named_sharding
 
 logger = logging.getLogger(__name__)
 
@@ -407,15 +407,13 @@ def _fast_infer_shardings_compiler_options_kvs() -> tuple[tuple[str, Any], ...]:
     compiler_options = {
         "xla_gpu_enable_latency_hiding_scheduler": False,
         "xla_gpu_enable_dynamic_slice_fusion": False,
-        "xla_gpu_enable_pipelined_all_gather": False,
-        "xla_gpu_enable_pipelined_all_reduce": False,
-        "xla_gpu_enable_pipelined_reduce_scatter": False,
         "xla_gpu_enable_while_loop_double_buffering": False,
         "xla_llvm_disable_expensive_passes": True,
         "xla_backend_optimization_level": 0,
         "xla_gpu_enable_triton_gemm": False,
         "xla_gpu_autotune_level": 0,
     }
+    compiler_options.update(jc.collective_pipelining_off_options_kvs)
     compiler_options["xla_gpu_experimental_enable_fusion_autotuner"] = False
     if jax.__version_info__ < (0, 10):
         compiler_options["xla_gpu_enable_split_k_autotuning"] = False
@@ -572,14 +570,17 @@ def infer_shardings(
     return closed_jaxpr
 
 
-def infer_shardings_explicit(
+def bind_explicit_shardings(
     closed_jaxpr: Annotated[jcore.ClosedJaxpr, "mutable"],
     mpmd_mesh: MpmdMesh,
     jaxpr_in_shardings: Sequence[jax.sharding.NamedSharding],
     jaxpr_out_shardings: Sequence[jax.sharding.NamedSharding],
 ):
+    """Bind task inputs from dataflow and outputs from annotated avals."""
     jaxpr_in_shardings = tuple(jaxpr_in_shardings)
     jaxpr_out_shardings = tuple(jaxpr_out_shardings)
+    # JAX keeps jit in_shardings separate from inner jaxpr input avals. The
+    # call boundary therefore initializes the dataflow after task insertion.
     env = dict[jcore.Var, jax.sharding.NamedSharding](
         zip(closed_jaxpr.jaxpr.invars, jaxpr_in_shardings, strict=True)
     )
@@ -603,17 +604,9 @@ def infer_shardings_explicit(
     for eqn in closed_jaxpr.eqns:
         eqn: jcore.JaxprEqn
         if eqn.primitive is task_p:
-            eqn_in_specs = [
-                rm_size1_axes(invar.aval.sharding.spec, lowering_mesh)
-                for invar in eqn.invars
-            ]
-            env_in_specs = [
-                rm_size1_axes(env[invar].spec, lowering_mesh) for invar in eqn.invars
-            ]
-            assert eqn_in_specs == env_in_specs, (eqn.invars, env_in_specs)
             eqn.params["in_shardings"] = tuple(
-                update_named_sharding(env[invar], mesh=lowering_mesh, spec=spec)
-                for invar, spec in zip(eqn.invars, eqn_in_specs, strict=True)
+                update_named_sharding(env[invar], mesh=lowering_mesh)
+                for invar in eqn.invars
             )
             eqn_out_shardings = tuple(
                 maybe_apply_requested_output_memory_kind(
@@ -621,7 +614,6 @@ def infer_shardings_explicit(
                     update_named_sharding(
                         cast(jcore.ShapedArray, outvar.aval).sharding,
                         mesh=lowering_mesh,
-                        spec=rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
                     ),
                 )
                 for outvar in eqn.outvars
@@ -637,20 +629,15 @@ def infer_shardings_explicit(
                     update_named_sharding(
                         cast(jcore.ShapedArray, outvar.aval).sharding,
                         mesh=lowering_mesh,
-                        spec=rm_size1_axes(outvar.aval.sharding.spec, lowering_mesh),
                     ),
                 )
                 for outvar in eqn.outvars
             )
-            infer_shardings_explicit(
+            bind_explicit_shardings(
                 eqn.params["jaxpr"],
                 mpmd_mesh,
                 tuple(
-                    update_named_sharding(
-                        env[invar],
-                        mesh=lowering_mesh,
-                        spec=rm_size1_axes(invar.aval.sharding.spec, lowering_mesh),
-                    )
+                    update_named_sharding(env[invar], mesh=lowering_mesh)
                     for invar in eqn.invars
                 ),
                 out_shardings,
@@ -658,21 +645,25 @@ def infer_shardings_explicit(
             for outvar, sh in zip(eqn.outvars, out_shardings, strict=True):
                 env[outvar] = sh
         elif eqn.primitive in {add_multi_p, gather_multi_p}:
-            eqn_in_specs = [
-                rm_size1_axes(invar.aval.sharding.spec, lowering_mesh)
+            eqn_in_shardings = tuple(
+                update_named_sharding(env[invar], mesh=lowering_mesh)
                 for invar in eqn.invars
-            ]
-            assert all(eqn_in_specs[0] == _ for _ in eqn_in_specs), eqn_in_specs
+            )
+            assert all(
+                jc.shardings_are_equivalent(
+                    eqn_in_shardings[0],
+                    in_sharding,
+                    invar.aval.ndim,
+                    compare_memkind=False,
+                )
+                for invar, in_sharding in zip(eqn.invars, eqn_in_shardings, strict=True)
+            ), eqn_in_shardings
+            # This axis expands on the collective communication mesh.
             out_source_sharding = maybe_apply_requested_output_memory_kind(
                 eqn.outvars[0],
-                update_named_sharding(
-                    env[eqn.invars[0]], mesh=lowering_mesh, spec=eqn_in_specs[0]
-                ),
+                filter_axes(eqn_in_shardings[0], {mpmd_mesh.mpmd_axis_name}),
             )
-            eqn.params["in_shardings"] = tuple(
-                update_named_sharding(env[invar], mesh=lowering_mesh, spec=spec)
-                for invar, spec in zip(eqn.invars, eqn_in_specs, strict=True)
-            )
+            eqn.params["in_shardings"] = eqn_in_shardings
             eqn.params["out_shardings"] = (out_source_sharding,)
             env[eqn.outvars[0]] = out_source_sharding
         else:
@@ -685,10 +676,11 @@ def infer_shardings_explicit(
     ):
         if isinstance(outvar, jcore.Var):
             sh = env[outvar]
-            if rm_size1_axes(sh.spec, mpmd_mesh.lowering_mesh()) != rm_size1_axes(
-                out_sh.spec, mpmd_mesh.lowering_mesh()
+            if not jc.shardings_are_equivalent(
+                sh, out_sh, outvar.aval.ndim, compare_memkind=False
             ):
                 logger.warning(
-                    f"Outvar {outvar} has inferred sharding {sh.spec} but requested {out_sh.spec}"
+                    f"Outvar {outvar} has bound sharding {sh.spec} but requested "
+                    f"{out_sh.spec}"
                 )
     return closed_jaxpr

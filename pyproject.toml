@@ -99,15 +99,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "jax[cuda13]>=0.8.0,<=0.10.2",
-    "cupy-cuda13x",
+    "jax[cuda13]>=0.8.0,<=0.11.0",
+    "nccl4py[cu13]>=0.3.1,<0.4",
+    "cuda.core>=1.0,<2.0",
+    "cuda-bindings>=13.0,<14.0",
 ]
 
 [project.optional-dependencies]
 docs = [
     "sphinx>=8.1.3,<9.0.0",
-    "m2r2>=0.3,<0.4",
-    "docutils>=0.19,<0.21",
+    "myst-nb>=1.2,<2.0",
+    "nbconvert>=7,<8",
     "nvidia-sphinx-theme==0.0.7",
 ]
 dev = [
@@ -159,7 +161,6 @@ exclude = [
     "venv",
     "*/migrations/*.py",
     "staticfiles/*",
-    "dlpack.py",
 ]
 # Same as Django: https://github.com/cookiecutter/cookiecutter-django/issues/4792.
 line-length = 88

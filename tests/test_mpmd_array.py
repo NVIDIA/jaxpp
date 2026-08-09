@@ -6,8 +6,10 @@ os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=6"
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from jaxpp.api import MpmdArray, MpmdMesh
+from jaxpp.jax_primitives import add_multi_impl
 from jaxpp.types import MpmdSharding
 
 
@@ -100,8 +102,7 @@ class TestMpmdArray(unittest.TestCase):
             self.mpmd_mesh, {0, 2}, self.array_at_submesh_0.sharding.spec
         )
         mpmd_array = MpmdArray(
-            [self.array_at_submesh_0, self.array_at_submesh_2],
-            sharding_0_2,
+            [self.array_at_submesh_0, self.array_at_submesh_2], sharding_0_2
         )
         assert mpmd_array.is_mpmd_replicated
         assert mpmd_array.sharding.mesh == self.mpmd_mesh.mpmd_submesh([0, 2]).jax_mesh
@@ -132,8 +133,7 @@ class TestMpmdArray(unittest.TestCase):
             self.mpmd_mesh, {0, 2}, self.array_at_submesh_0.sharding.spec
         )
         mpmd_array = MpmdArray(
-            [self.array_at_submesh_0, self.array_at_submesh_2],
-            sharding_0_2,
+            [self.array_at_submesh_0, self.array_at_submesh_2], sharding_0_2
         )
 
         self.array_at_submesh_0.delete()
@@ -145,6 +145,33 @@ class TestMpmdArray(unittest.TestCase):
         assert self.array_at_submesh_0.is_deleted()
         assert self.array_at_submesh_2.is_deleted()
         assert mpmd_array.is_deleted()
+
+    def test_add_multi_under_ambient_concrete_mesh(self):
+        # The MPMD driver may run inside a caller's jax.set_mesh scope whose
+        # mesh does not contain every argument's devices (e.g. MaxText sets
+        # the stage-0 template mesh around its train step).
+        submesh_0 = self.mpmd_mesh.mpmd_submesh([0]).jax_mesh
+        submesh_1 = self.mpmd_mesh.mpmd_submesh([1]).jax_mesh
+        a = jax.device_put(
+            jnp.float32(3.0),
+            jax.sharding.NamedSharding(submesh_0, jax.sharding.PartitionSpec()),
+        )
+        b = jax.device_put(
+            jnp.float32(4.0),
+            jax.sharding.NamedSharding(submesh_1, jax.sharding.PartitionSpec()),
+        )
+        out_sharding = jax.sharding.NamedSharding(
+            submesh_0, jax.sharding.PartitionSpec()
+        )
+
+        with self.mpmd_mesh, jax.set_mesh(submesh_0):
+            result = add_multi_impl(
+                a, b, out_shardings=(out_sharding,), mpmd_idxs=(0, 1)
+            )
+
+        assert result.is_mpmd_replicated
+        for replica in result.to_mpmd_local_array:
+            np.testing.assert_array_equal(replica, 7.0)
 
 
 if __name__ == "__main__":

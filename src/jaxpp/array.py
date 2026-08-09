@@ -26,12 +26,7 @@ from jaxpp import jax_compat as jc
 from jaxpp.jax_compat import core as jcore
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import MpmdSharding
-from jaxpp.utils import (
-    filter_axes,
-    get_named_sharding,
-    rm_size1_axes,
-    update_named_sharding,
-)
+from jaxpp.utils import filter_axes, get_named_sharding, update_named_sharding
 
 
 class MpmdArray:
@@ -128,15 +123,26 @@ class MpmdArray:
             dtypes = [a.dtype for a in self._partially_addressable_arrays.values()]
             assert all(_ == dtype for _ in dtypes), (dtype, dtypes)
             mpmd_axis = mpmd_sharding.mpmd_mesh.mpmd_axis_name
-            specs = [
-                rm_size1_axes(
-                    filter_axes(get_named_sharding(a).spec, {mpmd_axis}),
-                    mpmd_mesh.lowering_mesh(),
+            lowering_mesh = mpmd_mesh.lowering_mesh()
+            shardings = []
+            for a in self._partially_addressable_arrays.values():
+                sharding = get_named_sharding(a)
+                shardings.append(
+                    update_named_sharding(
+                        sharding,
+                        mesh=lowering_mesh,
+                        spec=filter_axes(sharding.spec, {mpmd_axis}),
+                    )
                 )
-                for a in self._partially_addressable_arrays.values()
-            ]
-            tgt_spec = rm_size1_axes(mpmd_sharding.spec, mpmd_mesh.lowering_mesh())
-            assert all(_ == tgt_spec for _ in specs), (specs, tgt_spec)
+            tgt_sharding = update_named_sharding(
+                mpmd_sharding.sharding, mesh=lowering_mesh
+            )
+            assert all(
+                jc.shardings_are_equivalent(
+                    sharding, tgt_sharding, first_value.ndim, compare_memkind=True
+                )
+                for sharding in shardings
+            ), (shardings, tgt_sharding)
 
         self._spec = mpmd_sharding.spec
         self._sharding = mpmd_sharding.sharding

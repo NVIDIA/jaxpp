@@ -22,6 +22,9 @@ if jax.__version_info__ >= (0, 10):
 else:
     get_aval = core.get_aval
 
+# reduce_sum rejected already-unreduced inputs before JAX 0.9.1.
+reduce_sum_accepts_unreduced = jax.__version_info__ >= (0, 9, 1)
+
 if jax.__version_info__ < (0, 8, 2):
     from jax._src import effects as _effects
 
@@ -76,9 +79,6 @@ else:
         _dtypes.canonicalize_value_handlers[pytype] = handler
 
 
-# interpreters/ad
-from jax._src.interpreters.ad import call_transpose, call_transpose_param_updaters
-
 # interpreters/partial_eval
 # has_effects lives in jax._src.interpreters.partial_eval across all supported
 # versions, so import it from the private module directly.
@@ -94,11 +94,40 @@ from jax._src.interpreters.partial_eval import (
 from jax._src.lib import _jax
 from jax._src.pjit import _parse_jit_arguments as _jax_parse_jit_arguments
 
+if jax.__version_info__ >= (0, 11):
+    from jax._src.pjit import _canonicalize_inline as canonicalize_inline
+else:
+
+    def canonicalize_inline(inline):
+        return inline
+
+
+if jax.__version_info__ >= (0, 11, 1):
+    # Compiler options set protobuf fields directly, so use enum names rather
+    # than the deprecated XLA_FLAGS boolean aliases.
+    collective_pipelining_off_options_kvs = (
+        ("xla_gpu_pipeline_all_gather", "COLLECTIVE_PIPELINING_MODE_OFF"),
+        ("xla_gpu_pipeline_all_reduce", "COLLECTIVE_PIPELINING_MODE_OFF"),
+        ("xla_gpu_pipeline_reduce_scatter", "COLLECTIVE_PIPELINING_MODE_OFF"),
+    )
+else:
+    collective_pipelining_off_options_kvs = (
+        ("xla_gpu_enable_pipelined_all_gather", False),
+        ("xla_gpu_enable_pipelined_all_reduce", False),
+        ("xla_gpu_enable_pipelined_reduce_scatter", False),
+    )
+
+
 # shard_map
 from jax._src.shard_map import shard_map_p
 
 # sharding_impls
 from jax._src.sharding_impls import UNSPECIFIED, UnspecifiedValue
+
+# state
+from jax._src.state.discharge import discharge_state, register_discharge_rule
+
+discharge_rule_uses_context = jax.__version_info__ >= (0, 11, 1)
 
 # tree_util
 from jax._src.tree_util import equality_errors_pytreedef
@@ -160,6 +189,15 @@ def bind_with_trace(primitive, trace, args, avals, params):
     return primitive.bind_with_trace(trace, args, params)
 
 
+def map_jaxpr(jaxpr, fn):
+    """Apply ``fn`` while preserving attached constants across JAX versions."""
+    if jax.__version_info__ >= (0, 11):
+        return fn(jaxpr)
+    if isinstance(jaxpr, core.ClosedJaxpr):
+        return jaxpr.map_jaxpr(fn)
+    return fn(jaxpr)
+
+
 def aval_to_shape_dtype_struct(aval):
     """Convert an abstract value to a ``jax.ShapeDtypeStruct``."""
     # vma was renamed to manual_axis_type in JAX 0.10.0
@@ -188,6 +226,12 @@ def shardings_are_equivalent(
     if not hlo_equal:
         return False
     return not compare_memkind or old.memory_kind == new.memory_kind
+
+
+def spec_partitions(spec: jax.sharding.PartitionSpec) -> tuple:
+    if jax.__version_info__ >= (0, 10, 2):
+        return spec.partitions
+    return tuple(spec)
 
 
 def map_dynamic_args(args, kwargs, static_argnums, static_argnames, fn):
@@ -251,6 +295,10 @@ __all__ = [
     # sharding_impls
     "UNSPECIFIED",
     "UnspecifiedValue",
+    # state
+    "discharge_rule_uses_context",
+    "discharge_state",
+    "register_discharge_rule",
     # tree_util
     "equality_errors_pytreedef",
     "flatten_axis_resources",
@@ -258,12 +306,11 @@ __all__ = [
     "_ensure_index_tuple",
     # util
     "weakref_lru_cache",
-    # interpreters/ad
-    "call_transpose",
-    "call_transpose_param_updaters",
     # core
     "bind_with_trace",
+    "canonicalize_inline",
     "eqn_effects",
+    "map_jaxpr",
     # interpreters/partial_eval
     "DynamicJaxprTrace",
     "DynamicJaxprTracer",
@@ -272,7 +319,10 @@ __all__ = [
     "has_effects",
     # utilities
     "aval_to_shape_dtype_struct",
+    "collective_pipelining_off_options_kvs",
     "init_tracer",
     "map_dynamic_args",
+    "reduce_sum_accepts_unreduced",
     "shardings_are_equivalent",
+    "spec_partitions",
 ]

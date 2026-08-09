@@ -21,7 +21,7 @@ import operator
 import weakref
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from functools import cached_property, partial
+from functools import cached_property, partial, reduce
 from pathlib import Path
 from typing import (
     Any,
@@ -97,8 +97,8 @@ from jaxpp.mesh import (
 from jaxpp.pipelining import yield_scope
 from jaxpp.schedules import FusedTask, Task, mk_task_name, preprocess_schedule_tasks
 from jaxpp.sharding_inference import (
+    bind_explicit_shardings,
     infer_shardings,
-    infer_shardings_explicit,
     reconcile_shardings,
 )
 from jaxpp.types import MpmdIdx, MpmdSharding, TaskType, fresh_scalar_uid
@@ -121,10 +121,7 @@ def unwrap_closed(
     fun: Callable[Concatenate[jcore.Jaxpr, P], jcore.Jaxpr],
 ) -> Callable[Concatenate[AnyJaxpr, P], AnyJaxpr]:
     def res(closed_jaxpr: AnyJaxpr, *args: P.args, **kwargs: P.kwargs):
-        if isinstance(closed_jaxpr, jcore.ClosedJaxpr):
-            assert len(closed_jaxpr.consts) == 0
-            return closed_jaxpr.map_jaxpr(lambda jaxpr: fun(jaxpr, *args, **kwargs))
-        return fun(closed_jaxpr, *args, **kwargs)
+        return jc.map_jaxpr(closed_jaxpr, lambda jaxpr: fun(jaxpr, *args, **kwargs))
 
     return res
 
@@ -198,7 +195,7 @@ class AllReduceRewriteTrace(jcore.Trace):
         if primitive is add_multi_p and "mpmd_idxs" not in params:
             multiple_results = False
             with jcore.set_current_trace(self.parent_trace):
-                results = sum(parent_tracers)
+                results = reduce(operator.add, parent_tracers)
         elif primitive is gather_multi_p and "mpmd_idxs" not in params:
             multiple_results = False
             axis = params.get("axis", 0)
@@ -267,9 +264,12 @@ class AllReduceRewriteTrace(jcore.Trace):
             with jcore.set_current_trace(self.parent_trace):
                 for group in groups.values():
                     if len(group) > 1:
-                        e = sum(
-                            t.val if isinstance(t, AllReduceRewriteTracer) else t
-                            for t in group
+                        e = reduce(
+                            operator.add,
+                            (
+                                t.val if isinstance(t, AllReduceRewriteTracer) else t
+                                for t in group
+                            ),
                         )
                     else:
                         e = group[0]
@@ -719,9 +719,8 @@ def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> An
             }
         elif eqn.primitive is jc.shard_map_p:
             mesh = eqn.params["mesh"]
-            if isinstance(mesh, jax.sharding.AbstractMesh):
-                continue
-            param_update = {"mesh": new_mesh}
+            if not isinstance(mesh, jax.sharding.AbstractMesh):
+                param_update = {"mesh": new_mesh}
         elif eqn.primitive is jax.lax.device_put_p:
             param_update = {
                 "devices": updated_named_sharding_mesh(eqn.params["devices"], new_mesh)
@@ -1728,6 +1727,7 @@ def add_deletes(
         return (
             isinstance(invar, jcore.Var)
             and invar.aval is not jcore.abstract_token
+            and invar.aval.dtype != jax.dtypes.float0
             and last_use.get(invar) == eqn_idx
             and invar_is_donated.get(invar, True)
         )
@@ -2063,17 +2063,28 @@ def add_transfers(jaxpr: jcore.Jaxpr, times: list[tuple[int, int]]) -> jcore.Jax
     new_eqns = []
     prev_start_time = 0
     sub_by_mpmd_idx = defaultdict(dict[jcore.Var, jcore.Var])
-    # TODO: revisit when transfers are scheduled and bufferize receives
-    #  earlier than the transfer
+    # Transfer starts awaiting emission, each paired with the eqn index of its
+    # first use, plus the matching transfer_done equations keyed by that index.
     next_time_transfers = list[tuple[int, jcore.JaxprEqn]]()
+    transfer_dones_by_first_use = defaultdict[int, list[jcore.JaxprEqn]](list)
+
     for eqn_idx, ((start_time, _end_time), eqn) in enumerate(
         zip(times, jaxpr.eqns, strict=True)
     ):
+        # Emit every pending transfer start at a time-step boundary so it
+        # overlaps the coming step; within a step, emit only those whose first
+        # use we have reached, so a start never lands after its transfer_done.
         if start_time != prev_start_time:
-            for _, transfer in sorted(next_time_transfers, key=operator.itemgetter(0)):
-                new_eqns.append(transfer)
             prev_start_time = start_time
-            next_time_transfers = []
+            ready, next_time_transfers = next_time_transfers, []
+        else:
+            ready = [t for t in next_time_transfers if t[0] <= eqn_idx]
+            next_time_transfers = [t for t in next_time_transfers if t[0] > eqn_idx]
+        for _, transfer in sorted(ready, key=operator.itemgetter(0)):
+            new_eqns.append(transfer)
+
+        # Wait on each transfer right before its first use.
+        new_eqns.extend(transfer_dones_by_first_use.pop(eqn_idx, ()))
 
         if eqn.primitive is add_multi_p or eqn.primitive is gather_multi_p:
             new_eqns.append(eqn)
@@ -2089,10 +2100,11 @@ def add_transfers(jaxpr: jcore.Jaxpr, times: list[tuple[int, int]]) -> jcore.Jax
             ]
         )
         new_eqns.append(eqn)
-        for tgt_mpmd_idx, ts in groupby(
-            (t.tgt_mpmd_idx, t)
+        for (tgt_mpmd_idx, first_use_eqn_idx), ts in groupby(
+            ((t.tgt_mpmd_idx, t.first_use_eqn_idx), t)
             for t in sorted(
-                transfers[eqn_idx], key=lambda _: (_.tgt_mpmd_idx, _.out_idx)
+                transfers[eqn_idx],
+                key=lambda _: (_.tgt_mpmd_idx, _.first_use_eqn_idx, _.out_idx),
             )
         ).items():
             invars = [eqn.outvars[t.out_idx] for t in ts]
@@ -2109,56 +2121,23 @@ def add_transfers(jaxpr: jcore.Jaxpr, times: list[tuple[int, int]]) -> jcore.Jax
             }
             transfer_eqn = new_primitive_eqn(transfer_p, invars, **transfer_params)
             token_outvar, *outvars = transfer_eqn.outvars
-            next_time_transfers.append(
-                (min(_.first_use_eqn_idx for _ in ts), transfer_eqn)
+            assert isinstance(token_outvar, jcore.Var), transfer_eqn
+            transfer_done_eqn = new_primitive_eqn(
+                transfer_done_p, [token_outvar, *outvars]
             )
-            for i, o in zip(invars, outvars):
-                assert i not in sub_by_mpmd_idx[tgt_mpmd_idx]
-                sub_by_mpmd_idx[tgt_mpmd_idx][i] = o
+            next_time_transfers.append((first_use_eqn_idx, transfer_eqn))
+            transfer_dones_by_first_use[first_use_eqn_idx].append(transfer_done_eqn)
+            # Route the target's later uses onto the transfer_done outputs.
+            for invar, outvar in zip(invars, transfer_done_eqn.outvars, strict=True):
+                assert invar not in sub_by_mpmd_idx[tgt_mpmd_idx]
+                sub_by_mpmd_idx[tgt_mpmd_idx][invar] = outvar
+
+    # Every transfer's first use lies within the loop, so nothing is left over.
+    assert not next_time_transfers, next_time_transfers
+    assert not transfer_dones_by_first_use, transfer_dones_by_first_use
 
     return jaxpr.replace(
         eqns=new_eqns, effects=jcore.join_effects(*(eqn.effects for eqn in new_eqns))
-    )
-
-
-@unwrap_closed
-def add_transfer_dones(jaxpr: jcore.Jaxpr) -> jcore.Jaxpr:
-    explicit_done_tokens = {
-        token
-        for eqn in jaxpr.eqns
-        if eqn.primitive is transfer_done_p
-        for token in eqn.invars[:1]
-        if isinstance(token, jcore.Var)
-    }
-    sub = dict[jcore.Var, jcore.Var]()
-    new_eqns = []
-    for eqn in jaxpr.eqns:
-        eqn = eqn.replace(
-            invars=[
-                sub.get(invar, invar) if isinstance(invar, jcore.Var) else invar
-                for invar in eqn.invars
-            ]
-        )
-        new_eqns.append(eqn)
-        if eqn.primitive is transfer_p:
-            token, *transfer_outvars = eqn.outvars
-            assert isinstance(token, jcore.Var), eqn
-            if token in explicit_done_tokens:
-                continue
-            transfer_done_eqn = new_primitive_eqn(
-                transfer_done_p, [token, *transfer_outvars]
-            )
-            new_eqns.append(transfer_done_eqn)
-            sub.update(zip(transfer_outvars, transfer_done_eqn.outvars, strict=True))
-
-    outvars = [
-        sub.get(outvar, outvar) if isinstance(outvar, jcore.Var) else outvar
-        for outvar in jaxpr.outvars
-    ]
-    return jaxpr.replace(
-        eqns=new_eqns,
-        outvars=outvars,
-        effects=jcore.join_effects(*(eqn.effects for eqn in new_eqns)),
     )
 
 
@@ -3144,7 +3123,7 @@ def to_local_jaxprs(
                 closed_jaxpr=jcore.ClosedJaxpr(
                     jaxpr, tuple(tasked_jaxpr.consts[i] for i in local_const_indices)
                 ),
-                global_invar_indices=tuple(invar_idx[invar] for invar in jaxpr.invars),
+                global_invar_indices=tuple(invar_idx[invar] for invar in local_invars),
                 global_outvar_indices=tuple(
                     outvar_idx[outvar] for outvar in jaxpr.outvars
                 ),
@@ -3644,7 +3623,7 @@ def common_passes(
         len(donated_invars),
     )
     times = infer_times(jaxpr.eqns)
-    with_transfers = add_transfer_dones(add_transfers(jaxpr, times))
+    with_transfers = add_transfers(jaxpr, times)
 
     if finalize_lifetime_ops:
         with_transfers = finalize_lifetimes(
@@ -3669,7 +3648,7 @@ class GlobalMpmdFunction:
 
     def infer_intermediate_shardings(self):
         if getattr(self.mpmd_mesh.jax_mesh, "are_all_axes_explicit", False):
-            closed_jaxpr = infer_shardings_explicit(
+            closed_jaxpr = bind_explicit_shardings(
                 self.closed_jaxpr,
                 self.mpmd_mesh,
                 self.in_info.in_shardings,

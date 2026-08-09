@@ -16,32 +16,37 @@
 import ctypes
 import unittest
 
+import jax
 import jax.numpy as jnp
 import ml_dtypes
 import numpy as np
+from cuda.bindings import runtime as cuda_runtime
 from jax._src.dlpack import to_dlpack
+from jax.experimental.buffer_callback import buffer_callback
+from jax.experimental.layout import Layout, with_layout_constraint
 from parameterized import parameterized
 
-from jaxpp.dlpack import capsule_name, dlpack_nccl_args
-
-_libcudart = ctypes.CDLL("libcudart.so")
-_libcudart.cudaMemcpy.argtypes = [
-    ctypes.c_void_p,  # dst
-    ctypes.c_void_p,  # src
-    ctypes.c_size_t,  # count (bytes)
-    ctypes.c_int,  # kind
-]
-_libcudart.cudaMemcpy.restype = ctypes.c_int
-_cudaMemcpyDeviceToHost = 2
+from jaxpp.dlpack import (
+    DLManagedTensorVersioned,
+    DLPackVersion,
+    capsule_name,
+    dlpack_nccl_args,
+    dltensor_from_capsule,
+)
 
 
 def cuda_memcpy_to_host(device_ptr: int, num_bytes: int) -> bytes:
     host_buffer = (ctypes.c_uint8 * num_bytes)()
-    err = _libcudart.cudaMemcpy(
-        host_buffer, device_ptr, num_bytes, _cudaMemcpyDeviceToHost
+    err = cuda_runtime.cudaMemcpy(
+        host_buffer,
+        device_ptr,
+        num_bytes,
+        cuda_runtime.cudaMemcpyKind.cudaMemcpyDeviceToHost,
     )
-    if err != 0:
-        raise RuntimeError(f"cudaMemcpy failed with error {err}")
+    if isinstance(err, tuple):
+        err = err[0]
+    if err != cuda_runtime.cudaError_t.cudaSuccess:
+        raise RuntimeError(f"cudaMemcpy failed with {err!r}")
     return bytes(host_buffer)
 
 
@@ -58,7 +63,7 @@ class TestDlpackExport(unittest.TestCase):
         x = jnp.array([1, 2, 3], dtype=jax_dtype)
         capsule = to_dlpack(x)
         self.assertEqual(capsule_name(capsule), "dltensor")
-        data_ptr, count, nccl_dtype = dlpack_nccl_args(capsule)
+        data_ptr, count, _nccl_dtype = dlpack_nccl_args(capsule)
 
         self.assertEqual(count, 3)
 
@@ -73,7 +78,62 @@ class TestDlpackExport(unittest.TestCase):
         capsule = to_dlpack(x)
         with self.assertRaises(ValueError) as ctx:
             dlpack_nccl_args(capsule)
-        self.assertIn("Unsupported dtype", str(ctx.exception))
+        self.assertIn("Unsupported DLPack dtype", str(ctx.exception))
+
+    def test_jax_array_dlpack_rejects_non_standard_layout(self):
+        x = jnp.arange(6, dtype=jnp.float32).reshape(2, 3)
+        x = with_layout_constraint(x, Layout((1, 0)))
+        x.block_until_ready()
+
+        capsule = x.__dlpack__()
+        self.assertEqual(capsule_name(capsule), "dltensor")
+
+        dltensor = dltensor_from_capsule(capsule)
+        self.assertEqual([dltensor.shape[i] for i in range(dltensor.ndim)], [2, 3])
+        self.assertIsNotNone(dltensor.strides)
+        self.assertEqual([dltensor.strides[i] for i in range(dltensor.ndim)], [1, 2])
+
+        with self.assertRaises(ValueError) as ctx:
+            dlpack_nccl_args(capsule)
+        self.assertIn("non-contiguous DLPack tensor", str(ctx.exception))
+
+    def test_versioned_dlpack_capsule(self):
+        seen = []
+
+        def callback(_ctx, _out, x):
+            capsule = x.__dlpack__(stream=None, max_version=(1, 0))
+            seen.append((capsule_name(capsule), dlpack_nccl_args(capsule)))
+
+        f = buffer_callback(
+            callback, jax.ShapeDtypeStruct((0,), jnp.int32), has_side_effect=True
+        )
+        f(jnp.array([1, 2, 3], dtype=jnp.float32)).block_until_ready()
+
+        [(name, (data_ptr, count, nccl_dtype))] = seen
+        self.assertEqual(name, "dltensor_versioned")
+        self.assertGreater(data_ptr, 0)
+        self.assertEqual(count, 3)
+        self.assertEqual(nccl_dtype, 7)
+
+    @parameterized.expand([(0,), (2,)])
+    def test_versioned_dlpack_capsule_rejects_mismatched_major(self, major):
+        managed = DLManagedTensorVersioned()
+        managed.version = DLPackVersion(major, 0)
+
+        ctypes.pythonapi.PyCapsule_New.restype = ctypes.py_object
+        ctypes.pythonapi.PyCapsule_New.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+        ]
+        capsule = ctypes.pythonapi.PyCapsule_New(
+            ctypes.addressof(managed), b"dltensor_versioned", None
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, f"unsupported DLPack version {major}.0"
+        ):
+            dltensor_from_capsule(capsule)
 
 
 if __name__ == "__main__":

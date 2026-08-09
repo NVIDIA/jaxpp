@@ -16,11 +16,12 @@
 import contextlib
 import dataclasses
 import logging
+import operator
 import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, reduce
 from typing import (
     Any,
     Generator,
@@ -96,6 +97,22 @@ ShardingParam = jax.sharding.Sharding | jc.UnspecifiedValue | None
 ShardingTuple = tuple[ShardingParam, ...]
 
 
+def validate_all_reduce_reduction_metadata(
+    in_sharding: jax.sharding.NamedSharding,
+    out_sharding: jax.sharding.NamedSharding,
+    axis_name: str,
+) -> None:
+    input_spec = filter_axes(in_sharding.spec, {axis_name})
+    if (input_spec.unreduced, input_spec.reduced) != (
+        out_sharding.spec.unreduced,
+        out_sharding.spec.reduced,
+    ):
+        raise ValueError(
+            "cross-MPMD all-reduce input reduction metadata must match "
+            f"the output; got {input_spec} and {out_sharding.spec}"
+        )
+
+
 add_multi_p = jcore.Primitive("add_multi")
 
 
@@ -125,17 +142,56 @@ def add_multi_impl(
     assert (
         not mpmd_mesh.jax_mesh.is_multi_process
     ), f"{add_multi_p.name} supported only in single-process runtime"
+    assert out_shardings is not None
+    (out_sharding,) = out_shardings
+    assert isinstance(out_sharding, jax.sharding.NamedSharding)
+
     prev_shardings: list[jax.NamedSharding] = [a.sharding for a in args]
-    # TODO: do the stacking through stack_p.
-    with jax.set_mesh(args[0].sharding.mesh):
-        _ = sum(jax.device_put(a, args[0].sharding) for a in args)
+    comm_mpmd_mesh = mpmd_mesh.mpmd_submesh(list(mpmd_idxs))
+    axis_name = mpmd_mesh.mpmd_axis_name
+    out_sharding = update_named_sharding(
+        out_sharding,
+        mesh=comm_mpmd_mesh.jax_mesh,
+        spec=filter_axes(out_sharding.spec, {axis_name}),
+    )
+    for sharding in prev_shardings:
+        validate_all_reduce_reduction_metadata(sharding, out_sharding, axis_name)
+    logical_in_shardings = tuple(
+        update_named_sharding(sharding, spec=out_sharding.spec)
+        for sharding in prev_shardings
+    )
+    if not jc.reduce_sum_accepts_unreduced and out_sharding.spec.unreduced:
+        raise NotImplementedError(
+            "cross-MPMD all-reduce with unreduced inputs requires JAX >= 0.9.1"
+        )
+
+    stacked = stack_p.bind(
+        *args,
+        **StackParams(
+            in_shardings=logical_in_shardings, mpmd_mesh=comm_mpmd_mesh, axis=0
+        ),
+    )
+    with jax.set_mesh(comm_mpmd_mesh.jax_mesh):
+        (total,) = jax.jit(
+            all_reduce_fn,
+            in_shardings=(stacked.sharding,),
+            out_shardings=(out_sharding,),
+        )((stacked,))
+    replicas = slice_p.bind(
+        total,
+        **SliceParams(
+            in_sharding=out_sharding,
+            groups=tuple((idx,) for idx in range(comm_mpmd_mesh.mpmd_dim)),
+            mpmd_mesh=comm_mpmd_mesh,
+        ),
+    )
     return MpmdArray(
-        [jax.device_put(_, s) for s in prev_shardings],
+        list(replicas),
         mpmd_sharding=MpmdSharding(
             mpmd_mesh,
             mpmd_idxs,
-            prev_shardings[0].spec,
-            memory_kind=prev_shardings[0].memory_kind,
+            out_sharding.spec,
+            memory_kind=out_sharding.memory_kind,
         ),
     )
 
@@ -147,7 +203,7 @@ def add_multi_lower(
     mpmd_idxs=None,
     donate_invars=None,
 ):
-    return sum(args)
+    return reduce(operator.add, args)
 
 
 mlir.register_lowering(
@@ -156,7 +212,7 @@ mlir.register_lowering(
 
 
 def all_reduce_fn(arrs):
-    return tuple(a.sum(0) for a in arrs)
+    return tuple(a.sum(0, dtype=a.dtype) for a in arrs)
 
 
 def all_reduce(
@@ -173,22 +229,36 @@ def all_reduce(
     shardings = [get_named_sharding(a) for a in arrs]
     assert len(set(_.mesh for _ in shardings)) == 1
 
-    stacked_shardings = tuple(
-        array_ops.stack_shape_and_sharding(
-            (a.shape,), (sharding,), mpmd_mesh=comm_mpmd_mesh
-        )[1]
-        for a, sharding in zip(arrs, shardings, strict=True)
-    )
-    stacked = tuple(
-        stack_p.bind(
-            a, **StackParams(in_shardings=(sharding,), mpmd_mesh=comm_mpmd_mesh, axis=0)
-        )
-        for a, sharding in zip(arrs, shardings, strict=True)
-    )
+    axis_name = mpmd_mesh.mpmd_axis_name
     out_shardings = tuple(
-        update_named_sharding(sharding, mesh=comm_mesh, spec=spec)
+        update_named_sharding(
+            sharding, mesh=comm_mesh, spec=filter_axes(spec, {axis_name})
+        )
         for sharding, spec in zip(shardings, out_specs, strict=True)
     )
+    for sharding, out_sharding in zip(shardings, out_shardings, strict=True):
+        validate_all_reduce_reduction_metadata(sharding, out_sharding, axis_name)
+    logical_in_shardings = tuple(
+        update_named_sharding(sharding, spec=out_sharding.spec)
+        for sharding, out_sharding in zip(shardings, out_shardings, strict=True)
+    )
+    if not jc.reduce_sum_accepts_unreduced and any(
+        sharding.spec.unreduced for sharding in out_shardings
+    ):
+        raise NotImplementedError(
+            "cross-MPMD all-reduce with unreduced inputs requires JAX >= 0.9.1"
+        )
+
+    stacked = tuple(
+        stack_p.bind(
+            a,
+            **StackParams(
+                in_shardings=(logical_in_sharding,), mpmd_mesh=comm_mpmd_mesh, axis=0
+            ),
+        )
+        for a, logical_in_sharding in zip(arrs, logical_in_shardings, strict=True)
+    )
+    stacked_shardings = tuple(a.sharding for a in stacked)
 
     with jax.set_mesh(comm_mesh):
         all_reduced: tuple[jax.Array, ...] = jax.jit(
@@ -919,10 +989,6 @@ mlir.register_lowering(
 )
 
 
-def _task_transpose_update_params(params, undef_primals, nonzero_cts):
-    return dict(params, task_name=f"bwd({params['task_name']})")
-
-
 def task_lower(
     ctx,
     *args,
@@ -1011,6 +1077,7 @@ def callable_task(prim: jcore.Primitive, params: PjitKwargs):
     logging.info(f"Compiling {params.name} ({id(params.jaxpr)})")
     p = params.asdict()
     p["compiler_options_kvs"] = ()
+    p["inline"] = jc.canonicalize_inline(p["inline"])
     if isinstance(params.out_shardings, jc.UnspecifiedValue):
         p["out_shardings"] = (params.out_shardings,) * len(params.jaxpr.out_avals)
 
@@ -1193,9 +1260,30 @@ task_p.def_effectful_abstract_eval(task_abstract_eval)
 
 mlir.register_lowering(task_p, task_lower)
 
-# FIXME: use closed_call_transpose below
-ad.primitive_transposes[task_p] = partial(jc.call_transpose, task_p)
-jc.call_transpose_param_updaters[task_p] = _task_transpose_update_params
+
+@jc.register_discharge_rule(task_p)
+def _task_state_discharge_rule(
+    context_or_in_avals, *args, call_jaxpr: jcore.ClosedJaxpr, **params
+):
+    if jc.discharge_rule_uses_context:
+        context = context_or_in_avals
+        in_avals = context.in_avals
+        out_avals = context.out_avals
+        discharged_call_jaxpr = jc.discharge_state(
+            call_jaxpr, strip_memory_space=context.strip_memory_space
+        )
+    else:
+        in_avals = context_or_in_avals
+        out_avals, *args = args
+        discharged_call_jaxpr = jc.discharge_state(call_jaxpr)
+
+    if len(discharged_call_jaxpr.out_avals) != len(out_avals):
+        raise NotImplementedError("JaxPP task Ref inputs are unsupported")
+
+    out = task_p.bind(*args, call_jaxpr=discharged_call_jaxpr, **params)
+    return [None] * len(in_avals), out
+
+
 pe.dce_rules[dax_pscan_p] = dce_jaxpr_dax_pscan
 
 

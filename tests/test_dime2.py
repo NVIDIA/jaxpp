@@ -19,13 +19,14 @@ import jax
 import jax.numpy as jnp
 import ml_dtypes
 import numpy as np
+from cuda.core import Device
 from jax.sharding import PartitionSpec as P
 from parameterized import parameterized
 
 import jaxpp.distributed_utils as jppdu
-from jaxpp.experimental import mpmd
 from jaxpp.core import to_local_jaxprs
-from jaxpp.dime2 import get_distributed_client, start_transfer
+from jaxpp.dime2 import cuda_device, get_distributed_client, start_transfer
+from jaxpp.experimental import mpmd
 from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import (
     CommToken,
@@ -122,6 +123,20 @@ class SendRecvTest(jppdu.JaxDistributedTest):
                 jnp.zeros((8,), dtype=jnp.float32), receiver_sharding
             )
             start_transfer([], [], [buffer], [sender_sharding]).done()
+
+    def test_cuda_device_restores_previous_device(self):
+        if jax.local_device_count() < 2:
+            self.skipTest("Test requires at least two devices per process.")
+
+        previous_device = Device()
+        preserved_device = Device(1)
+        try:
+            preserved_device.set_current()
+            with cuda_device(Device(0)):
+                self.assertEqual(Device().device_id, 0)
+            self.assertEqual(Device().device_id, preserved_device.device_id)
+        finally:
+            previous_device.set_current()
 
     def test_start_transfer_groups_bidirectional_send_recv(self):
         if jax.process_count() != 2:

@@ -8,6 +8,7 @@ Welcome to JAXPP's documentation!
    readme
    installation
    usage
+   unreduced_gradients
    compilation
    modules
 

@@ -94,11 +94,12 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     new_out = []
     added_vars = 0
     for idx in range(n_orig_outvars):
+        out_idx = idx + added_vars
         if replicated_loop_body_outvars.get(idx) is not None:
-            new_out.append(ad.add_jaxvals(out[idx], out[idx + 1]))
+            new_out.append(ad.add_jaxvals(out[out_idx], out[out_idx + 1]))
             added_vars += 1
         else:
-            new_out.append(out[idx + added_vars])
+            new_out.append(out[out_idx])
     # NOTE: drop first output which is the loop index
     return jax.tree_util.tree_unflatten(out_tree(), new_out)[1]
 
