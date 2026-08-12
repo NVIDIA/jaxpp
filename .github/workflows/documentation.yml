@@ -46,6 +46,24 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Publish the committed rendered notebook pages because this runner
+      # does not have the GPU required to execute their examples.
+      - name: Use pre-rendered notebook pages
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' source; do
+            if ! grep -q '^file_format: mystnb$' "$source"; then
+              continue
+            fi
+            rendered="docs/rendered/${source##*/}"
+            if [[ ! -f "$rendered" ]]; then
+              echo "::error file=$source::Missing rendered notebook mirror: $rendered"
+              exit 1
+            fi
+            cp "$rendered" "$source"
+          done < <(find docs -path docs/rendered -prune -o -type f -name '*.md' -print0)
+
       - name: Sphinx build
         run: |
           set -euo pipefail
@@ -53,7 +71,7 @@ jobs:
           nccl_location="$(python -m pip show nvidia-nccl-cu13 | sed -n 's/^Location: //p')"
           test -n "$nccl_location"
           export LD_LIBRARY_PATH="${nccl_location}/nvidia/nccl/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-          make -C docs html
+          sphinx-build -D nb_execution_mode=off -b html docs docs/_build/html
 
       - name: Upload GitHub Pages artifact
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
