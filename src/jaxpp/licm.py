@@ -27,7 +27,7 @@ import jax.numpy as jnp
 
 from jaxpp import jax_compat as jc
 from jaxpp.jax_compat import core as jcore
-from jaxpp.jax_primitives import dax_pscan_p, place_with_p
+from jaxpp.jax_primitives import dax_pscan_p, place_with_p, pscan_body_inputs
 from jaxpp.jaxpr_utils import eqns_free_vars, nonlit, substitute, var_is_duplicate
 from jaxpp.jaxpr_utils import gensym as mk_gensym
 from jaxpp.utils import OverwriteableVar, array_bytes
@@ -578,9 +578,10 @@ def partial_eval_loop(
 ):
     assert primitive is dax_pscan_p
     n_consts = params["n_consts"]
-    in_vals = (PartialValue.KNOWN,) * n_consts + (PartialValue.UNKNOWN,) * (
+    eqn_in_vals = (PartialValue.KNOWN,) * n_consts + (PartialValue.UNKNOWN,) * (
         len(tracers) - n_consts
     )
+    body_in_vals = pscan_body_inputs(eqn_in_vals, PartialValue.UNKNOWN, n_consts)
 
     rules = {
         jax.lax.convert_element_type_p: pe_rule_convert,
@@ -591,27 +592,41 @@ def partial_eval_loop(
 
     with partial_eval_custom_rules.set(to=rules):
         (known_jaxpr, unknown_jaxpr, unknown_in_idx, out_is_unknown, res_avals) = (
-            partial_eval_jaxpr(params["jaxpr"].jaxpr, in_vals, memory_scarce=True)
+            partial_eval_jaxpr(params["jaxpr"].jaxpr, body_in_vals, memory_scarce=True)
         )
         if not all(out_is_unknown):
             raise NotImplementedError()  # FIXME
 
+    if n_consts not in unknown_in_idx:
+        assert unknown_jaxpr is not None
+        body_jaxpr = params["jaxpr"].jaxpr
+        unknown_idx_position = sum(idx < n_consts for idx in unknown_in_idx)
+        body_invar_position = len(res_avals) + unknown_idx_position
+        unknown_in_idx.insert(unknown_idx_position, n_consts)
+        unknown_invars = list(unknown_jaxpr.invars)
+        unknown_invars.insert(body_invar_position, body_jaxpr.invars[n_consts])
+        unknown_jaxpr = unknown_jaxpr.replace(invars=unknown_invars)
+
     known_out_tracers = []
     if known_jaxpr is not None:
-        known_out_tracers = jcore.eval_jaxpr(
-            known_jaxpr, (), *tracers[:n_consts], propagate_source_info=False
-        )
+        known_out_tracers = jcore.eval_jaxpr(known_jaxpr, (), *tracers[:n_consts])
 
     return default_process_primitive(
         primitive,
         (
-            *known_out_tracers[-len(res_avals) :],
-            *(tracers[idx] for idx in unknown_in_idx),
+            *known_out_tracers[len(known_out_tracers) - len(res_avals) :],
+            *(
+                tracers[idx if idx < n_consts else idx - 1]
+                for idx in unknown_in_idx
+                if idx != n_consts
+            ),
         ),
         {
             **params,
             "jaxpr": jcore.ClosedJaxpr(unknown_jaxpr, ()),
             "n_consts": len(res_avals) + sum(idx < n_consts for idx in unknown_in_idx),
+            # LICM runs before sharding inference; residuals change the inputs.
+            "in_shardings": (None,) * (len(unknown_jaxpr.invars) - 1),
         },
     )
 
@@ -707,9 +722,19 @@ def remove_duplicate_consts_invars(jaxpr: jcore.Jaxpr):
         params=loop_eqn.params
         | {
             "jaxpr": unwrap_closed(
-                lambda jaxpr: remove_duplicate_invars(jaxpr, duplicate_idx)
+                lambda jaxpr: remove_duplicate_invars(
+                    jaxpr,
+                    pscan_body_inputs(duplicate_idx, None, loop_eqn.params["n_consts"]),
+                )
             )(loop_eqn.params["jaxpr"]),
             "n_consts": loop_eqn.params["n_consts"] - len(duplicate_invars),
+            "in_shardings": tuple(
+                sharding
+                for sharding, dup_idx in zip(
+                    loop_eqn.params["in_shardings"], duplicate_idx, strict=True
+                )
+                if dup_idx is None
+            ),
         },
     )
 
@@ -718,7 +743,7 @@ def remove_duplicate_consts_invars(jaxpr: jcore.Jaxpr):
     )
 
 
-def remove_duplicate_invars(jaxpr: jcore.Jaxpr, duplicate_idx: list[int | None]):
+def remove_duplicate_invars(jaxpr: jcore.Jaxpr, duplicate_idx: Sequence[int | None]):
     sub = dict[jcore.Var, jcore.Var]()
     kept_invars = []
     for invar, dup_idx in zip(jaxpr.invars, duplicate_idx, strict=True):

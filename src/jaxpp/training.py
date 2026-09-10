@@ -39,8 +39,8 @@ Y = TypeVar("Y")
 
 
 def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
-    # NOTE: + 0 needed so that jax doesn't make it a `Literal` argument
-    mubatch_idx = jax.numpy.zeros_like(0) + 0
+    # The body receives this index implicitly from dax_pscan.
+    mubatch_idx = 0
 
     flat_args, in_tree = jax.tree_util.tree_flatten((mubatch_idx, init))
     flat_scan_body, out_tree = jau.flatten_fun_nokwargs(fun, in_tree)
@@ -57,7 +57,7 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     scan_body_jaxpr = pushout_add_any(scan_body_jaxpr)
     # FIXME: ensure that it doesn't produce duplicate outvars
     replicated_loop_body_invars, replicated_loop_body_outvars, replace_eqns = (
-        compute_needed(scan_body_jaxpr, n_consts)
+        compute_needed(scan_body_jaxpr, n_consts + 1)
     )
 
     scan_body_jaxpr = add_jaxpr_parameters(
@@ -68,6 +68,8 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
     )
     new_flat_args = []
     for idx, arg in enumerate(flat_args):
+        if idx == n_consts:
+            continue
         if replicas := replicated_loop_body_invars.get(idx, None):
             new_flat_args.append(arg)
             for _ in replicas[1:]:
@@ -100,8 +102,7 @@ def pscan_wrapped(fun: lu.WrappedFun, init, length, schedule):
             added_vars += 1
         else:
             new_out.append(out[out_idx])
-    # NOTE: drop first output which is the loop index
-    return jax.tree_util.tree_unflatten(out_tree(), new_out)[1]
+    return jax.tree_util.tree_unflatten(out_tree(), new_out)
 
 
 class Op(Protocol):
@@ -283,7 +284,7 @@ def treduce_i(
       structure as ``Y``.
     """
     with log_elapsed_time("jaxpr/first_loop_tracing"), yield_scope():
-        body_args = jcore.ShapedArray((), dtype=jax.numpy.int32)
+        body_args = jc.get_aval(0)
         flat_args, in_tree = jax.tree_util.tree_flatten((body_args,))
         trace_debug_info = jau.debug_info(treduce_i.__name__, fun, (body_args,), {})
         wrapped_fun = lu.wrap_init(fun, debug_info=trace_debug_info)
@@ -311,21 +312,13 @@ def treduce_i(
         def update(op: Op, state, update):
             return copy_if_scalar(op.update(state, update, mubatch_idx))
 
-        return (
-            mubatch_idx + 1,
-            jax.tree_util.tree_map(
-                update,
-                operation,
-                loop_state,
-                jax.tree.unflatten(
-                    jax.tree.structure(loop_out_shapes),
-                    jcore.eval_jaxpr(
-                        body_jaxpr.jaxpr,
-                        body_jaxpr.consts,
-                        mubatch_idx,
-                        propagate_source_info=False,
-                    ),
-                ),
+        return jax.tree_util.tree_map(
+            update,
+            operation,
+            loop_state,
+            jax.tree.unflatten(
+                jax.tree.structure(loop_out_shapes),
+                jcore.eval_jaxpr(body_jaxpr.jaxpr, body_jaxpr.consts, mubatch_idx),
             ),
         )
 

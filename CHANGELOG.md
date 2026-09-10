@@ -1,5 +1,14 @@
 # Change log
 
+<!-- jaxpp-release-begin: Update 26.09.10 -->
+## Update 26.09.10
+
+Updates include
+
+- Pipeline execution
+  - Made the microbatch index implicit in `dax_pscan`, simplifying its caller interface and ensuring loop transformations handle the index consistently
+<!-- jaxpp-release-end: Update 26.09.10 -->
+
 <!-- jaxpp-release-begin: Update 26.08.10 -->
 ## Update 26.08.10
 

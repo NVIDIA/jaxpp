@@ -61,6 +61,7 @@ TOKEN_AVAL = jcore.abstract_token
 
 _CommDoneT = TypeVar("_CommDoneT")
 _CommDoneT_co = TypeVar("_CommDoneT_co", covariant=True)
+_PscanT = TypeVar("_PscanT")
 
 
 class _CommTransfer(Protocol[_CommDoneT_co]):
@@ -931,6 +932,20 @@ ad.deflinear(pipeline_yield_p, pipeline_yield_transpose)
 mlir.register_lowering(pipeline_yield_p, lambda ctx, *args, **kwargs: args)
 
 
+def pscan_body_inputs(
+    inputs: Sequence[_PscanT], index: _PscanT, n_consts: int
+) -> tuple[_PscanT, ...]:
+    """Insert dax_pscan's implicit index into its body arguments."""
+    return (*inputs[:n_consts], index, *inputs[n_consts:])
+
+
+def pscan_eqn_inputs(
+    body_inputs: Sequence[_PscanT], n_consts: int
+) -> tuple[_PscanT, ...]:
+    """Remove dax_pscan's implicit index from its body arguments."""
+    return (*body_inputs[:n_consts], *body_inputs[n_consts + 1 :])
+
+
 def dax_pscan_abstract_eval(
     *args,
     jaxpr,
@@ -942,6 +957,10 @@ def dax_pscan_abstract_eval(
     out_mpmd_defs,
     schedule,
 ):
+    if len(jaxpr.in_avals) != len(args) + 1:
+        raise ValueError("dax_pscan body must have one implicit index input")
+    if len(jaxpr.out_avals) != len(args) - n_consts:
+        raise ValueError("dax_pscan body outputs must match its loop carry")
     return jaxpr.out_avals
 
 
@@ -961,28 +980,18 @@ def dax_pscan_impl(
     in_mpmd_refs,
     out_mpmd_defs,
     schedule,
-    eager=False,
 ):
     # FIXME: acutally implement schedule
     fun = jcore.jaxpr_as_fun(jaxpr)
-
-    if n_mubatches == 1:
-        return fun(*args)
-
     loop_invariant_args, loop_state = args[:n_consts], args[n_consts:]
 
-    if eager:
-        for i in range(0, n_mubatches):
-            loop_state = fun(*loop_invariant_args, *loop_state)
-        return loop_state
-
-    def loop_body(idx, loop_state):
-        return fun(*loop_invariant_args, *loop_state)
+    def loop_body(index, state):
+        return fun(*loop_invariant_args, index, *state)
 
     return jax.lax.fori_loop(0, n_mubatches, loop_body, list(loop_state))
 
 
-dax_pscan_p.def_impl(partial(dax_pscan_impl, eager=True))
+dax_pscan_p.def_impl(dax_pscan_impl)
 
 mlir.register_lowering(
     dax_pscan_p, mlir.lower_fun(dax_pscan_impl, multiple_results=True)
@@ -1008,41 +1017,39 @@ def task_lower(
 def dce_jaxpr_dax_pscan(
     used_outputs: list[bool], eqn: jcore.JaxprEqn
 ) -> tuple[list[bool], jcore.JaxprEqn]:
-    jaxpr_ = eqn.params["jaxpr"]
-    jaxpr, consts = jaxpr_.jaxpr, jaxpr_.consts
+    closed_jaxpr = eqn.params["jaxpr"]
+    jaxpr, consts = closed_jaxpr.jaxpr, closed_jaxpr.consts
+    n_consts = eqn.params["n_consts"]
+    for _ in range(1 + len(used_outputs)):
+        new_jaxpr, body_used_inputs = pe.dce_jaxpr(
+            jaxpr, used_outputs, instantiate=[False] * n_consts + [True] + used_outputs
+        )
+        used_carry_inputs = body_used_inputs[n_consts + 1 :]
+        if used_carry_inputs == used_outputs:
+            break
+        used_outputs = used_carry_inputs
+    else:
+        raise AssertionError("dax_pscan DCE fixpoint not reached")
 
-    has_changed = True
-    while has_changed:
-        has_changed = False
-        new_jaxpr, used_inputs = pe.dce_jaxpr(jaxpr, used_outputs)
-        for o_idx, (i, o) in enumerate(
-            jc.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
-        ):
-            if i and i != o:
-                used_outputs[o_idx] = i
-                has_changed = True
-
-    # NOTE: it might happen that some output state is never merged with carried state
-    #  (i.e. the `last` component of the LoopState).
-    #  Here we make sure that the LoopState part of `used_inputs` agrees
-    #  with `used_outputs`.
-    for o_idx, (_, o) in enumerate(
-        jc.safe_zip(used_inputs[eqn.params["n_consts"] :], used_outputs)
-    ):
-        used_inputs[eqn.params["n_consts"] + o_idx] = o
-
-    new_jaxpr = new_jaxpr.replace(
-        invars=[
-            invar for invar, used in jc.safe_zip(jaxpr.invars, used_inputs) if used
-        ],
-        debug_info=None,  # FIXME
-    )
+    used_inputs = list(pscan_eqn_inputs(body_used_inputs, n_consts))
 
     new_params = dict(
         eqn.params,
-        n_consts=sum(used_inputs[: eqn.params["n_consts"]]),
+        n_consts=sum(body_used_inputs[:n_consts]),
         jaxpr=jcore.ClosedJaxpr(new_jaxpr, consts),
     )
+    for name, used in (
+        ("in_shardings", used_inputs),
+        ("out_shardings", used_outputs),
+        ("in_mpmd_refs", used_inputs),
+        ("out_mpmd_defs", used_outputs),
+    ):
+        values = eqn.params[name]
+        if values is not None:
+            new_params[name] = tuple(
+                value for value, keep in zip(values, used, strict=True) if keep
+            )
+
     new_eqn = jcore.new_jaxpr_eqn(
         [v for v, used in zip(eqn.invars, used_inputs, strict=True) if used],
         [v for v, used in zip(eqn.outvars, used_outputs, strict=True) if used],

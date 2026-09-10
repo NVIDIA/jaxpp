@@ -32,6 +32,7 @@ from jaxpp.jax_primitives import (
     callable_task,
     dax_pscan_p,
     gather_multi_p,
+    pscan_body_inputs,
     task_p,
 )
 from jaxpp.mesh import MpmdMesh
@@ -364,11 +365,12 @@ def reconcile_shardings(
                 updated_slots.append(slot)
             eqn.params[key] = tuple(updated_slots)
         if is_loop:
-            has_unknown |= reconcile_shardings(
-                eqn.params["jaxpr"],
-                eqn.params["in_shardings"],
-                eqn.params["out_shardings"],
-                _in_labels=[
+            n_consts = eqn.params["n_consts"]
+            body_in_shardings = pscan_body_inputs(
+                eqn.params["in_shardings"], None, n_consts
+            )
+            body_in_labels = pscan_body_inputs(
+                [
                     (
                         winner(v)
                         if isinstance(v, jcore.Var) and v in resolved
@@ -376,6 +378,14 @@ def reconcile_shardings(
                     )
                     for i, v in enumerate(eqn.invars)
                 ],
+                "implicit loop index",
+                n_consts,
+            )
+            has_unknown |= reconcile_shardings(
+                eqn.params["jaxpr"],
+                body_in_shardings,
+                eqn.params["out_shardings"],
+                _in_labels=body_in_labels,
                 _out_labels=[
                     (
                         winner(v)
@@ -481,8 +491,14 @@ def infer_shardings2(
                 )
 
         elif eqn.primitive is dax_pscan_p:
+            index_sharding = jax.NamedSharding(
+                lowering_mesh, jax.sharding.PartitionSpec()
+            )
             result_shardings = infer_shardings2(
-                eqn.params["jaxpr"], _in, lowering_mesh, compiler_options_kvs
+                eqn.params["jaxpr"],
+                pscan_body_inputs(_in, index_sharding, eqn.params["n_consts"]),
+                lowering_mesh,
+                compiler_options_kvs,
             )
         elif eqn.primitive is add_multi_p:
             result_shardings = (_in[0],)
@@ -636,9 +652,13 @@ def bind_explicit_shardings(
             bind_explicit_shardings(
                 eqn.params["jaxpr"],
                 mpmd_mesh,
-                tuple(
-                    update_named_sharding(env[invar], mesh=lowering_mesh)
-                    for invar in eqn.invars
+                pscan_body_inputs(
+                    tuple(
+                        update_named_sharding(env[invar], mesh=lowering_mesh)
+                        for invar in eqn.invars
+                    ),
+                    jax.NamedSharding(lowering_mesh, jax.sharding.PartitionSpec()),
+                    eqn.params["n_consts"],
                 ),
                 out_shardings,
             )

@@ -59,6 +59,7 @@ from jaxpp.jax_primitives import (
     local_slice_p,
     local_stack_p,
     pipeline_yield_p,
+    pscan_eqn_inputs,
     recv_done_p,
     reuse_fence_p,
     slice_p,
@@ -343,7 +344,7 @@ def propagate_and_rewrite_adds(
     ]
 
     with jcore.set_current_trace(mpmd_trace):
-        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers, propagate_source_info=True)
+        res = jcore.eval_jaxpr(jaxpr, (), *in_tracers)
 
     # TODO: handle literals in `res`
     # Ignore any trailing return values from JAX internals.
@@ -527,12 +528,12 @@ def paranoid_assert(cond: bool, msg: str | None = None):
         raise AssertionError(msg)
 
 
-def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
+def compute_needed(loop_body: jcore.Jaxpr, body_carry_start: int):
     """
     Given the following Jaxpr
 
     ```
-    def loop(c1, c2, c3, ..., c<$body_nconsts> | z, y, prev_x, ...):
+    def loop(c1, c2, c3, ..., c<$body_carry_start> | z, y, prev_x, ...):
                 ...
         (128)   x  = add_any x1 x2
                 ... # no `x` uses
@@ -544,8 +545,8 @@ def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
     returns the edits needed to push the `add_any` outside of the loop
 
     (
-        # Add these two invars at index $body_nconsts + 2
-        { $body_nconsts + 2: [prev_x', prev_x''] },
+        # Add these two invars at index $body_carry_start + 2
+        { $body_carry_start + 2: [prev_x', prev_x''] },
         # At the end of the loop perform add_any between x'' and x''' which are the
         # variables to replace the output at index 2
         {2: (add_any x1 x2, [x'', x'''])},
@@ -590,7 +591,7 @@ def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
 
         if (
             invar_idx := invar_indices.get(loop_body_invar)
-        ) is None or invar_idx < body_nconsts:
+        ) is None or invar_idx < body_carry_start:
             # This is not a loop variable or is a loop constant
             continue
 
@@ -618,7 +619,7 @@ def compute_needed(loop_body: jcore.Jaxpr, body_nconsts: int):
             continue
 
         paranoid_assert(use_eqn_idxs[0] == add_eqn_idx)
-        assert outvar_idx == invar_idx - body_nconsts
+        assert outvar_idx == invar_idx - body_carry_start
 
         replicated_ga_eqns = []
         for cross_worker_invar in add_any_eqn.invars:
@@ -1209,7 +1210,7 @@ def wrap_into_tasks_inside_loop(loop_eqn: jcore.JaxprEqn) -> jcore.JaxprEqn:
         params={
             **loop_eqn.params,
             "jaxpr": loop_eqn.params["jaxpr"].replace(jaxpr=new_jaxpr),
-            "in_shardings": (None,) * len(new_jaxpr.invars),
+            "in_shardings": (None,) * len(loop_eqn.invars),
             "out_shardings": (None,) * len(new_jaxpr.outvars),
             "in_mpmd_refs": in_mpmd_refs,
             "out_mpmd_defs": out_mpmd_defs,
@@ -1287,7 +1288,7 @@ def compute_loop_placement(loop_jaxpr: PscanJaxpr, n_consts: int, is_loop: bool 
 
     if is_loop:
         for invar, outvar in jc.safe_zip(
-            loop_jaxpr.invars[n_consts:], loop_jaxpr.outvars
+            loop_jaxpr.invars[n_consts + 1 :], loop_jaxpr.outvars
         ):
             # State invars are defined where their corresponding
             #  outvars are defined
@@ -1302,16 +1303,18 @@ def compute_loop_placement(loop_jaxpr: PscanJaxpr, n_consts: int, is_loop: bool 
             if len(mpmd_refs[invar]) > 0 and mpmd_idx not in mpmd_refs[invar]:
                 raise AssertionError("Loop state is not stable across iterations")
 
-        # Loop constants must be defined where they are referred
+        # Loop constants must be defined where they are referred. The implicit
+        # index has no binding or placement at the caller boundary.
         for invar in loop_jaxpr.invars[:n_consts]:
             mpmd_def[invar] = mpmd_refs[invar]
     else:
         for invar in loop_jaxpr.invars:
             mpmd_def[invar] = mpmd_refs[invar]
 
-    loop_invar_mpmd_refs = tuple(
-        frozenset(mpmd_refs[invar]) for invar in loop_jaxpr.invars
+    loop_invars = (
+        pscan_eqn_inputs(loop_jaxpr.invars, n_consts) if is_loop else loop_jaxpr.invars
     )
+    loop_invar_mpmd_refs = tuple(frozenset(mpmd_refs[v]) for v in loop_invars)
     loop_outvar_mpmd_def = tuple(
         frozenset(mpmd_def[outvar]) for outvar in loop_jaxpr.outvars
     )
@@ -1799,17 +1802,23 @@ def finalize_lifetimes(
 
 
 def unroll_loop(
-    loop_jaxpr: jcore.Jaxpr, n_consts: int, n_mubatches: int
-) -> jcore.Jaxpr:
+    loop_jaxpr: jcore.ClosedJaxpr, n_consts: int, n_mubatches: int
+) -> jcore.ClosedJaxpr:
+    body = loop_jaxpr.jaxpr
     gensym = mk_gensym()
 
-    consts, carry = loop_jaxpr.invars[:n_consts], loop_jaxpr.invars[n_consts:]
+    consts = body.invars[:n_consts]
+    index = body.invars[n_consts]
+    initial_carry = body.invars[n_consts + 1 :]
+    carry = initial_carry
+    index_constvars = [gensym(index.aval) for _ in range(n_mubatches)]
+
     new_eqns = []
-    for mubatch_idx in range(n_mubatches):
+    for mubatch_idx, index_constvar in enumerate(index_constvars):
         env: dict[jcore.Var, jcore.Atom] = dict(
-            zip(loop_jaxpr.invars, it.chain(consts, carry), strict=True)
+            zip(body.invars, (*consts, index_constvar, *carry), strict=True)
         )
-        for eqn in loop_jaxpr.eqns:
+        for eqn in body.eqns:
             outvars = [gensym(outvar.aval) for outvar in eqn.outvars]
             new_eqns.append(
                 eqn.replace(
@@ -1829,10 +1838,17 @@ def unroll_loop(
 
         carry = [
             env[outvar] if isinstance(outvar, jcore.Var) else outvar
-            for outvar in loop_jaxpr.outvars
+            for outvar in body.outvars
         ]
 
-    return loop_jaxpr.replace(eqns=new_eqns, outvars=carry)
+    invars = [*consts, *initial_carry]
+    unrolled = body.replace(
+        constvars=[*body.constvars, *index_constvars],
+        invars=invars,
+        outvars=carry,
+        eqns=new_eqns,
+    )
+    return jcore.ClosedJaxpr(unrolled, (*loop_jaxpr.consts, *range(n_mubatches)))
 
 
 def build_eqn_dependencies(eqns: list[jcore.JaxprEqn]):
@@ -2462,7 +2478,9 @@ def infer_times(task_eqns: list[jcore.JaxprEqn]):
     return res
 
 
-def unroll_loop_eqn(loop_eqn: jcore.JaxprEqn):
+def unroll_loop_eqn(
+    loop_eqn: jcore.JaxprEqn,
+) -> tuple[list[jcore.JaxprEqn], Sequence[jcore.Var], Sequence[Any]]:
     n_consts = loop_eqn.params["n_consts"]
     n_mubatches = loop_eqn.params["n_mubatches"]
     schedule = loop_eqn.params["schedule"]
@@ -2477,8 +2495,8 @@ def unroll_loop_eqn(loop_eqn: jcore.JaxprEqn):
         unpack_fused_tasks=env_vars.jaxpp_disable_schedule_task_fusion.value,
     )
 
-    # NOTE: `unroll_loop.outvars` are fresh
-    unrolled_loop_jaxpr = unroll_loop(loop_jaxpr.jaxpr, n_consts, n_mubatches)
+    unrolled_loop = unroll_loop(loop_jaxpr, n_consts, n_mubatches)
+    unrolled_loop_jaxpr = unrolled_loop.jaxpr
     scheduled_node_groups, _scheduled_times = reorder_nodes_with_schedule(
         [
             Task.make(
@@ -2494,12 +2512,20 @@ def unroll_loop_eqn(loop_eqn: jcore.JaxprEqn):
 
     scheduled_and_fused_jaxpr = fuse_groups(unrolled_loop_jaxpr, scheduled_node_groups)
 
+    input_binding = dict(zip(scheduled_and_fused_jaxpr.invars, loop_eqn.invars))
+    input_binding.update(
+        (constvar, constvar) for constvar in scheduled_and_fused_jaxpr.constvars
+    )
     inlined_loop_eqns = inline_eqns(
         scheduled_and_fused_jaxpr.eqns,
-        dict(zip(scheduled_and_fused_jaxpr.invars, loop_eqn.invars)),
+        input_binding,
         result_binding=dict(zip(scheduled_and_fused_jaxpr.outvars, loop_eqn.outvars)),
     )
-    return inlined_loop_eqns
+    return (
+        inlined_loop_eqns,
+        scheduled_and_fused_jaxpr.constvars,
+        unrolled_loop.consts,
+    )
 
 
 class MpmdDefs:
@@ -2628,11 +2654,14 @@ def maybe_unroll_loop(tasked_jaxpr: jcore.ClosedJaxpr):
     if len(loop_eqn_idxs) == 0:
         return tasked_jaxpr
     eqn_idx = get_one_loop_eqn_idx(jaxpr)
-    loop_eqns = unroll_loop_eqn(jaxpr.eqns[eqn_idx])
+    loop_eqn = jaxpr.eqns[eqn_idx]
+    loop_eqns, loop_constvars, loop_consts = unroll_loop_eqn(loop_eqn)
     res = tasked_jaxpr.replace(
         jaxpr=jaxpr.replace(
-            eqns=jaxpr.eqns[:eqn_idx] + loop_eqns + jaxpr.eqns[eqn_idx + 1 :]
-        )
+            constvars=[*jaxpr.constvars, *loop_constvars],
+            eqns=jaxpr.eqns[:eqn_idx] + loop_eqns + jaxpr.eqns[eqn_idx + 1 :],
+        ),
+        consts=(*tasked_jaxpr.consts, *loop_consts),
     )
     return res
 
