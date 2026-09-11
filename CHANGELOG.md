@@ -7,6 +7,9 @@ Updates include
 
 - Pipeline execution
   - Made the microbatch index implicit in `dax_pscan`, simplifying its caller interface and ensuring loop transformations handle the index consistently
+- Runtime and communication
+  - Replaced CUDA send callbacks with event polling to avoid GIL deadlocks and PJRT races during send-buffer release
+  - Removed the now-unused direct `cuda-bindings` dependency
 <!-- jaxpp-release-end: Update 26.09.10 -->
 
 <!-- jaxpp-release-begin: Update 26.08.10 -->

@@ -1,7 +1,4 @@
-import ctypes
-import itertools
 import logging
-import threading
 from collections import OrderedDict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -11,7 +8,6 @@ from typing import Any, Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
-from cuda.bindings import runtime as cuda_runtime
 from cuda.core import Device, Event, Stream, StreamOptions
 from jax._src.lib import xla_client
 from nccl.bindings import nccl as nccl_bindings
@@ -24,9 +20,6 @@ from jaxpp.dlpack import dlpack_nccl_args
 logger = logging.getLogger(__name__)
 
 DistributedRuntimeClient = jc._jax.DistributedRuntimeClient
-
-completed_send_capsules_lock = threading.Lock()
-completed_send_capsules: list[list[Any]] = []
 
 
 @contextmanager
@@ -200,65 +193,32 @@ def get_shard_ops_and_capsules(
     return operations, capsules
 
 
-pending_send_callbacks: dict[int, list[Any]] = {}
-next_send_callback_id = itertools.count(1)
+class PendingSend(NamedTuple):
+    event: Event
+    capsules: list[Any]
 
 
-# A send DLPack capsule pins a PjRtBuffer external reference. Destroying the
-# capsule releases that reference (PJRT_Buffer_DecreaseExternalReferenceCount),
-# which mutates shared PJRT buffer state without locking. We must not do that
-# from the stream callback: cudaLaunchHostFunc runs on a CUDA-owned thread while
-# the main thread runs PJRT with the GIL released, so the release races
-# main-thread PJRT work and corrupts the host heap (intermittent "double free or
-# corruption", often surfacing later at an unrelated allocation).
+pending_sends: list[PendingSend] = []
+
+
+# Keep send capsules alive until their post-send CUDA events complete.
+# Poll and release on the execution thread, serialized with its PJRT calls:
+# capsule destruction releases a PJRT external reference, and doing that from
+# a CUDA callback thread previously caused crashes consistent with a PJRT race.
 #
-# So the callback only hands the capsule list off to a queue, and the main
-# thread destroys the capsules in drain_completed_send_capsules at the next
-# start_transfer. A list is queued only after its send stream has run this
-# callback, so the send has drained and the buffer is safe to release.
-def queue_completed_send_capsules(callback_id: int) -> None:
-    with completed_send_capsules_lock:
-        capsules = pending_send_callbacks.pop(callback_id)
-        completed_send_capsules.append(capsules)
-
-
-# Runs on the main thread (from start_transfer), so capsule destruction and the
-# external-reference release it triggers are serialized with all other PJRT work.
+# Even a callback that only queues capsules can deadlock: entering Python
+# requires the GIL, while DLPack import can hold the GIL during lazy creation
+# of a PJRT callback stream. On the tested driver, cuStreamCreate waited for
+# the outstanding host callback to return. Event polling removes that cycle.
 def drain_completed_send_capsules() -> None:
-    global completed_send_capsules
-
-    with completed_send_capsules_lock:
-        to_release, completed_send_capsules = completed_send_capsules, []
-
-    for capsules in to_release:
-        capsules.clear()
-
-
-release_send_capsules_callback = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
-    queue_completed_send_capsules
-)
-release_send_capsules_host_fn = cuda_runtime.cudaHostFn_t(
-    ctypes.cast(release_send_capsules_callback, ctypes.c_void_p).value
-)
-
-
-def launch_send_capsules_callback(stream: Stream, capsules: list[Any]):
-    # cuda.core does not expose cudaLaunchHostFunc, so this is the only direct
-    # cuda.bindings call in the stream/event path.
-    callback_id = next(next_send_callback_id)
-    with completed_send_capsules_lock:
-        pending_send_callbacks[callback_id] = capsules
-    err = cuda_runtime.cudaLaunchHostFunc(
-        cuda_runtime.cudaStream_t(int(stream.handle)),
-        release_send_capsules_host_fn,
-        callback_id,
-    )
-    if isinstance(err, tuple):
-        err = err[0]
-    if err != cuda_runtime.cudaError_t.cudaSuccess:
-        with completed_send_capsules_lock:
-            pending_send_callbacks.pop(callback_id)
-        raise RuntimeError(f"cudaLaunchHostFunc failed with {err!r}")
+    remaining = []
+    for pending in pending_sends:
+        with cuda_device(pending.event.device):
+            if pending.event.is_done:
+                pending.capsules.clear()
+            else:
+                remaining.append(pending)
+    pending_sends[:] = remaining
 
 
 @dataclass(slots=True)
@@ -361,12 +321,11 @@ def enqueue_nccl_transfer_group(
                     )
 
     # NOTE: communicators are blocking, so after group end all sends/recvs have
-    # been enqueued onto their streams. We can therefore release send capsules
-    # after a stream callback marks them complete, and record recv completion
-    # events on the streams.
+    # been enqueued onto their streams, so completion events recorded here cover
+    # all sends/recvs in the group.
     for local_device, stream, capsules in send_capsules_by_stream.values():
         with cuda_device(Device(local_device.local_hardware_id)):
-            launch_send_capsules_callback(stream, capsules)
+            pending_sends.append(PendingSend(stream.record(), capsules))
 
     done_events_by_buffer: list[dict[jax.Device, Event]] = []
     recv_dlpack_capsules: list[list[Any]] = []

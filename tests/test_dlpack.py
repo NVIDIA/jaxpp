@@ -20,7 +20,7 @@ import jax
 import jax.numpy as jnp
 import ml_dtypes
 import numpy as np
-from cuda.bindings import runtime as cuda_runtime
+from cuda.core import Buffer, Device, LegacyPinnedMemoryResource
 from jax._src.dlpack import to_dlpack
 from jax.experimental.buffer_callback import buffer_callback
 from jax.experimental.layout import Layout, with_layout_constraint
@@ -36,18 +36,12 @@ from jaxpp.dlpack import (
 
 
 def cuda_memcpy_to_host(device_ptr: int, num_bytes: int) -> bytes:
-    host_buffer = (ctypes.c_uint8 * num_bytes)()
-    err = cuda_runtime.cudaMemcpy(
-        host_buffer,
-        device_ptr,
-        num_bytes,
-        cuda_runtime.cudaMemcpyKind.cudaMemcpyDeviceToHost,
-    )
-    if isinstance(err, tuple):
-        err = err[0]
-    if err != cuda_runtime.cudaError_t.cudaSuccess:
-        raise RuntimeError(f"cudaMemcpy failed with {err!r}")
-    return bytes(host_buffer)
+    stream = Device().default_stream
+    device_buffer = Buffer.from_handle(device_ptr, num_bytes)
+    host_buffer = LegacyPinnedMemoryResource().allocate(num_bytes)
+    device_buffer.copy_to(host_buffer, stream=stream)
+    stream.sync()
+    return ctypes.string_at(int(host_buffer.handle), num_bytes)
 
 
 class TestDlpackExport(unittest.TestCase):
