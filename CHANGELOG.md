@@ -1,5 +1,15 @@
 # Change log
 
+<!-- jaxpp-release-begin: Update 26.09.17 -->
+## Update 26.09.17
+
+Updates include
+
+- Activation offloading
+  - Preserved host and device memory-space targets while rebinding named shardings to a new mesh
+  - Added regression coverage for offload and reload targets, gradients, and flat and nested device placements
+<!-- jaxpp-release-end: Update 26.09.17 -->
+
 <!-- jaxpp-release-begin: Update 26.09.10 -->
 ## Update 26.09.10
 

@@ -723,8 +723,14 @@ def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> An
             if not isinstance(mesh, jax.sharding.AbstractMesh):
                 param_update = {"mesh": new_mesh}
         elif eqn.primitive is jax.lax.device_put_p:
+            # Offload and reload targets specify only a memory space, not a mesh.
             param_update = {
-                "devices": updated_named_sharding_mesh(eqn.params["devices"], new_mesh)
+                "devices": tuple(
+                    target
+                    if isinstance(target, jcore.MemorySpace)
+                    else updated_named_sharding_mesh(target, new_mesh)
+                    for target in eqn.params["devices"]
+                )
             }
 
         for k, v in eqn.params.items():

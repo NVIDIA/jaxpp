@@ -7,14 +7,17 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.ad_checkpoint import checkpoint_name
 from jax.extend import core as jcore
 from jax.scipy.special import logsumexp
 
 from jaxpp import env_vars
+from jaxpp import jax_compat as jc
 from jaxpp.api import Add, BaseSchedule, Concat, mark_stage_end, treduce
 from jaxpp.core import (
     cluster_jaxpr,
     maybe_unroll_loop,
+    replace_captured_meshes,
     wrap_into_tasks,
 )
 from jaxpp.jax_primitives import dax_pscan_p
@@ -31,6 +34,70 @@ from jaxpp.schedules import (
     ZeroBubble,
 )
 from jaxpp.sharding_inference import infer_shardings2
+
+
+def test_replace_captured_meshes_with_activation_offload():
+    policy = jax.checkpoint_policies.save_and_offload_only_these_names(
+        names_which_can_be_saved=(),
+        names_which_can_be_offloaded=("carry",),
+        offload_src="device",
+        offload_dst="pinned_host",
+    )
+
+    @partial(jax.checkpoint, policy=policy)
+    def loss(x):
+        return jnp.sin(checkpoint_name(x, "carry")).sum()
+
+    x = jnp.arange(4, dtype=jnp.float32)
+    mesh = jax.sharding.Mesh(np.array(jax.devices()[:1]), ("x",))
+    closed_jaxpr = jax.make_jaxpr(jax.value_and_grad(loss))(x)
+    rebound = replace_captured_meshes(closed_jaxpr, mesh)
+
+    (offload_eqn,) = (
+        eqn for eqn in rebound.jaxpr.eqns if eqn.primitive is jax.lax.device_put_p
+    )
+    assert offload_eqn.params["devices"] == (jc.core.MemorySpace.Host,)
+    (remat_eqn,) = (eqn for eqn in rebound.jaxpr.eqns if eqn.primitive is jc.remat_p)
+    (reload_eqn,) = (
+        eqn
+        for eqn in remat_eqn.params["jaxpr"].eqns
+        if eqn.primitive is jax.lax.device_put_p
+    )
+    assert reload_eqn.params["devices"] == (jc.core.MemorySpace.Device,)
+
+    actual_loss, actual_grad = jc.core.eval_jaxpr(rebound.jaxpr, rebound.consts, x)
+    np.testing.assert_allclose(actual_loss, jnp.sin(x).sum())
+    np.testing.assert_allclose(actual_grad, jnp.cos(x))
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_replace_captured_meshes_with_device_put_sharding(nested):
+    devices = np.array(jax.devices()[:1])
+    old_mesh = jax.sharding.Mesh(devices, ("old",))
+    new_mesh = jax.sharding.Mesh(devices, ("new",))
+    sharding = jax.sharding.NamedSharding(old_mesh, jax.sharding.PartitionSpec())
+    x = jnp.arange(4, dtype=jnp.float32)
+    y = -jnp.arange(3, dtype=jnp.float32)
+    args = (x, y)
+    targets = (sharding, None)
+    if nested:
+        args = {"sharded": (x,), "unplaced": [y]}
+        targets = {"sharded": (sharding,), "unplaced": [None]}
+    closed_jaxpr = jax.make_jaxpr(partial(jax.device_put, device=targets))(args)
+    rebound = replace_captured_meshes(closed_jaxpr, new_mesh)
+
+    (put_eqn,) = rebound.jaxpr.eqns
+    assert put_eqn.params["devices"] == (
+        jax.sharding.NamedSharding(
+            new_mesh, sharding.spec, memory_kind=sharding.memory_kind
+        ),
+        None,
+    )
+    assert closed_jaxpr.jaxpr.eqns[0].params["devices"] == (sharding, None)
+    flat_args = jax.tree.leaves(args)
+    actual = jc.core.eval_jaxpr(rebound.jaxpr, rebound.consts, *flat_args)
+    for output, expected in zip(actual, flat_args, strict=True):
+        np.testing.assert_array_equal(output, expected)
 
 
 def named_computation(fun, name):
