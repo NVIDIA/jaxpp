@@ -17,6 +17,7 @@ import itertools as it
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+from functools import cached_property
 from typing import Any, NewType
 
 import jax
@@ -52,7 +53,7 @@ class MpmdSharding:
         filtered_spec = filter_axes(self.spec, {self.mpmd_mesh.mpmd_axis_name})
         object.__setattr__(self, "spec", filtered_spec)
 
-    @property
+    @cached_property
     def sharding(self) -> NamedSharding:
         """Construct a JAX NamedSharding spanning all MPMD groups in mesh_ids.
         The returned sharding's mesh is a submesh of the full MPMD mesh,

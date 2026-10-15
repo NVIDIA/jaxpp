@@ -17,9 +17,9 @@
 Example of using spmd_to_mpmd_reshard to reshard the data between SPMD and MPMD meshes.
 
 Example usage:
-N_PROCS=2 N_GPUS=2 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
-N_PROCS=2 N_GPUS=4 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
-N_PROCS=4 N_GPUS=2 COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
+./scripts/jax-run --n-procs 2 --n-gpus-per-proc 2 -- python -u examples/mpmd_reshard.py
+./scripts/jax-run --n-procs 2 --n-gpus-per-proc 4 -- python -u examples/mpmd_reshard.py
+./scripts/jax-run --n-procs 4 --n-gpus-per-proc 2 -- python -u examples/mpmd_reshard.py
 """
 
 import functools
@@ -34,7 +34,9 @@ def main():
     if jax.device_count() % 4 != 0:
         raise ValueError("mpmd_reshard example requires a multiple of 4 global devices")
     spmd_mesh = jax.make_mesh(
-        (2, 2, jax.device_count() // 4), ("stage", "fsdp", "tensor")
+        (2, 2, jax.device_count() // 4),
+        ("stage", "fsdp", "tensor"),
+        axis_types=(jax.sharding.AxisType.Auto,) * 3,
     )
     mpmd_mesh = jaxpp.MpmdMesh(spmd_mesh, "stage")
 
@@ -52,7 +54,7 @@ def main():
             spmd_mesh, jax.sharding.PartitionSpec("tensor", ("stage", "fsdp"))
         ),
         jax.sharding.NamedSharding(
-            spmd_mesh, jax.sharding.PartitionSpec("fsdp", None, None)
+            spmd_mesh, jax.sharding.PartitionSpec(None, "fsdp", None)
         ),
     ]
 
@@ -100,15 +102,16 @@ def main():
     args_mpmd_shardings, kwargs_mpmd_shardings = jitted_accumulation_loop.in_shardings
 
     print(args_mpmd_shardings)
-    # NOTE: the partition specs of the shardings are the same as the one of the input shardings
-    #  however the meshes is the one corresponding to the spmd mesh of this process
+    # NOTE: the MPMD specs drop the size-one "stage" axis from W1 and W2. x
+    # stays sharded on its non-reduced batch axis, and unused has no placement.
     # (
-    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=PartitionSpec(('stage', 'fsdp'), 'tensor')))
-    #   MpmdSharding(mpmd_mesh=..., mesh_ids={1}, spec=PartitionSpec('tensor', ('stage', 'fsdp'))),
-    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=PartitionSpec('fsdp', None, None))
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=P('fsdp', 'tensor')),
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={1}, spec=P('tensor', 'fsdp')),
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={0}, spec=P(None, 'fsdp', None)),
+    #   MpmdSharding(mpmd_mesh=..., mesh_ids={}, spec=P(None, 'fsdp', None)),
     # )
 
-    # This reshard makes
+    # Convert the SPMD arrays to the inferred MPMD layouts above.
     _W1, _W2, _x, _unused = jaxpp.spmd_to_mpmd_reshard(
         mpmd_mesh, [W1, W2, x, x], list(args_mpmd_shardings)
     )

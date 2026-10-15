@@ -16,10 +16,12 @@ from nccl.core import Communicator, UniqueId, get_unique_id, group
 from jaxpp import env_vars
 from jaxpp import jax_compat as jc
 from jaxpp.dlpack import dlpack_nccl_args
+from jaxpp.utils import OverwriteableVar
 
 logger = logging.getLogger(__name__)
 
 DistributedRuntimeClient = jc._jax.DistributedRuntimeClient
+synchronous_transfers = OverwriteableVar(False)
 
 
 @contextmanager
@@ -323,9 +325,13 @@ def enqueue_nccl_transfer_group(
     # NOTE: communicators are blocking, so after group end all sends/recvs have
     # been enqueued onto their streams, so completion events recorded here cover
     # all sends/recvs in the group.
+    sync = synchronous_transfers.value
     for local_device, stream, capsules in send_capsules_by_stream.values():
         with cuda_device(Device(local_device.local_hardware_id)):
-            pending_sends.append(PendingSend(stream.record(), capsules))
+            event = stream.record()
+            pending_sends.append(PendingSend(event, capsules))
+            if sync:
+                event.sync()
 
     done_events_by_buffer: list[dict[jax.Device, Event]] = []
     recv_dlpack_capsules: list[list[Any]] = []
@@ -334,11 +340,16 @@ def enqueue_nccl_transfer_group(
         capsules = []
         for local_device, stream, capsule in shard_capsules:
             with cuda_device(Device(local_device.local_hardware_id)):
-                done_events_by_device[local_device] = stream.record()
+                event = stream.record()
+                done_events_by_device[local_device] = event
+                if sync:
+                    event.sync()
             capsules.append(capsule)
         done_events_by_buffer.append(done_events_by_device)
         recv_dlpack_capsules.append(capsules)
 
+    if sync:
+        drain_completed_send_capsules()
     return done_events_by_buffer, recv_dlpack_capsules
 
 

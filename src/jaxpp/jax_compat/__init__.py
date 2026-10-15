@@ -22,26 +22,7 @@ if jax.__version_info__ >= (0, 10):
 else:
     get_aval = core.get_aval
 
-# reduce_sum rejected already-unreduced inputs before JAX 0.9.1.
-reduce_sum_accepts_unreduced = jax.__version_info__ >= (0, 9, 1)
-
-if jax.__version_info__ < (0, 8, 2):
-    from jax._src import effects as _effects
-
-    def eqn_effects(jaxpr, invars):
-        del invars
-        # Input effects are indexed to include jaxpr.constvars, but the eqn
-        # should have effects indexed only on its explicit arguments.
-        return {
-            (
-                e.replace(input_index=e.input_index - len(jaxpr.constvars))
-                if isinstance(e, _effects.JaxprInputEffect)
-                else e
-            )
-            for e in jaxpr.effects
-        }
-
-elif jax.__version_info__ < (0, 10, 2):
+if jax.__version_info__ < (0, 10, 2):
 
     def eqn_effects(jaxpr, invars):
         del invars
@@ -49,6 +30,14 @@ elif jax.__version_info__ < (0, 10, 2):
 
 else:
     eqn_effects = core.eqn_effects
+
+# JAX 0.11 merged ClosedJaxpr into Jaxpr, which carries its consts and keeps
+# ClosedJaxpr's accessors (`.jaxpr`, `.consts`, `Jaxpr(jaxpr, consts)`), and kept
+# `ClosedJaxpr` as an alias; JAX 0.12 removes the alias.
+if jax.__version_info__ >= (0, 11):
+    ClosedJaxpr = core.Jaxpr
+else:
+    ClosedJaxpr = core.ClosedJaxpr
 
 
 # ad_checkpoint
@@ -87,12 +76,28 @@ from jax._src.interpreters.partial_eval import (
     DynamicJaxprTracer,
     close_jaxpr,
     convert_constvars_jaxpr,
+    dce_rules,
     has_effects,
+    make_jaxpr_effects,
 )
+
+# JAX 0.12 also passes DCE rules which Ref inputs are live. Treating every input
+# as live, as before, is conservative.
+if jax.__version_info__ >= (0, 12):
+
+    def register_dce_rule(primitive, rule):
+        dce_rules[primitive] = lambda used_outputs, live_ins, eqn: rule(
+            used_outputs, eqn
+        )
+
+else:
+
+    def register_dce_rule(primitive, rule):
+        dce_rules[primitive] = rule
+
 
 # lib
 from jax._src.lib import _jax
-from jax._src.pjit import _parse_jit_arguments as _jax_parse_jit_arguments
 
 if jax.__version_info__ >= (0, 11):
     from jax._src.pjit import _canonicalize_inline as canonicalize_inline
@@ -125,7 +130,10 @@ from jax._src.shard_map import shard_map_p
 from jax._src.sharding_impls import UNSPECIFIED, UnspecifiedValue
 
 # state
+from jax._src.core import InternalMutableArrayEffect
 from jax._src.state.discharge import discharge_state, register_discharge_rule
+from jax._src.state.types import AbstractRef, RefEffect
+
 
 discharge_rule_uses_context = jax.__version_info__ >= (0, 11, 1)
 
@@ -137,9 +145,11 @@ from jax._src.tree_util import equality_errors_pytreedef
 from jax._src.util import (
     OrderedSet,
     cache,
+    merge_lists,
     partition_list,
     safe_map,
     safe_zip,
+    split_list,
     unzip2,
     weakref_lru_cache,
 )
@@ -150,11 +160,16 @@ _are_hlo_shardings_equal = _op_shardings.are_hlo_shardings_equal
 # pjit
 from jax._src.pjit import jit_p
 
-# _infer_params was briefly renamed to _trace_for_jit in JAX 0.9.0 and 0.9.0.1.
-if (0, 9, 0) <= jax.__version_info__ < (0, 9, 1):
-    from jax._src.pjit import _trace_for_jit as _infer_params
-else:
-    from jax._src.pjit import _infer_params
+if jax.__version_info__ < (0, 10, 2):
+    _discharge_jaxpr = discharge_state
+
+    def discharge_state(closed_jaxpr, *, should_discharge=True):
+        # Before 0.10.2, discharge_state takes and returns (jaxpr, consts).
+        jaxpr, consts = _discharge_jaxpr(
+            closed_jaxpr.jaxpr, closed_jaxpr.consts, should_discharge=should_discharge
+        )
+        return ClosedJaxpr(jaxpr, consts)
+
 
 if jax.__version_info__ < (0, 10):
     from jax._src.custom_transpose import tree_broadcast
@@ -175,14 +190,6 @@ def init_tracer(tracer, trace, aval):
         tracer.aval = aval
 
 
-def _parse_jit_arguments(*args, **kwargs):
-    if jax.__version_info__ <= (0, 8, 1):
-        kwargs.setdefault("abstracted_axes", None)
-    else:
-        kwargs.pop("abstracted_axes", None)
-    return _jax_parse_jit_arguments(*args, **kwargs)
-
-
 def bind_with_trace(primitive, trace, args, avals, params):
     if jax.__version_info__ >= (0, 9, 2):
         return primitive.bind_with_trace(trace, args, avals, params)
@@ -193,7 +200,7 @@ def map_jaxpr(jaxpr, fn):
     """Apply ``fn`` while preserving attached constants across JAX versions."""
     if jax.__version_info__ >= (0, 11):
         return fn(jaxpr)
-    if isinstance(jaxpr, core.ClosedJaxpr):
+    if isinstance(jaxpr, ClosedJaxpr):
         return jaxpr.map_jaxpr(fn)
     return fn(jaxpr)
 
@@ -288,14 +295,15 @@ __all__ = [
     "_jax",
     # pjit
     "jit_p",
-    "_infer_params",
-    "_parse_jit_arguments",
     # shard_map
     "shard_map_p",
     # sharding_impls
     "UNSPECIFIED",
     "UnspecifiedValue",
     # state
+    "AbstractRef",
+    "InternalMutableArrayEffect",
+    "RefEffect",
     "discharge_rule_uses_context",
     "discharge_state",
     "register_discharge_rule",
@@ -305,8 +313,12 @@ __all__ = [
     "_ensure_inbounds",
     "_ensure_index_tuple",
     # util
+    "merge_lists",
+    "partition_list",
+    "split_list",
     "weakref_lru_cache",
     # core
+    "ClosedJaxpr",
     "bind_with_trace",
     "canonicalize_inline",
     "eqn_effects",
@@ -317,12 +329,13 @@ __all__ = [
     "close_jaxpr",
     "convert_constvars_jaxpr",
     "has_effects",
+    "make_jaxpr_effects",
+    "register_dce_rule",
     # utilities
     "aval_to_shape_dtype_struct",
     "collective_pipelining_off_options_kvs",
     "init_tracer",
     "map_dynamic_args",
-    "reduce_sum_accepts_unreduced",
     "shardings_are_equivalent",
     "spec_partitions",
 ]

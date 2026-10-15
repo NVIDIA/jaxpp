@@ -19,7 +19,7 @@ import logging
 import math
 from collections.abc import Sequence
 from contextlib import contextmanager
-from typing import Annotated, Any, TypeVar, cast
+from typing import Annotated, Any, NamedTuple, TypeVar, cast
 
 import jax
 
@@ -40,7 +40,7 @@ from jaxpp.utils import filter_axes, log_elapsed_time, update_named_sharding
 
 logger = logging.getLogger(__name__)
 
-AnyJaxpr = TypeVar("AnyJaxpr", jcore.ClosedJaxpr, jcore.Jaxpr)
+AnyJaxpr = TypeVar("AnyJaxpr", jc.ClosedJaxpr, jcore.Jaxpr)
 
 
 class _ShardingStoreCallback:
@@ -132,7 +132,7 @@ def _is_sharding_store_inspect_eqn(eqn: jcore.JaxprEqn) -> bool:
 
 @jc.weakref_lru_cache
 def _strip_inspect_sharding_eqns(cjaxpr: AnyJaxpr) -> AnyJaxpr:
-    if isinstance(cjaxpr, jcore.ClosedJaxpr):
+    if isinstance(cjaxpr, jc.ClosedJaxpr):
         jaxpr = cjaxpr.jaxpr
     else:
         jaxpr = cjaxpr
@@ -155,7 +155,7 @@ def _strip_inspect_sharding_eqns(cjaxpr: AnyJaxpr) -> AnyJaxpr:
     new_effects = jcore.join_effects(*(eqn.effects for eqn in new_eqns))
     res = jaxpr.replace(eqns=new_eqns, effects=new_effects)
 
-    if not isinstance(cjaxpr, jcore.ClosedJaxpr):
+    if not isinstance(cjaxpr, jc.ClosedJaxpr):
         return res
     return cjaxpr.replace(jaxpr=res)
 
@@ -182,7 +182,7 @@ def _add_inspect_sharding_eqns(cjaxpr: AnyJaxpr):
     records = []
 
     def add(cjaxpr: AnyJaxpr) -> AnyJaxpr:
-        is_closed = isinstance(cjaxpr, jcore.ClosedJaxpr)
+        is_closed = isinstance(cjaxpr, jc.ClosedJaxpr)
         jaxpr = cjaxpr.jaxpr if is_closed else cjaxpr
         new_eqns = []
         for eqn in jaxpr.eqns:
@@ -231,8 +231,15 @@ def _write_inspected_shardings(records):
         eqn.params["out_shardings"] = tuple(out_store._shardings)
 
 
+class ReconciledShardings(NamedTuple):
+    has_unknown: bool
+    # The jaxpr boundary shardings, unspecified ones resolved where possible.
+    in_shardings: tuple
+    out_shardings: tuple
+
+
 def reconcile_shardings(
-    cjaxpr: jcore.ClosedJaxpr,
+    cjaxpr: jc.ClosedJaxpr,
     in_shardings,
     out_shardings,
     *,
@@ -279,7 +286,7 @@ def reconcile_shardings(
         *zip(cjaxpr.jaxpr.invars, in_shardings, _in_labels, strict=True),
         *zip(cjaxpr.jaxpr.outvars, out_shardings, _out_labels, strict=True),
     ):
-        if not isinstance(var, jcore.Var) or s is None:
+        if not isinstance(var, jcore.Var) or _known_sharding(s) is None:
             continue
         if var in pinned and resolved[var] != s:
             raise NotImplementedError("conflicting boundary shardings")
@@ -394,8 +401,19 @@ def reconcile_shardings(
                     )
                     for i, v in enumerate(eqn.outvars)
                 ],
-            )
-    return has_unknown
+            ).has_unknown
+
+    def boundary(vars_, shardings):
+        return tuple(
+            resolved.get(var, s) if isinstance(var, jcore.Var) else s
+            for var, s in zip(vars_, shardings, strict=True)
+        )
+
+    return ReconciledShardings(
+        has_unknown,
+        boundary(cjaxpr.jaxpr.invars, in_shardings),
+        boundary(cjaxpr.jaxpr.outvars, out_shardings),
+    )
 
 
 @contextmanager
@@ -432,10 +450,11 @@ def _fast_infer_shardings_compiler_options_kvs() -> tuple[tuple[str, Any], ...]:
 
 
 def _infer_task_output_shardings(
-    call_jaxpr: jcore.ClosedJaxpr,
+    call_jaxpr: jc.ClosedJaxpr,
     in_shardings: tuple[jax.sharding.NamedSharding, ...],
     lowering_mesh: jax.sharding.Mesh,
     compiler_options_kvs: tuple[tuple[str, Any], ...] | None,
+    compile_name: str | None = None,
 ):
     params = PjitKwargs(
         jaxpr=call_jaxpr,
@@ -445,7 +464,11 @@ def _infer_task_output_shardings(
         out_layouts=(None,) * len(call_jaxpr.out_avals),
         donated_invars=(False,) * len(in_shardings),
         ctx_mesh=lowering_mesh,
-        name=f"infer_shardings2_{id(call_jaxpr)}",
+        name=(
+            f"infer_shardings2_{compile_name}"
+            if compile_name is not None
+            else f"infer_shardings2_{id(call_jaxpr)}"
+        ),
         compiler_options_kvs=compiler_options_kvs,
     )
 
@@ -461,7 +484,7 @@ def _infer_task_output_shardings(
 
 
 def infer_shardings2(
-    closed_jaxpr: jcore.ClosedJaxpr,
+    closed_jaxpr: jc.ClosedJaxpr,
     in_shardings,
     lowering_mesh,
     compiler_options_kvs: tuple[tuple[str, Any], ...] | None = None,
@@ -488,6 +511,7 @@ def infer_shardings2(
                     tuple(_in),
                     lowering_mesh,
                     compiler_options_kvs,
+                    eqn.params.get("compile_name", eqn.params["task_name"]),
                 )
 
         elif eqn.primitive is dax_pscan_p:
@@ -523,12 +547,12 @@ def infer_shardings2(
 
 def infer_shardings(
     lowering_mesh: jax.sharding.Mesh,
-    closed_jaxpr: jcore.ClosedJaxpr,
+    closed_jaxpr: jc.ClosedJaxpr,
     in_shardings,
     out_shardings,
     in_layouts,
     out_layouts,
-) -> jcore.ClosedJaxpr:
+) -> tuple[jc.ClosedJaxpr, ReconciledShardings]:
     # deduplicate_task_jaxprs lives in core.py; imported lazily so this module
     # keeps no module-level jaxpp.core import (avoids an import cycle).
     from jaxpp.core import deduplicate_task_jaxprs
@@ -567,7 +591,9 @@ def infer_shardings(
             )
         else:
             closed_jaxpr, inspect_records = _add_inspect_sharding_eqns(closed_jaxpr)
-            with ensuring_pgle_disabled():
+            # Like `jax.jit`, XLA chooses the shardings left unspecified, which
+            # needs the concrete mesh in context.
+            with ensuring_pgle_disabled(), jax.set_mesh(lowering_mesh):
                 jax.jit(
                     jcore.jaxpr_as_fun(closed_jaxpr),
                     in_shardings=in_shardings,
@@ -582,31 +608,39 @@ def infer_shardings(
             closed_jaxpr = strip_inspect_sharding_eqns(closed_jaxpr)
 
     # NOTE: mutates sharding stored inside `closed_jaxpr`
-    reconcile_shardings(closed_jaxpr, in_shardings, out_shardings)
-    return closed_jaxpr
+    return closed_jaxpr, reconcile_shardings(closed_jaxpr, in_shardings, out_shardings)
 
 
 def bind_explicit_shardings(
-    closed_jaxpr: Annotated[jcore.ClosedJaxpr, "mutable"],
+    closed_jaxpr: Annotated[jc.ClosedJaxpr, "mutable"],
     mpmd_mesh: MpmdMesh,
     jaxpr_in_shardings: Sequence[jax.sharding.NamedSharding],
     jaxpr_out_shardings: Sequence[jax.sharding.NamedSharding],
-):
+) -> tuple[jc.ClosedJaxpr, ReconciledShardings]:
     """Bind task inputs from dataflow and outputs from annotated avals."""
-    jaxpr_in_shardings = tuple(jaxpr_in_shardings)
+    lowering_mesh = mpmd_mesh.lowering_mesh()
+    # Like `jax.jit` with explicit axes, an unspecified input takes the
+    # sharding in its type.
+    jaxpr_in_shardings = tuple(
+        update_named_sharding(invar.aval.sharding, mesh=lowering_mesh)
+        if _known_sharding(in_sharding) is None
+        else in_sharding
+        for invar, in_sharding in zip(
+            closed_jaxpr.jaxpr.invars, jaxpr_in_shardings, strict=True
+        )
+    )
     jaxpr_out_shardings = tuple(jaxpr_out_shardings)
     # JAX keeps jit in_shardings separate from inner jaxpr input avals. The
     # call boundary therefore initializes the dataflow after task insertion.
     env = dict[jcore.Var, jax.sharding.NamedSharding](
         zip(closed_jaxpr.jaxpr.invars, jaxpr_in_shardings, strict=True)
     )
-    lowering_mesh = mpmd_mesh.lowering_mesh()
     requested_out_shardings = {
         outvar: out_sharding
         for outvar, out_sharding in zip(
             closed_jaxpr.jaxpr.outvars, jaxpr_out_shardings, strict=True
         )
-        if isinstance(outvar, jcore.Var)
+        if isinstance(outvar, jcore.Var) and _known_sharding(out_sharding) is not None
     }
 
     def maybe_apply_requested_output_memory_kind(
@@ -694,7 +728,7 @@ def bind_explicit_shardings(
     for outvar, out_sh in zip(
         closed_jaxpr.jaxpr.outvars, jaxpr_out_shardings, strict=True
     ):
-        if isinstance(outvar, jcore.Var):
+        if isinstance(outvar, jcore.Var) and _known_sharding(out_sh) is not None:
             sh = env[outvar]
             if not jc.shardings_are_equivalent(
                 sh, out_sh, outvar.aval.ndim, compare_memkind=False
@@ -703,4 +737,16 @@ def bind_explicit_shardings(
                     f"Outvar {outvar} has bound sharding {sh.spec} but requested "
                     f"{out_sh.spec}"
                 )
-    return closed_jaxpr
+    # Like `jax.jit` with explicit axes, an unspecified output takes the
+    # sharding in its type.
+    jaxpr_out_shardings = tuple(
+        env[outvar]
+        if isinstance(outvar, jcore.Var) and _known_sharding(out_sh) is None
+        else out_sh
+        for outvar, out_sh in zip(
+            closed_jaxpr.jaxpr.outvars, jaxpr_out_shardings, strict=True
+        )
+    )
+    return closed_jaxpr, ReconciledShardings(
+        False, jaxpr_in_shardings, jaxpr_out_shardings
+    )

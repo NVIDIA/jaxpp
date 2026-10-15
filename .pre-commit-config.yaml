@@ -1,7 +1,10 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Ruff version.
-    rev: v0.3.1
+  - repo: local
     hooks:
-      # Run the formatter.
       - id: ruff-format
+        name: ruff format
+        entry: uv run --python 3.12 --locked --only-group dev ruff format
+        language: unsupported
+        args: [--force-exclude]
+        files: ^(src/jaxpp/|examples/maximoe/)
+        types_or: [python, pyi]

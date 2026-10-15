@@ -623,7 +623,7 @@ def partial_eval_loop(
         ),
         {
             **params,
-            "jaxpr": jcore.ClosedJaxpr(unknown_jaxpr, ()),
+            "jaxpr": jc.ClosedJaxpr(unknown_jaxpr, ()),
             "n_consts": len(res_avals) + sum(idx < n_consts for idx in unknown_in_idx),
             # LICM runs before sharding inference; residuals change the inputs.
             "in_shardings": (None,) * (len(unknown_jaxpr.invars) - 1),
@@ -710,9 +710,9 @@ def remove_duplicate_consts_invars(jaxpr: jcore.Jaxpr):
     loop_eqn = jaxpr.eqns[loop_eqn_idx]
 
     duplicate_idx = var_is_duplicate(loop_eqn.invars)
-    assert not any(
-        duplicate_idx[loop_eqn.params["n_consts"] :]
-    ), "Unexpected duplicate in loop carried state"
+    assert not any(duplicate_idx[loop_eqn.params["n_consts"] :]), (
+        "Unexpected duplicate in loop carried state"
+    )
 
     kept_invars, duplicate_invars = jc.partition_list(
         [_ is not None for _ in duplicate_idx], loop_eqn.invars

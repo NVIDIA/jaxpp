@@ -101,8 +101,7 @@ assert "all-reduce" in entry and "all-reduce" not in regions  # hoisted
     ENTRY %main.3_spmd {
       ...
       %while.13 = (s32[], f32[4,4]{1,0}, f32[3,1,4]{2,1,0}, f32[4,4]{1,0}) while(%tuple.8), condition=%region_1.2_spmd, body=%region_0.1_spmd
-      %all-reduce-start = ((f32[4,4]{1,0}), f32[4,4]{1,0}) all-reduce-start(%get-tuple-element.24.0)
-      ROOT %all-reduce-done = f32[4,4]{1,0} all-reduce-done(%all-reduce-start)
+      ROOT %all-reduce.1.2 = f32[4,4]{1,0} all-reduce(%get-tuple-element.24.0)
       ...
     }
 
@@ -128,8 +127,7 @@ assert "all-reduce" in regions and "all-reduce" not in entry  # once per microba
 
     %region_0.1_spmd {
       ...
-      %all-reduce-start = ((f32[4,4]{0,1}), f32[4,4]{0,1}) all-reduce-start(%bitcast.13.0)
-      %all-reduce-done = f32[4,4]{0,1} all-reduce-done(%all-reduce-start), frontend_attributes={is_spmd_generated="true"}
+      %all-reduce.3 = f32[4,4]{0,1} all-reduce(%bitcast.13.0)
       ...
     }
     ENTRY %main.3_spmd {
@@ -218,8 +216,7 @@ assert "all-reduce" in entry and "all-reduce" not in regions  # once per step
     ENTRY %main.6_spmd {
       ...
       %while.10 = (s32[], f32[4,4]{1,0}, f32[3,1,4]{2,1,0}, f32[4,4]{1,0}) while(%tuple.8), condition=%region_1.3_spmd, body=%region_0.2_spmd
-      %all-reduce-start = ((f32[4,4]{1,0}), f32[4,4]{1,0}) all-reduce-start(%get-tuple-element.25.0)
-      ROOT %all-reduce-done = f32[4,4]{1,0} all-reduce-done(%all-reduce-start)
+      ROOT %reshard.18.2 = f32[4,4]{1,0} all-reduce(%get-tuple-element.25.0)
       ...
     }
 

@@ -41,7 +41,7 @@ from jaxpp.schedules import (
     Std1F1B,
     ZeroBubble,
 )
-from jaxpp.training import Add, Concat, Max, treduce, treduce_i
+from jaxpp.training import Add, Concat, Max, treduce, treduce_i, tscan
 from jaxpp.types import MpmdSharding
 
 

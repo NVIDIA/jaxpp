@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 import jax
 import numpy as np
@@ -24,6 +26,44 @@ import jaxpp.distributed_utils as jppdu
 from jaxpp.array import filter_axes, mpmd_to_spmd_reshard, spmd_to_mpmd_reshard
 from jaxpp.mesh import MpmdMesh
 from jaxpp.types import MpmdSharding
+
+
+class ReshardMetadataTest(unittest.TestCase):
+    def test_dtype_itemsize_metadata(self):
+        """Check byte accounting without claiming custom-dtype transport support."""
+        cases = (
+            ("numpy_dtype", np.dtype("float32"), 4),
+            ("numpy_compatible", SimpleNamespace(dtype=np.dtype("float32")), 4),
+            (
+                "none_itemsize",
+                SimpleNamespace(dtype=np.dtype("float32"), itemsize=None),
+                4,
+            ),
+            ("typed_key", jax.random.key(0, impl="unsafe_rbg").dtype, 16),
+        )
+        mesh = SimpleNamespace(
+            jax_mesh=SimpleNamespace(is_multi_process=True), mpmd_dim=2
+        )
+        for name, dtype, itemsize in cases:
+            with self.subTest(dtype=name):
+                mpmd_array = SimpleNamespace(
+                    dtype=dtype,
+                    shape=(4,),
+                    _mpmd_idxs=(0,),
+                    _mpmd_local_sharding=SimpleNamespace(
+                        shard_shape=lambda shape: shape
+                    ),
+                )
+                # Stop after size collection, before constructing distributed arrays.
+                with mock.patch(
+                    "jaxpp.array._group_by_size_threshold",
+                    side_effect=RuntimeError("size metadata checked"),
+                ) as group:
+                    with self.assertRaisesRegex(RuntimeError, "size metadata checked"):
+                        mpmd_to_spmd_reshard(
+                            mesh, [mpmd_array], [object()], threshold=256
+                        )
+                group.assert_called_once_with([4 * itemsize * mesh.mpmd_dim], 256)
 
 
 class ReshardUtilsTest(jppdu.JaxDistributedTest):
@@ -168,6 +208,87 @@ class ReshardUtilsTest(jppdu.JaxDistributedTest):
 
         for i, (result_arr, global_data) in enumerate(zip(result_arrays, global_datas)):
             self.assertEqual(result_arr.shape, global_data.shape)
+
+    @parameterized.expand(
+        [
+            (f"{impl}_{shape}_{owner}_{threshold}", impl, shape, owner, threshold)
+            for impl in ("threefry2x32", "rbg", "unsafe_rbg")
+            for shape in ("scalar", "batched")
+            for owner in ("first", "last")
+            for threshold in (1, 1024)
+        ]
+    )
+    def test_typed_key_reshard_round_trip(self, name, impl, shape, owner, threshold):
+        """Typed keys and numeric state survive ownership changes and grouping."""
+        process_count = jax.process_count()
+        devices = np.array(jax.devices()).reshape(process_count, -1)
+        mesh = jax.sharding.Mesh(devices, ("mpmd", "data"))
+        mpmd_mesh = MpmdMesh(mesh, mpmd_axis_name="mpmd")
+        key_owner = 0 if owner == "first" else process_count - 1
+        batch_size = 2 * jax.local_device_count()
+
+        def make_key():
+            key = jax.random.key(17, impl=impl)
+            return jax.random.split(key, batch_size) if shape == "batched" else key
+
+        key_spec = P("data") if shape == "batched" else P()
+        key_sharding = jax.sharding.NamedSharding(mesh, key_spec)
+        replicated_sharding = jax.sharding.NamedSharding(mesh, P())
+        param_sharding = jax.sharding.NamedSharding(mesh, P("data"))
+        expected_key_data = np.asarray(jax.random.key_data(make_key())).copy()
+        expected_param = np.arange(batch_size, dtype=np.float32)
+
+        state = {
+            "key": jax.jit(make_key, out_shardings=key_sharding)(),
+            "step": jax.jit(
+                lambda: jax.numpy.array(7, dtype=jax.numpy.uint32),
+                out_shardings=replicated_sharding,
+            )(),
+            "param": jax.jit(
+                lambda: jax.numpy.arange(batch_size, dtype=jax.numpy.float32),
+                out_shardings=param_sharding,
+            )(),
+        }
+        key_dtype, key_shape = state["key"].dtype, state["key"].shape
+        shardings = {
+            "key": key_sharding,
+            "step": replicated_sharding,
+            "param": param_sharding,
+        }
+        mpmd_shardings = {
+            "key": MpmdSharding(mpmd_mesh, {key_owner}, key_spec),
+            "step": MpmdSharding(mpmd_mesh, {0}, P()),
+            "param": MpmdSharding(mpmd_mesh, {0}, P("data")),
+        }
+        mpmd_state = spmd_to_mpmd_reshard(
+            mpmd_mesh, state, mpmd_shardings, threshold=threshold
+        )
+        self.assertTrue(all(array.is_deleted() for array in state.values()))
+        self.assertEqual(
+            mpmd_state["key"].is_partially_addressable, jax.process_index() == key_owner
+        )
+
+        result = mpmd_to_spmd_reshard(
+            mpmd_mesh, mpmd_state, shardings, threshold=threshold
+        )
+        self.assertEqual(result["key"].dtype, key_dtype)
+        self.assertEqual(result["key"].shape, key_shape)
+        for name, array in result.items():
+            self.assertTrue(
+                array.sharding.is_equivalent_to(shardings[name], array.ndim)
+            )
+            for shard in array.addressable_shards:
+                if name == "key":
+                    np.testing.assert_array_equal(
+                        np.asarray(jax.random.key_data(shard.data)),
+                        expected_key_data[shard.index],
+                    )
+                elif name == "param":
+                    np.testing.assert_array_equal(
+                        np.asarray(shard.data), expected_param[shard.index]
+                    )
+                else:
+                    self.assertEqual(int(shard.data), 7)
 
     @parameterized.expand(
         [

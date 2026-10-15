@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ARG CUDA_TAG
-# ARG CUDA_BASE_IMAGE=nvcr.io/nvidia/cuda:${CUDA_TAG}
 ARG CUDA_BASE_IMAGE
 FROM ${CUDA_BASE_IMAGE} AS base
 
@@ -32,23 +30,16 @@ ENV USER_GID=${USER_UID}
 
 RUN echo ${CUDA_BASE_IMAGE}
 
-# Purge the apt-installed NCCL and cuDNN that ship with the base CUDA image.
-# We use the venv's nvidia-nccl-cu13 / nvidia-cudnn-cu13 exclusively — keeping
-# both causes transformer_engine / cupy (DT_NEEDED libnccl.so.2 / libcudnn.so.9)
-# to resolve against the apt copy via ldconfig while JAX dlopens the venv copy,
-# mapping two different libs simultaneously and segfaulting inside NCCL.
+# Preserve any networking libraries and loader setup supplied by the parent.
+# Keep NCCL and cuDNN exclusively in the venv to avoid loading two versions.
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive                                           \
-        apt-get install --allow-change-held-packages -y                         \
-        sudo locales nvtop wget git g++ vim libibverbs-dev                      \
-    && DEBIAN_FRONTEND=noninteractive                                           \
-        apt-get purge -y libnccl2 libnccl-dev                                   \
-                         libcudnn9-cuda-13 libcudnn9-dev-cuda-13                \
-    && apt-get clean
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        sudo locales nvtop wget git openssh-client build-essential vim zip unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create the user
 RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m --shell /bin/bash $USERNAME \
     # Add sudo support.
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
@@ -59,22 +50,19 @@ RUN chown -R $USER_UID:$USER_GID /workdir
 USER $USERNAME
 SHELL ["/bin/bash", "--login", "-c"]
 
-# RUN pip install -U pip wheel setuptools
-
 COPY --chown=$USER_UID:$USER_GID . jaxpp
 
 ENV VIRTUAL_ENV=/home/$USERNAME/dev-env
-ENV PATH=$VIRTUAL_ENV/bin:$PATH
+ENV UV_PROJECT_ENVIRONMENT=$VIRTUAL_ENV
+ENV PATH=$VIRTUAL_ENV/bin:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cu13/bin:/home/$USERNAME/.local/bin:$PATH
 
-# Make the compiler / linker prefer the venv-provided NCCL and cuDNN headers
-# and libs so sdist builds (transformer-engine) are built against the same
-# versions they'll load at runtime. setup-env.sh creates libnccl.so as an
-# unversioned symlink (nvidia-nccl-cu13 only ships libnccl.so.2) so -lnccl
-# resolves here.
-ENV CPATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/include:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/include
+# TE must use the locked wheel headers instead of the base's partial toolkit.
+# setup-env.sh creates libnccl.so so the extension's -lnccl resolves here too.
+ENV NVTE_BUILD_USE_NVIDIA_WHEELS=1
+ENV CPATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cu13/include:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/include:$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/include
 ENV LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/nccl/lib
 
-RUN bash jaxpp/scripts/setup-env.sh 'jaxpp[dev]'
+RUN bash jaxpp/scripts/setup-env.sh
 
 # Register the venv's NCCL and cuDNN lib dirs with ldconfig so libnccl.so.2
 # and libcudnn.so.9 resolve unambiguously at import time, independent of
@@ -87,7 +75,9 @@ RUN printf '%s\n'                                                               
     && ldconfig
 USER $USERNAME
 
+# Check TE's runtime libraries on builders without GPUs as well.
+RUN JAX_PLATFORMS=cpu python -c 'from transformer_engine.jax.sharding import global_shard_guard, MeshResource'
+
 
 ENTRYPOINT ["/bin/bash", "--login", "-c"]
 CMD ["bash"]
-

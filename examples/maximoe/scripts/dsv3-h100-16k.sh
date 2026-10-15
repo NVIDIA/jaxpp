@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Trigger the ruff format check
-ruff format --diff --config=pyproject.toml src/jaxpp/
+set -euo pipefail
 
-if [[ $? -eq 0 ]]; then
-    echo "Linter succeeded"
-else
-    echo "Linter failed"
-    exit 1
-fi
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+export SLURM_LOG_TAG="${SLURM_LOG_TAG:-maximoe-deepseek3-671b-h100-16k}"
+
+exec "${script_dir}/dsv3-h100.sh" \
+  --capacity-factor 2 \
+  --host-offload-regex None \
+  --ep-as-context \
+  --per-device-batch-size 0.125 \
+  --seq-length 16384 \
+  --profile-dir /output/profiles/h100-16k \
+  "$@"

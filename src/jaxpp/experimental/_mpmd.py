@@ -69,7 +69,7 @@ ShapeDtypePyTree: TypeAlias = PyTree[jax.ShapeDtypeStruct]
 
 
 class MpmdTaskParams(TypedDict):
-    call_jaxpr: jcore.ClosedJaxpr
+    call_jaxpr: jc.ClosedJaxpr
     task_name: str
     mesh: Mesh | None
     in_shardings: tuple[object, ...]
@@ -728,34 +728,29 @@ def _task(
     donate_argnums,
 ):
     task_mesh = _infer_task_mesh(args, kwargs, mesh, in_shardings, out_shardings)
-    jit_info = jc._parse_jit_arguments(
+    jitted = jax.jit(
         fun,
         in_shardings=in_shardings,
         out_shardings=out_shardings,
-        static_argnums=None,
-        static_argnames=None,
         donate_argnums=donate_argnums,
-        donate_argnames=None,
-        keep_unused=False,
-        device=None,
-        backend=None,
-        inline=False,
-        compiler_options=None,
-        use_resource_env=False,
     )
     with _task_mesh_context(task_mesh):
-        pjit_params, flat_args = jc._infer_params(fun, jit_info, args, kwargs)
-    params = pjit_params.params
+        traced = jitted.trace(*args, **kwargs)
+    # Flat shardings and donation have no public `Traced` accessor.
+    params = traced._params
     mpmd_task_params: MpmdTaskParams = {
-        "call_jaxpr": params["jaxpr"],
-        "task_name": name or params["name"],
+        "call_jaxpr": traced.jaxpr,
+        "task_name": name or traced.fun_name,
         "mesh": task_mesh,
         "in_shardings": tuple(params["in_shardings"]),
         "out_shardings": tuple(params["out_shardings"]),
         "donate_invars": tuple(params["donated_invars"]),
     }
+    # `jax.jit` hoists closed-over tracers into leading arguments, which only
+    # the private `Traced._consts` exposes.
+    flat_args = (*traced._consts, *jax.tree.leaves((args, kwargs)))
     res = mpmd_task_p.bind(*flat_args, **mpmd_task_params)
-    return jax.tree_util.tree_unflatten(pjit_params.out_tree, res)
+    return jax.tree_util.tree_unflatten(traced.out_tree, res)
 
 
 def task(

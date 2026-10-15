@@ -688,7 +688,7 @@ def check_and_strip_adjecent_bwd_a_bwd_w(
                 # TODO(first_stage)
                 raise NotImplementedError(
                     f"{TaskType.BWD_I} is not followed by {TaskType.BWD_W} for "
-                    f"first_stage {first_stage_id} at tasks {i} {tasks[i:i+2]}.\n"
+                    f"first_stage {first_stage_id} at tasks {i} {tasks[i : i + 2]}.\n"
                     f"{[str(_) for _ in tasks]}"
                 )
             task = dataclasses.replace(task, latency=task.latency + next_task.latency)

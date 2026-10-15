@@ -19,4 +19,6 @@ FROM ${BASE_IMAGE}
 RUN rm -rf jaxpp
 COPY --chown=$USER_UID:$USER_GID . jaxpp
 
-RUN uv pip install --no-cache-dir -r jaxpp/examples/requirements.txt
+# JaxPP and MaxiMoE are installed editable, with their dependencies in the base
+# image. Their paths remain valid when this layer replaces the source tree or
+# Slurm mounts a checkout at /workdir/jaxpp.

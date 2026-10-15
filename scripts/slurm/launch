@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -Eeuo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/slurm/launch --num-nodes <N> [--process-mode <per_gpu|per_node>] [--setup-script <project-path>] -- <command> [args...]
+
+Launch an arbitrary command through the JaxPP Slurm runtime. Run this command
+from a project inside the JaxPP worktree. The worktree is mounted at
+/workdir/jaxpp, and the current project is used as the container working
+directory. The generated output directory is mounted at /output.
+
+Set JAXPP_SLURM_DIRECT_LAUNCH=1 when the caller already owns one process per
+node in a configured Slurm allocation and container. Direct mode runs the
+optional setup script, sources scripts/jax-env.sh, and executes the workload
+without creating another Slurm step or container.
+
+When --setup-script is provided, the script runs once per node before the main
+workload. Setup paths are relative to the current project. The default process
+mode is per_node, with one process controlling all GPUs on each node.
+
+SLURM_LOG_DIR may name an absolute directory or one relative to the current
+project. Its default is logs.
+EOF
+}
+
+num_nodes=""
+process_mode=per_node
+setup_script=""
+while (($#)); do
+  case "$1" in
+    --num-nodes)
+      if (($# < 2)); then
+        echo "Missing value for --num-nodes" >&2
+        exit 2
+      fi
+      num_nodes="$2"
+      shift 2
+      ;;
+    --process-mode)
+      if (($# < 2)); then
+        echo "Missing value for --process-mode" >&2
+        exit 2
+      fi
+      process_mode="$2"
+      shift 2
+      ;;
+    --setup-script)
+      if (($# < 2)); then
+        echo "Missing value for --setup-script" >&2
+        exit 2
+      fi
+      setup_script="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! [[ "${num_nodes}" =~ ^[0-9]+$ ]] || ((num_nodes < 1)); then
+  echo "--num-nodes must be a positive integer: ${num_nodes:-<unset>}" >&2
+  exit 2
+fi
+case "${process_mode}" in
+  per_gpu|per_node)
+    ;;
+  *)
+    echo "--process-mode must be one of: per_gpu, per_node (got '${process_mode}')" >&2
+    exit 2
+    ;;
+esac
+if (($# == 0)); then
+  echo "Missing command after --" >&2
+  usage >&2
+  exit 2
+fi
+workload=("$@")
+
+SLURM_TIME="${SLURM_TIME:-01:00:00}"
+SLURM_LOG_DIR="${SLURM_LOG_DIR:-logs}"
+SLURM_MAIL_USER="${SLURM_MAIL_USER:-}"
+EXTRA_SLURM_FLAGS="${EXTRA_SLURM_FLAGS:-}"
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+workspace_dir="$(realpath "${script_dir}/../..")"
+project_dir="$(pwd -P)"
+timestamp="$(date +%Y%m%d_%H%M%S)"
+
+case "${project_dir}" in
+  "${workspace_dir}"|"${workspace_dir}/"*)
+    ;;
+  *)
+    echo "Run scripts/slurm/launch from a project inside ${workspace_dir}." >&2
+    exit 2
+    ;;
+esac
+
+if [[ -n "${setup_script}" ]]; then
+  if [[ "${setup_script}" == /* ]]; then
+    echo "Setup script must be relative to ${project_dir}: ${setup_script}" >&2
+    exit 2
+  fi
+  if ! host_setup_script="$(realpath "${project_dir}/${setup_script}")"; then
+    echo "Could not resolve setup script: ${project_dir}/${setup_script}" >&2
+    exit 2
+  fi
+  if [[ ! -f "${host_setup_script}" ]]; then
+    echo "Setup script is not a regular file: ${host_setup_script}" >&2
+    exit 2
+  fi
+  case "${host_setup_script}" in
+    "${workspace_dir}/"*)
+      setup_script="$(realpath --relative-to="${project_dir}" "${host_setup_script}")"
+      ;;
+    *)
+      echo "Setup script must be inside ${workspace_dir}: ${host_setup_script}" >&2
+      exit 2
+      ;;
+  esac
+  unset host_setup_script
+fi
+
+case "${JAXPP_SLURM_DIRECT_LAUNCH:-0}" in
+  0)
+    ;;
+  1)
+    if [[ -n "${setup_script}" ]]; then
+      echo "Running setup directly: ${setup_script}" >&2
+      bash "${setup_script}"
+    fi
+    source "${script_dir}/../jax-env.sh"
+    exec "${workload[@]}"
+    ;;
+  *)
+    echo "JAXPP_SLURM_DIRECT_LAUNCH must be 0 or 1." >&2
+    exit 2
+    ;;
+esac
+
+if [[ "${SLURM_LOG_DIR}" == /* ]]; then
+  slurm_log_dir="${SLURM_LOG_DIR}"
+else
+  slurm_log_dir="${project_dir}/${SLURM_LOG_DIR}"
+fi
+mkdir -p "${slurm_log_dir}"
+slurm_log_dir="$(realpath "${slurm_log_dir}")"
+
+output_dir="$(mktemp -d -p "${slurm_log_dir}" \
+  "${SLURM_LOG_TAG:+${SLURM_LOG_TAG}_}${timestamp}_XXXX")"
+
+if git -C "${workspace_dir}" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "${workspace_dir}" rev-parse HEAD > "${output_dir}/workspace.revision" 2>&1 || true
+  git -C "${workspace_dir}" status --short > "${output_dir}/workspace.status" 2>&1 || true
+  git -C "${workspace_dir}" diff HEAD > "${output_dir}/workspace.patch" 2>&1 || true
+fi
+
+container_image="${CONTAINER_IMAGE:-}"
+partition="${SLURM_PARTITION:-}"
+account="${SLURM_ACCOUNT:-}"
+gpus_per_node="${GPUS_PER_NODE:-}"
+ntasks_per_node="${NTASKS_PER_NODE:-}"
+hostname="$(hostname)"
+
+
+SLURM_JOB="${SLURM_JOB:-${USER}-jaxpp}"
+
+if [[ -z "${container_image}" ]]; then
+  echo "Set CONTAINER_IMAGE to the JaxPP runtime image." >&2
+  exit 2
+fi
+if [[ -z "${SLURM_JOB_ID:-}" && -z "${partition}" ]]; then
+  echo "Could not infer a Slurm partition on ${hostname}; set SLURM_PARTITION." >&2
+  exit 2
+fi
+
+if [[ "${process_mode}" == per_gpu ]]; then
+  if [[ -z "${ntasks_per_node}" ]]; then
+    echo "Could not infer tasks per node on ${hostname}; set NTASKS_PER_NODE." >&2
+    exit 2
+  fi
+  if ! [[ "${ntasks_per_node}" =~ ^[0-9]+$ ]] || ((ntasks_per_node < 1)); then
+    echo "NTASKS_PER_NODE must be a positive integer: ${ntasks_per_node}" >&2
+    exit 2
+  fi
+  launch_ntasks_per_node="${ntasks_per_node}"
+else
+  launch_ntasks_per_node=1
+fi
+
+script="${script_dir}/job.sh"
+sbatch_args=(
+  "--chdir=${output_dir}"
+  "--job-name=${SLURM_JOB}"
+  "--partition=${partition}"
+  "--nodes=${num_nodes}"
+  "--ntasks-per-node=${launch_ntasks_per_node}"
+  --exclusive
+  --mem=0
+  "--time=${SLURM_TIME}"
+  --output=slurm_out.log
+  --error=slurm_err.log
+)
+
+if [[ -n "${account}" ]]; then
+  sbatch_args+=("--account=${account}")
+fi
+if [[ -n "${gpus_per_node}" ]]; then
+  sbatch_args+=("--gpus-per-node=${gpus_per_node}")
+fi
+if [[ -n "${SLURM_MAIL_USER}" ]]; then
+  sbatch_args+=("--mail-user=${SLURM_MAIL_USER}" --mail-type=ALL)
+fi
+if [[ -n "${EXTRA_SLURM_FLAGS}" ]]; then
+  # Preserve the established whitespace-separated override convention.
+  # shellcheck disable=SC2206
+  extra_sbatch_args=(${EXTRA_SLURM_FLAGS})
+  sbatch_args+=("${extra_sbatch_args[@]}")
+fi
+
+job_args=(
+  --container-image "${container_image}"
+  --workspace "${workspace_dir}"
+  --workdir "${project_dir}"
+  --output "${output_dir}"
+  --process-mode "${process_mode}"
+  --num-nodes "${num_nodes}"
+  --ntasks-per-node "${launch_ntasks_per_node}"
+)
+if [[ -n "${setup_script}" ]]; then
+  job_args+=(--setup-script "${setup_script}")
+fi
+job_args+=(-- "${workload[@]}")
+
+print_command() {
+  printf '%q ' "$@"
+  printf '\n'
+}
+
+if [[ "${DRY_RUN:-False}" == True ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+    print_command bash "${script}" "${job_args[@]}"
+  else
+    print_command sbatch "${sbatch_args[@]}" "${script}" "${job_args[@]}"
+  fi
+  exit 0
+fi
+
+if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+  cd "${output_dir}"
+  exec bash "${script}" "${job_args[@]}"
+fi
+
+exec sbatch "${sbatch_args[@]}" "${script}" "${job_args[@]}"

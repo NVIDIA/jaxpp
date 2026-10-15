@@ -37,6 +37,9 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# JAX launcher artifacts
+/logs/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

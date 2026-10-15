@@ -37,13 +37,14 @@ class _CausalSelfAttention(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        assert self.hidden_size % self.num_heads == 0, (
-            "hidden_size must be divisible by num_heads"
-        )
+        assert (
+            self.hidden_size % self.num_heads == 0
+        ), "hidden_size must be divisible by num_heads"
         head_dim = self.hidden_size // self.num_heads
 
         q = nn.Dense(self.hidden_size, dtype=self.dtype, name="query")(x)
-        k = nn.Dense(self.hidden_size, dtype=self.dtype, name="key")(x)
+        # A key bias adds the same constant to every logit and cancels in softmax.
+        k = nn.Dense(self.hidden_size, dtype=self.dtype, use_bias=False, name="key")(x)
         v = nn.Dense(self.hidden_size, dtype=self.dtype, name="value")(x)
 
         def split_heads(t):
@@ -142,11 +143,11 @@ def jax_train_step(loss_fn, optimizer, remote_mesh=None):
 
     @jax_decorator
     def train_step(opt_state, params, batch):
-        µbatch_grad = partial(jax.value_and_grad(loss_fn, has_aux=True), params)
+        microbatch_grad = partial(jax.value_and_grad(loss_fn, has_aux=True), params)
 
         if use_jaxpp:
             (losses, (preds, _)), grad = jaxpp.treduce(
-                µbatch_grad, batch, schedule=jaxpp.Std1F1B(remote_mesh.mpmd_dim)
+                microbatch_grad, batch, schedule=jaxpp.Std1F1B(remote_mesh.mpmd_dim)
             )
 
             # Apply the optimizer as usual
@@ -162,7 +163,7 @@ def jax_train_step(loss_fn, optimizer, remote_mesh=None):
             preds = []
 
             for ubatch_idx in range(args.num_ubatches):
-                (loss, (_preds, _)), pgrad = µbatch_grad(batch[ubatch_idx])
+                (loss, (_preds, _)), pgrad = microbatch_grad(batch[ubatch_idx])
                 losses.append(loss)
                 preds.append(_preds)
                 grad = (
@@ -353,8 +354,7 @@ def main(args, process_id=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="JAXPP",
-        description="Example Usage: \n"
-        "  python examples/basic.py --pp=2"
+        description="Example Usage: \n" "  python examples/basic.py --pp=2",
     )
 
     parser.add_argument(

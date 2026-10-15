@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-License-Identifier: Apache-2.0
+
+# Launch a command as local distributed JAX processes.
+set -euo pipefail
+set -m
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(pwd -P)"
+
+usage() {
+  cat <<'EOF'
+Usage: jax-run [--output-dir <path>] [--n-procs <N>] [--n-gpus-per-proc <N>] -- <command> [args...]
+
+Run from the project directory where artifacts should be written.
+
+Defaults:
+  --output-dir         ./logs/YYYYMMDD_HHMMSS
+  --n-procs            1
+  --n-gpus-per-proc    all GPUs divided evenly across processes
+EOF
+}
+
+output_dir="${project_dir}/logs/$(date +%Y%m%d_%H%M%S)"
+n_procs=1
+n_gpus_per_proc=""
+while (($#)); do
+  case "$1" in
+    --output-dir)
+      if (($# < 2)); then
+        echo "Missing value for --output-dir" >&2
+        exit 2
+      fi
+      output_dir="$2"
+      shift 2
+      ;;
+    --n-procs)
+      if (($# < 2)); then
+        echo "Missing value for --n-procs" >&2
+        exit 2
+      fi
+      n_procs="$2"
+      shift 2
+      ;;
+    --n-gpus-per-proc)
+      if (($# < 2)); then
+        echo "Missing value for --n-gpus-per-proc" >&2
+        exit 2
+      fi
+      n_gpus_per_proc="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! [[ "${n_procs}" =~ ^[0-9]+$ ]] || ((n_procs < 1)); then
+  echo "--n-procs must be a positive integer: ${n_procs}" >&2
+  exit 2
+fi
+if (($# == 0)); then
+  echo "Missing command after --" >&2
+  usage >&2
+  exit 2
+fi
+
+mapfile -t gpu_ids < <(nvidia-smi --query-gpu=index --format=csv,noheader)
+total_gpus=${#gpu_ids[@]}
+if ((total_gpus == 0)); then
+  echo "No GPUs found via nvidia-smi." >&2
+  exit 2
+fi
+
+if [[ -z "${n_gpus_per_proc}" ]]; then
+  if ((total_gpus % n_procs)); then
+    echo "Cannot divide ${total_gpus} GPU(s) evenly across ${n_procs} process(es); set --n-gpus-per-proc explicitly." >&2
+    exit 2
+  fi
+  n_gpus_per_proc=$((total_gpus / n_procs))
+fi
+if ! [[ "${n_gpus_per_proc}" =~ ^[0-9]+$ ]] || ((n_gpus_per_proc < 1)); then
+  echo "--n-gpus-per-proc must be a positive integer: ${n_gpus_per_proc}" >&2
+  exit 2
+fi
+if ((n_procs * n_gpus_per_proc > total_gpus)); then
+  echo "Requested ${n_procs} process(es) * ${n_gpus_per_proc} GPU(s) = $((n_procs * n_gpus_per_proc)), but only ${total_gpus} GPU(s) available." >&2
+  exit 2
+fi
+
+mkdir -p "${output_dir}"
+output_dir="$(realpath "${output_dir}")"
+export OUTPUT_ROOT="${output_dir}"
+export JAX_COORDINATOR_IP="${JAX_COORDINATOR_IP:-localhost}"
+export JAX_COORDINATOR_PORT="${JAX_COORDINATOR_PORT:-$((RANDOM % 10000 + 20000))}"
+
+hostname_short="$(hostname)"
+pids=()
+cleanup() {
+  for pid in "${pids[@]}"; do
+    kill -9 -- -"$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT SIGINT SIGTERM
+
+echo "Local launch: ${n_procs} process(es), ${n_gpus_per_proc} GPU(s) each, output_dir=${output_dir}"
+
+for ((rank=0; rank<n_procs; rank++)); do
+  start=$((rank * n_gpus_per_proc))
+  devices="$(IFS=,; echo "${gpu_ids[*]:start:n_gpus_per_proc}")"
+  (
+    export NODE_RANK="${rank}"
+    export NNODES="${n_procs}"
+    export CUDA_VISIBLE_DEVICES="${devices}"
+    export N_GPUS="${n_gpus_per_proc}"
+    export JAX_LOCAL_DEVICE_IDS="$(seq -s, 0 $((n_gpus_per_proc - 1)))"
+    exec > "${output_dir}/output-${rank}-local-${hostname_short}.out" 2>&1
+    source "${script_dir}/jax-env.sh"
+    cd "${project_dir}"
+    exec "$@"
+  ) &
+  pid=$!
+  pids+=("$pid")
+  echo "Launched rank ${rank} pid=${pid} CUDA_VISIBLE_DEVICES=${devices}"
+done
+
+for ((completed=0; completed<n_procs; completed++)); do
+  rc=0
+  wait -n || rc=$?
+  if ((rc != 0)); then
+    echo "A rank exited with code ${rc}; see ${output_dir}/output-*.out" >&2
+    exit "${rc}"
+  fi
+done
+
+trap - EXIT SIGINT SIGTERM
+echo "All ranks completed. Artifacts in ${output_dir}"

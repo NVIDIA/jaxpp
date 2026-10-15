@@ -254,7 +254,7 @@ def print_memstats(label: str, enabled: bool = False):
         limit = stats["bytes_limit"] / 2**30
         peak_size = stats["peak_bytes_in_use"] / 2**30
         print(
-            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
+            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used / limit:%}) ({peak_size=:.2f} GiB) on {d}",
             flush=True,
         )
 
@@ -267,7 +267,7 @@ def print_memstats(label: str, enabled: bool = False):
         limit = stats["bytes_limit"] / 2**30
         peak_size = stats["peak_bytes_in_use"] / 2**30
         print(
-            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used/limit:%}) ({peak_size=:.2f} GiB) on {d}",
+            f"\tUsing (GB) {used:.2f} / {limit:.2f} ({used / limit:%}) ({peak_size=:.2f} GiB) on {d}",
             flush=True,
         )
 

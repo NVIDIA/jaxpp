@@ -595,9 +595,12 @@ def mpmd_to_spmd_reshard(
     mpmd_idxs = [mpmd_arr._mpmd_idxs[0] for mpmd_arr in mpmd_arr_list]
 
     def get_shard_size(mpmd_arr: MpmdArray) -> int:
+        itemsize = getattr(mpmd_arr.dtype, "itemsize", None)
+        if itemsize is None:
+            itemsize = np.dtype(mpmd_arr.dtype).itemsize
         return int(
             np.prod(mpmd_arr._mpmd_local_sharding.shard_shape(mpmd_arr.shape))
-            * np.dtype(mpmd_arr.dtype).itemsize
+            * itemsize
         )
 
     sizes = [get_shard_size(mpmd_arr) for mpmd_arr in mpmd_arr_list]

@@ -28,8 +28,10 @@ from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from jaxpp import array_ops, env_vars
+from jaxpp import jax_compat as jc
 from jaxpp.core import (
     add_deletes,
+    deduplicate_task_jaxprs,
     finalize_lifetimes,
     infer_donation,
     new_primitive_eqn,
@@ -106,6 +108,27 @@ class TestExperimentalSendRecvTrace(jtu.JaxTestCase):
         assert task_eqn.params["mpmd_idx"] == 0
         assert task_eqn.params["in_shardings"] == (sharding,)
         assert task_eqn.params["out_shardings"] == (sharding,)
+
+    def test_task_jaxpr_deduplication_canonicalizes_compile_names(self):
+        mesh = make_mesh((2, 1), ("mpmd", "x"), "mpmd")
+        sharding_0 = NamedSharding(mesh.unstack[0], P())
+        sharding_1 = NamedSharding(mesh.unstack[1], P())
+
+        @mpmd.mpmd(mesh, in_shardings=(sharding_0, sharding_1))
+        def foo(x, y):
+            return (
+                mpmd.task(add_one, name="stage_0", out_shardings=sharding_0)(x),
+                mpmd.task(add_one, name="stage_1", out_shardings=sharding_1)(y),
+            )
+
+        shape = jax.ShapeDtypeStruct((8,), jnp.float32)
+        jaxpr = jax.make_jaxpr(foo)(shape, shape)
+        jaxpr = deduplicate_task_jaxprs(jaxpr)
+        tasks = [eqn for eqn in jaxpr.eqns if eqn.primitive is task_p]
+
+        assert tasks[0].params["call_jaxpr"] is tasks[1].params["call_jaxpr"]
+        assert [task.params["task_name"] for task in tasks] == ["stage_0", "stage_1"]
+        assert [task.params["compile_name"] for task in tasks] == ["stage_0", "stage_0"]
 
     def test_experimental_task_partition_spec_out_sharding_infers_input_mesh(self):
         mesh = make_mesh((2, 2), ("mpmd", "x"), "mpmd")
@@ -930,7 +953,7 @@ class TestSendRecvLifetime(jtu.JaxTestCase):
 
         cjaxpr = jax.make_jaxpr(fanout)(jax.ShapeDtypeStruct((8,), jnp.float32))
 
-        assert isinstance(cjaxpr, jcore.ClosedJaxpr)
+        assert isinstance(cjaxpr, jc.ClosedJaxpr)
         transfer_eqns = [eqn for eqn in cjaxpr.eqns if eqn.primitive is transfer_p]
         transfer_done_eqns = [
             eqn for eqn in cjaxpr.eqns if eqn.primitive is transfer_done_p
@@ -1064,7 +1087,7 @@ class TestSendRecvLifetime(jtu.JaxTestCase):
         with self.assertRaisesRegex(
             ValueError, "transfer output used without transfer_done"
         ):
-            to_local_jaxprs(jcore.ClosedJaxpr(jaxpr, ()), mesh)
+            to_local_jaxprs(jc.ClosedJaxpr(jaxpr, ()), mesh)
 
 
 class TestSendRecvLocalJaxprs(jtu.JaxTestCase):

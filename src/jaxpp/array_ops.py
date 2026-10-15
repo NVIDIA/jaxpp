@@ -221,8 +221,7 @@ def stack_shape_and_sharding(
                 )
             if sharding.spec != no_axis_spec:
                 raise ValueError(
-                    "stack replicated arguments must match the non-MPMD "
-                    "PartitionSpec"
+                    "stack replicated arguments must match the non-MPMD PartitionSpec"
                 )
             if sharding.memory_kind != memory_kind:
                 raise ValueError("stack arguments must have the same memory kind")

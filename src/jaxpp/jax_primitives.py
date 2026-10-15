@@ -140,9 +140,9 @@ def add_multi_impl(
 ):
     assert mpmd_idxs is not None
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    assert (
-        not mpmd_mesh.jax_mesh.is_multi_process
-    ), f"{add_multi_p.name} supported only in single-process runtime"
+    assert not mpmd_mesh.jax_mesh.is_multi_process, (
+        f"{add_multi_p.name} supported only in single-process runtime"
+    )
     assert out_shardings is not None
     (out_sharding,) = out_shardings
     assert isinstance(out_sharding, jax.sharding.NamedSharding)
@@ -161,11 +161,6 @@ def add_multi_impl(
         update_named_sharding(sharding, spec=out_sharding.spec)
         for sharding in prev_shardings
     )
-    if not jc.reduce_sum_accepts_unreduced and out_sharding.spec.unreduced:
-        raise NotImplementedError(
-            "cross-MPMD all-reduce with unreduced inputs requires JAX >= 0.9.1"
-        )
-
     stacked = stack_p.bind(
         *args,
         **StackParams(
@@ -243,13 +238,6 @@ def all_reduce(
         update_named_sharding(sharding, spec=out_sharding.spec)
         for sharding, out_sharding in zip(shardings, out_shardings, strict=True)
     )
-    if not jc.reduce_sum_accepts_unreduced and any(
-        sharding.spec.unreduced for sharding in out_shardings
-    ):
-        raise NotImplementedError(
-            "cross-MPMD all-reduce with unreduced inputs requires JAX >= 0.9.1"
-        )
-
     stacked = tuple(
         stack_p.bind(
             a,
@@ -346,9 +334,9 @@ def gather_multi_impl(
 ):
     assert mpmd_idxs is not None
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
-    assert (
-        not mpmd_mesh.jax_mesh.is_multi_process
-    ), f"{gather_multi_p.name} supported only in single-process runtime"
+    assert not mpmd_mesh.jax_mesh.is_multi_process, (
+        f"{gather_multi_p.name} supported only in single-process runtime"
+    )
 
     prev_shardings: list[jax.NamedSharding] = [a.sharding for a in args]
 
@@ -961,18 +949,17 @@ def dax_pscan_abstract_eval(
         raise ValueError("dax_pscan body must have one implicit index input")
     if len(jaxpr.out_avals) != len(args) - n_consts:
         raise ValueError("dax_pscan body outputs must match its loop carry")
-    return jaxpr.out_avals
+    return jaxpr.out_avals, jaxpr.effects
 
 
 dax_pscan_p = jcore.Primitive("dax_pscan")
 dax_pscan_p.multiple_results = True
-# TODO: maybe make it a absract_effectful_eval?
-dax_pscan_p.def_abstract_eval(dax_pscan_abstract_eval)
+dax_pscan_p.def_effectful_abstract_eval(dax_pscan_abstract_eval)
 
 
 def dax_pscan_impl(
     *args,
-    jaxpr: jcore.ClosedJaxpr,
+    jaxpr: jc.ClosedJaxpr,
     n_mubatches,
     n_consts,
     in_shardings,
@@ -1001,7 +988,7 @@ mlir.register_lowering(
 def task_lower(
     ctx,
     *args,
-    call_jaxpr: jcore.ClosedJaxpr,
+    call_jaxpr: jc.ClosedJaxpr,
     task_name,
     task_info,
     mpmd_idx,
@@ -1010,8 +997,11 @@ def task_lower(
     donate_invars,
     latency: float | None = None,
     call_counter=None,
+    compile_name=None,
 ):
-    return mlir.core_call_lowering(ctx, *args, name=task_name, call_jaxpr=call_jaxpr)
+    return mlir.core_call_lowering(
+        ctx, *args, name=compile_name or task_name, call_jaxpr=call_jaxpr
+    )
 
 
 def dce_jaxpr_dax_pscan(
@@ -1036,7 +1026,7 @@ def dce_jaxpr_dax_pscan(
     new_params = dict(
         eqn.params,
         n_consts=sum(body_used_inputs[:n_consts]),
-        jaxpr=jcore.ClosedJaxpr(new_jaxpr, consts),
+        jaxpr=jc.ClosedJaxpr(new_jaxpr, consts),
     )
     for name, used in (
         ("in_shardings", used_inputs),
@@ -1063,7 +1053,7 @@ def dce_jaxpr_dax_pscan(
 
 @dataclass(frozen=True, kw_only=True)
 class PjitKwargs:
-    jaxpr: jcore.ClosedJaxpr
+    jaxpr: jc.ClosedJaxpr
     in_shardings: tuple[jax.sharding.NamedSharding, ...]
     out_shardings: tuple[jax.sharding.NamedSharding, ...] | jc.UnspecifiedValue
     in_layouts: tuple
@@ -1074,6 +1064,28 @@ class PjitKwargs:
     keep_unused: bool = True
     inline: bool = False
     compiler_options_kvs: tuple[tuple[str, Any], ...] | None = None
+
+    @classmethod
+    def from_task(
+        cls,
+        *,
+        call_jaxpr: jc.ClosedJaxpr,
+        in_shardings: tuple[jax.sharding.NamedSharding, ...],
+        out_shardings: tuple[jax.sharding.NamedSharding, ...],
+        donate_invars: Sequence[bool],
+        ctx_mesh: jax.sharding.Mesh,
+        name: str,
+    ):
+        return cls(
+            jaxpr=call_jaxpr,
+            in_shardings=in_shardings,
+            out_shardings=out_shardings,
+            in_layouts=(None,) * len(call_jaxpr.in_avals),
+            out_layouts=(None,) * len(call_jaxpr.out_avals),
+            donated_invars=tuple(donate_invars),
+            ctx_mesh=ctx_mesh,
+            name=name,
+        )
 
     def asdict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
@@ -1109,12 +1121,19 @@ def callable_task(prim: jcore.Primitive, params: PjitKwargs):
     )
 
 
+@jc.cache()
+def compiled_task(prim: jcore.Primitive, params: PjitKwargs):
+    # Runtime host scalars and weak/committed arrays must share the executable
+    # specified by the task, rather than specialize the outer jit again.
+    return callable_task(prim, params).trace(*params.jaxpr.in_avals).lower().compile()
+
+
 def apply_task(prim: jcore.Primitive, *args, params: PjitKwargs):
     with jax.set_mesh(params.ctx_mesh), warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="Some donated buffers were not usable.*"
         )
-        return callable_task(prim, params)(*args)
+        return compiled_task(prim, params)(*args)
 
 
 check_in_shardings = False
@@ -1162,7 +1181,7 @@ def collect_task_times_ms(
 
 def task_impl(
     *args,
-    call_jaxpr: jcore.ClosedJaxpr,
+    call_jaxpr: jc.ClosedJaxpr,
     task_name,
     task_info,
     mpmd_idx,
@@ -1171,19 +1190,18 @@ def task_impl(
     donate_invars,
     latency: float | None = None,
     call_counter: int | None = None,
+    compile_name: str | None = None,
 ):
     mpmd_mesh = MpmdMesh.mesh_stack[-1]
     mpmd_indices, mesh = _resolve_placement(mpmd_mesh, mpmd_idx, name="task mpmd_idx")
 
-    pjit_kwargs = PjitKwargs(
-        jaxpr=call_jaxpr,
+    pjit_kwargs = PjitKwargs.from_task(
+        call_jaxpr=call_jaxpr,
         in_shardings=in_shardings,
         out_shardings=out_shardings,
-        in_layouts=(None,) * len(args),
-        out_layouts=(None,) * len(out_shardings),
-        donated_invars=tuple(donate_invars),
+        donate_invars=donate_invars,
         ctx_mesh=mesh,
-        name=task_name,
+        name=compile_name or task_name,
     )
 
     # TODO(fixup_multidefs)
@@ -1238,7 +1256,7 @@ def task_impl(
 
 def task_abstract_eval(
     *args,
-    call_jaxpr: jcore.ClosedJaxpr,
+    call_jaxpr: jc.ClosedJaxpr,
     name=None,
     task_name,
     task_info,
@@ -1248,6 +1266,7 @@ def task_abstract_eval(
     donate_invars,
     latency: float | None = None,
     call_counter=None,
+    compile_name=None,
 ):
     return (call_jaxpr.out_avals, call_jaxpr.effects)
 
@@ -1270,7 +1289,7 @@ mlir.register_lowering(task_p, task_lower)
 
 @jc.register_discharge_rule(task_p)
 def _task_state_discharge_rule(
-    context_or_in_avals, *args, call_jaxpr: jcore.ClosedJaxpr, **params
+    context_or_in_avals, *args, call_jaxpr: jc.ClosedJaxpr, **params
 ):
     if jc.discharge_rule_uses_context:
         context = context_or_in_avals
@@ -1291,7 +1310,7 @@ def _task_state_discharge_rule(
     return [None] * len(in_avals), out
 
 
-pe.dce_rules[dax_pscan_p] = dce_jaxpr_dax_pscan
+jc.register_dce_rule(dax_pscan_p, dce_jaxpr_dax_pscan)
 
 
 def _dce_shardings(shardings: ShardingTuple, used: Sequence[bool]) -> ShardingTuple:
@@ -1306,7 +1325,7 @@ def _task_dce_rule(
 
     call_jaxpr = eqn.params["call_jaxpr"]
     new_jaxpr, used_inputs = pe.dce_jaxpr(call_jaxpr.jaxpr, used_outputs)
-    new_closed_jaxpr = jcore.ClosedJaxpr(new_jaxpr, call_jaxpr.consts)
+    new_closed_jaxpr = jc.ClosedJaxpr(new_jaxpr, call_jaxpr.consts)
 
     new_params = dict(eqn.params)
     new_params["call_jaxpr"] = new_closed_jaxpr
@@ -1334,13 +1353,14 @@ def _task_dce_rule(
     return used_inputs, new_eqn
 
 
-pe.dce_rules[task_p] = _task_dce_rule
+jc.register_dce_rule(task_p, _task_dce_rule)
 
 
 # Refined type annotations for key Jaxprs/Eqns we use in the jaxpr
 class TaskEqnParams(TypedDict):
-    call_jaxpr: jcore.ClosedJaxpr
+    call_jaxpr: jc.ClosedJaxpr
     task_name: str
+    compile_name: NotRequired[str]
     task_info: tuple[int, TaskType] | None
     mpmd_idx: int | jax.sharding.Mesh
     in_shardings: ShardingTuple

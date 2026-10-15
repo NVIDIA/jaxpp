@@ -34,9 +34,12 @@ fi
 
 required_gpus=$((N_PROCS * N_GPUS))
 if [ "$available_gpus" -ge "$required_gpus" ]; then
-    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u tests/test_reshard_utils.py" ./scripts/local_mc.sh
-    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u examples/mpmd_reshard.py" ./scripts/local_mc.sh
-    N_PROCS="$N_PROCS" N_GPUS="$N_GPUS" COMMAND="python -u tests/test_dime2.py" ./scripts/local_mc.sh
+    ./scripts/jax-run --n-procs "$N_PROCS" --n-gpus-per-proc "$N_GPUS" \
+        -- python -u tests/test_reshard_utils.py
+    ./scripts/jax-run --n-procs "$N_PROCS" --n-gpus-per-proc "$N_GPUS" \
+        -- python -u examples/mpmd_reshard.py
+    ./scripts/jax-run --n-procs "$N_PROCS" --n-gpus-per-proc "$N_GPUS" \
+        -- python -u tests/test_dime2.py
 else
     echo "Skipping multi-process tests: need ${required_gpus} GPUs, found ${available_gpus}."
 fi

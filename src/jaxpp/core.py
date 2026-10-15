@@ -43,6 +43,7 @@ from jax.interpreters.ad import add_jaxvals_p as add_any_p
 from jaxpp import array_ops, env_vars
 from jaxpp import jax_compat as jc
 from jaxpp.array import MpmdArray
+from jaxpp.dime2 import synchronous_transfers
 from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import (
     LocalSliceParams,
@@ -103,17 +104,11 @@ from jaxpp.sharding_inference import (
     reconcile_shardings,
 )
 from jaxpp.types import MpmdIdx, MpmdSharding, TaskType, fresh_scalar_uid
-from jaxpp.utils import (
-    groupby,
-    hbytes,
-    log_elapsed_time,
-    update_named_sharding,
-    updated_named_sharding_mesh,
-)
+from jaxpp.utils import groupby, hbytes, log_elapsed_time, updated_named_sharding_mesh
 
 logger = logging.getLogger(__name__)
 
-AnyJaxpr = TypeVar("AnyJaxpr", jcore.ClosedJaxpr, jcore.Jaxpr)
+AnyJaxpr = TypeVar("AnyJaxpr", jc.ClosedJaxpr, jcore.Jaxpr)
 Res = TypeVar("Res")
 P = ParamSpec("P")
 
@@ -694,7 +689,7 @@ def _bind_task_eqn_to_mesh(
 
 @jc.weakref_lru_cache
 def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> AnyJaxpr:
-    jaxpr = cjaxpr.jaxpr if isinstance(cjaxpr, jcore.ClosedJaxpr) else cjaxpr
+    jaxpr = cjaxpr.jaxpr if isinstance(cjaxpr, jc.ClosedJaxpr) else cjaxpr
 
     new_eqns = []
     for eqn in jaxpr.eqns:
@@ -734,7 +729,7 @@ def replace_captured_meshes(cjaxpr: AnyJaxpr, new_mesh: jax.sharding.Mesh) -> An
             }
 
         for k, v in eqn.params.items():
-            if isinstance(v, (jcore.ClosedJaxpr, jcore.Jaxpr)):
+            if isinstance(v, (jc.ClosedJaxpr, jcore.Jaxpr)):
                 param_update[k] = replace_captured_meshes(v, new_mesh)
         new_eqns.append(eqn.replace(params=eqn.params | param_update))
 
@@ -765,12 +760,13 @@ def new_primitive_eqn(
 def _task_eqn(
     invars,
     outvars,
-    task_jaxpr: jcore.ClosedJaxpr,
+    task_jaxpr: jc.ClosedJaxpr,
     mpmd_idx: int | jax.sharding.Mesh,
     in_shardings,
     out_shardings,
     donate_invars,
     task_name,
+    compile_name: str | None = None,
     task_info: tuple[int, TaskType] | None = None,
     latency: float | None = None,
 ):
@@ -782,6 +778,7 @@ def _task_eqn(
         outvars,
         call_jaxpr=task_jaxpr,
         task_name=task_name,
+        compile_name=task_name if compile_name is None else compile_name,
         task_info=task_info,
         mpmd_idx=mpmd_idx,
         in_shardings=in_shardings,
@@ -819,7 +816,7 @@ def make_task_eqn(
     return _task_eqn(
         invars=invars,
         outvars=outvars,
-        task_jaxpr=jcore.ClosedJaxpr(task_jaxpr, ()),
+        task_jaxpr=jc.ClosedJaxpr(task_jaxpr, ()),
         mpmd_idx=mpmd_idx,
         in_shardings=in_task_shardings,
         out_shardings=out_task_shardings,
@@ -1191,9 +1188,9 @@ def cluster_jaxpr(
 def wrap_into_tasks_inside_loop(loop_eqn: jcore.JaxprEqn) -> jcore.JaxprEqn:
     jaxpr: jcore.Jaxpr = loop_eqn.params["jaxpr"].jaxpr
     # TODO: let bind literals
-    assert len(jaxpr.outvars) == len(
-        set(jaxpr.outvars)
-    ), "Literal outvars (hash error) or duplicate outvars not supported"
+    assert len(jaxpr.outvars) == len(set(jaxpr.outvars)), (
+        "Literal outvars (hash error) or duplicate outvars not supported"
+    )
 
     clustered_jaxpr = cluster_jaxpr(
         jaxpr,
@@ -1356,10 +1353,10 @@ def make_replicated_jaxpr(
 
 
 def get_one_loop_eqn_idx(
-    eqns_or_jaxpr: jcore.ClosedJaxpr | jcore.Jaxpr | Iterable[jcore.JaxprEqn],
+    eqns_or_jaxpr: jc.ClosedJaxpr | jcore.Jaxpr | Iterable[jcore.JaxprEqn],
 ) -> int:
     eqns = eqns_or_jaxpr
-    if isinstance(eqns_or_jaxpr, (jcore.ClosedJaxpr, jcore.Jaxpr)):
+    if isinstance(eqns_or_jaxpr, (jc.ClosedJaxpr, jcore.Jaxpr)):
         eqns = eqns_or_jaxpr.eqns
 
     loop_eqn_idxs = [idx for idx, e in enumerate(eqns) if e.primitive is dax_pscan_p]
@@ -1510,8 +1507,8 @@ def join_argument_refs(
 
 @jc.weakref_lru_cache
 def _wrap_into_tasks(
-    cjaxpr: jcore.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
-) -> tuple[jcore.ClosedJaxpr, tuple[set[MpmdIdx]], tuple[set[MpmdIdx]]]:
+    cjaxpr: jc.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
+) -> tuple[jc.ClosedJaxpr, tuple[set[MpmdIdx]], tuple[set[MpmdIdx]]]:
     """
     After this pass, all the equations in the returned jaxpr are either
     (1) `task` equations, or (2) a `dax_pscan` equation containing `task` equations.
@@ -1602,8 +1599,8 @@ def _wrap_into_tasks(
 
 
 def wrap_into_tasks(
-    cjaxpr: jcore.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
-) -> tuple[jcore.ClosedJaxpr, tuple[set[MpmdIdx]], tuple[set[MpmdIdx]]]:
+    cjaxpr: jc.ClosedJaxpr, used_invars: Sequence[bool], mpmd_dim: int
+) -> tuple[jc.ClosedJaxpr, tuple[set[MpmdIdx]], tuple[set[MpmdIdx]]]:
     return _wrap_into_tasks(cjaxpr, used_invars, mpmd_dim)
 
 
@@ -1620,7 +1617,7 @@ def infer_donation(
     invar_is_donated.update(zip(tasked_jaxpr.invars, donated_invars, strict=True))
     undonateable_vars = set[jcore.Var]()
 
-    least_donation = dict[jcore.ClosedJaxpr, Sequence[bool]]()
+    least_donation = dict[jc.ClosedJaxpr, Sequence[bool]]()
     new_eqns = []
 
     def can_end_lifetime(invar: jcore.Atom, eqn_idx: int):
@@ -1808,8 +1805,8 @@ def finalize_lifetimes(
 
 
 def unroll_loop(
-    loop_jaxpr: jcore.ClosedJaxpr, n_consts: int, n_mubatches: int
-) -> jcore.ClosedJaxpr:
+    loop_jaxpr: jc.ClosedJaxpr, n_consts: int, n_mubatches: int
+) -> jc.ClosedJaxpr:
     body = loop_jaxpr.jaxpr
     gensym = mk_gensym()
 
@@ -1854,7 +1851,7 @@ def unroll_loop(
         outvars=carry,
         eqns=new_eqns,
     )
-    return jcore.ClosedJaxpr(unrolled, (*loop_jaxpr.consts, *range(n_mubatches)))
+    return jc.ClosedJaxpr(unrolled, (*loop_jaxpr.consts, *range(n_mubatches)))
 
 
 def build_eqn_dependencies(eqns: list[jcore.JaxprEqn]):
@@ -2018,7 +2015,7 @@ def reorder_nodes_with_schedule(
         if schedule_idx_by_mpmd_idx[mpmd_idx] != len(schedule_tasks[mpmd_idx]):
             raise AssertionError(
                 "Loop tasks have ended but schedule contains other tasks. "
-                f"{schedule_tasks[mpmd_idx][schedule_idx_by_mpmd_idx[mpmd_idx]:]}"
+                f"{schedule_tasks[mpmd_idx][schedule_idx_by_mpmd_idx[mpmd_idx] :]}"
             )
 
     scheduled_groups.sort(key=lambda e: (e[0], e[1]))
@@ -2164,9 +2161,10 @@ def add_transfers(jaxpr: jcore.Jaxpr, times: list[tuple[int, int]]) -> jcore.Jax
 
 
 _fused_open_jaxprs = weakref.WeakValueDictionary[Hashable, jcore.Jaxpr]()
-_fused_closed_jaxprs = weakref.WeakValueDictionary[Hashable, jcore.ClosedJaxpr]()
+_fused_closed_jaxprs = weakref.WeakValueDictionary[Hashable, jc.ClosedJaxpr]()
 _TASK_METADATA_PARAM_KEYS = {
     "call_counter",
+    "compile_name",
     "latency",
     "mpmd_idx",
     "task_info",
@@ -2240,7 +2238,7 @@ def _get_fused_jaxpr_cached(
     want_closed: Literal[True],
     constvars: Sequence[jcore.Var] = (),
     debug_info=None,
-) -> jcore.ClosedJaxpr: ...
+) -> jc.ClosedJaxpr: ...
 
 
 def _get_fused_jaxpr_cached(
@@ -2252,7 +2250,7 @@ def _get_fused_jaxpr_cached(
     want_closed: bool,
     constvars: Sequence[jcore.Var] = (),
     debug_info=None,
-) -> jcore.Jaxpr | jcore.ClosedJaxpr:
+) -> jcore.Jaxpr | jc.ClosedJaxpr:
     cache_key = _fused_jaxpr_cache_key(
         group_eqns, invars, outvars, exclude_param_keys, constvars=constvars
     )
@@ -2279,7 +2277,7 @@ def _get_fused_jaxpr_cached(
         return open_jaxpr
 
     if closed_jaxpr is None or closed_jaxpr.jaxpr is not open_jaxpr:
-        closed_jaxpr = jcore.ClosedJaxpr(open_jaxpr, ())
+        closed_jaxpr = jc.ClosedJaxpr(open_jaxpr, ())
         _fused_closed_jaxprs[cache_key] = closed_jaxpr
     return closed_jaxpr
 
@@ -2295,7 +2293,7 @@ def _canonicalize_jaxpr(
     structurally-equivalent jaxpr objects become the same Python
     object, enabling identity-based cache hits downstream.
     """
-    if isinstance(cjaxpr, jcore.ClosedJaxpr):
+    if isinstance(cjaxpr, jc.ClosedJaxpr):
         if len(cjaxpr.consts) > 0:
             return cjaxpr
         jaxpr = cjaxpr.jaxpr
@@ -2306,7 +2304,7 @@ def _canonicalize_jaxpr(
     for eqn in jaxpr.eqns:
         updated_params = {}
         for k, v in eqn.params.items():
-            if isinstance(v, (jcore.ClosedJaxpr, jcore.Jaxpr)):
+            if isinstance(v, (jc.ClosedJaxpr, jcore.Jaxpr)):
                 deduped = _canonicalize_jaxpr(v, exclude_param_keys)
                 if deduped is not v:
                     updated_params[k] = deduped
@@ -2316,7 +2314,7 @@ def _canonicalize_jaxpr(
         else:
             new_eqns.append(eqn)
 
-    if isinstance(cjaxpr, jcore.ClosedJaxpr):
+    if isinstance(cjaxpr, jc.ClosedJaxpr):
         return _get_fused_jaxpr_cached(
             new_eqns,
             jaxpr.invars,
@@ -2338,26 +2336,37 @@ def _canonicalize_jaxpr(
     )
 
 
-def deduplicate_task_jaxprs(closed_jaxpr: jcore.ClosedJaxpr) -> jcore.ClosedJaxpr:
-    """Deduplicate call_jaxpr of task_p equations.
+def deduplicate_task_jaxprs(closed_jaxpr: jc.ClosedJaxpr) -> jc.ClosedJaxpr:
+    """Deduplicate call_jaxprs and compile names of equivalent tasks.
 
     Ensures structurally equivalent tasks (e.g. fwd_1 and fwd_2) share
-    the same call_jaxpr Python object, so that the identity-based cache
-    in fuse_groups / _get_fused_jaxpr_cached produces hits after unrolling.
+    one call_jaxpr and compile name while preserving their logical task names.
     """
+    return _deduplicate_task_jaxprs(closed_jaxpr, {})
+
+
+def _deduplicate_task_jaxprs(
+    closed_jaxpr: jc.ClosedJaxpr, canonical_task_names: dict[int, str]
+) -> jc.ClosedJaxpr:
     changed = False
     new_eqns = []
     for eqn in closed_jaxpr.eqns:
         params_update = {}
         if eqn.primitive is task_p:
             call_jaxpr = eqn.params["call_jaxpr"]
-            assert isinstance(call_jaxpr, jcore.ClosedJaxpr)
+            assert isinstance(call_jaxpr, jc.ClosedJaxpr)
             deduped = _canonicalize_jaxpr(call_jaxpr, _TASK_METADATA_PARAM_KEYS)
             if deduped is not call_jaxpr:
                 params_update["call_jaxpr"] = deduped
+
+            task_name = eqn.params["task_name"]
+            compile_name = eqn.params.get("compile_name", task_name)
+            canonical_name = canonical_task_names.setdefault(id(deduped), compile_name)
+            if "compile_name" not in eqn.params or compile_name != canonical_name:
+                params_update["compile_name"] = canonical_name
         elif eqn.primitive is dax_pscan_p:
             loop_jaxpr = eqn.params["jaxpr"]
-            deduped = deduplicate_task_jaxprs(loop_jaxpr)
+            deduped = _deduplicate_task_jaxprs(loop_jaxpr, canonical_task_names)
             if deduped is not loop_jaxpr:
                 params_update["jaxpr"] = deduped
 
@@ -2420,6 +2429,10 @@ def fuse_groups(jaxpr: jcore.Jaxpr, groups: list[list[int]]):
                     ]
                 )
 
+        task_name = "fused_" + "_".join(e.params["task_name"] for e in group_eqns)
+        compile_name = "fused_" + "_".join(
+            e.params.get("compile_name", e.params["task_name"]) for e in group_eqns
+        )
         fused_task_jaxpr = _get_fused_jaxpr_cached(
             group_eqns,
             invars,
@@ -2437,8 +2450,8 @@ def fuse_groups(jaxpr: jcore.Jaxpr, groups: list[list[int]]):
                 in_shardings=tuple(in_shardings),
                 out_shardings=tuple(out_shardings),
                 donate_invars=tuple(donate_invars),
-                task_name="fused_"
-                + "_".join(e.params["task_name"] for e in group_eqns),
+                task_name=task_name,
+                compile_name=compile_name,
                 task_info=None,
                 latency=sum(e.params["latency"] for e in group_eqns),
             )
@@ -2491,7 +2504,7 @@ def unroll_loop_eqn(
     n_mubatches = loop_eqn.params["n_mubatches"]
     schedule = loop_eqn.params["schedule"]
 
-    loop_jaxpr: jcore.ClosedJaxpr = loop_eqn.params["jaxpr"]
+    loop_jaxpr: jc.ClosedJaxpr = loop_eqn.params["jaxpr"]
 
     # FIXME: make first_stage_id a parameter
     first_stage_id = 0
@@ -2581,7 +2594,7 @@ def deduplicate_outvars(
     ), MpmdDefs(outvar_def, replicas)
 
 
-def fixup_multidefs(cjaxpr: jcore.ClosedJaxpr) -> tuple[jcore.ClosedJaxpr, MpmdDefs]:
+def fixup_multidefs(cjaxpr: jc.ClosedJaxpr) -> tuple[jc.ClosedJaxpr, MpmdDefs]:
     jaxpr = cjaxpr.jaxpr
     invars = set(jaxpr.invars)
     defined = dict[jcore.Var, int]()
@@ -2652,7 +2665,7 @@ def fixup_multidefs(cjaxpr: jcore.ClosedJaxpr) -> tuple[jcore.ClosedJaxpr, MpmdD
     return cjaxpr.replace(jaxpr=res_jaxpr), out_mpmd_def
 
 
-def maybe_unroll_loop(tasked_jaxpr: jcore.ClosedJaxpr):
+def maybe_unroll_loop(tasked_jaxpr: jc.ClosedJaxpr):
     jaxpr: jcore.Jaxpr = tasked_jaxpr.jaxpr
     loop_eqn_idxs = [
         idx for idx, e in enumerate(jaxpr.eqns) if e.primitive is dax_pscan_p
@@ -2896,13 +2909,13 @@ def check_global_jaxpr(jaxpr: jcore.Jaxpr, *, check_transfer_done_fifo: bool = F
 
 @dataclasses.dataclass(frozen=True)
 class LocalJaxpr:
-    closed_jaxpr: jcore.ClosedJaxpr
+    closed_jaxpr: jc.ClosedJaxpr
     global_invar_indices: tuple[int, ...]
     global_outvar_indices: tuple[int, ...]
 
 
 def to_local_jaxprs(
-    tasked_jaxpr: jcore.ClosedJaxpr,
+    tasked_jaxpr: jc.ClosedJaxpr,
     mpmd_mesh: MpmdMesh,
     *,
     check_transfer_done_fifo: bool = False,
@@ -3124,7 +3137,7 @@ def to_local_jaxprs(
     outvar_idx = {
         v: idx
         for idx, v in enumerate(tasked_jaxpr.jaxpr.outvars)
-        if not isinstance(v, jcore.ClosedJaxpr)
+        if not isinstance(v, jc.ClosedJaxpr)
     }
     outvar_set = set(nonlit(tasked_jaxpr.jaxpr.outvars))
     local_jaxprs = list[LocalJaxpr]()
@@ -3155,7 +3168,7 @@ def to_local_jaxprs(
         )
         local_jaxprs.append(
             LocalJaxpr(
-                closed_jaxpr=jcore.ClosedJaxpr(
+                closed_jaxpr=jc.ClosedJaxpr(
                     jaxpr, tuple(tasked_jaxpr.consts[i] for i in local_const_indices)
                 ),
                 global_invar_indices=tuple(invar_idx[invar] for invar in local_invars),
@@ -3184,8 +3197,8 @@ def extract_params(params, n_consts, replicated_sharding):
 
 
 @jc.weakref_lru_cache
-def disable_prevent_cse(cjaxpr: jcore.ClosedJaxpr | jcore.Jaxpr):
-    if isinstance(cjaxpr, jcore.ClosedJaxpr):
+def disable_prevent_cse(cjaxpr: jc.ClosedJaxpr | jcore.Jaxpr):
+    if isinstance(cjaxpr, jc.ClosedJaxpr):
         jaxpr = cjaxpr.jaxpr
     else:
         jaxpr = cjaxpr
@@ -3197,25 +3210,32 @@ def disable_prevent_cse(cjaxpr: jcore.ClosedJaxpr | jcore.Jaxpr):
             params_update["prevent_cse"] = False
 
         for k, v in eqn.params.items():
-            if isinstance(v, (jcore.ClosedJaxpr, jcore.Jaxpr)):
+            if isinstance(v, (jc.ClosedJaxpr, jcore.Jaxpr)):
                 params_update[k] = disable_prevent_cse(v)
 
         new_eqns.append(eqn.replace(params=eqn.params | params_update))
 
     new_jaxpr = jaxpr.replace(eqns=new_eqns)
 
-    if isinstance(cjaxpr, jcore.ClosedJaxpr):
+    if isinstance(cjaxpr, jc.ClosedJaxpr):
         return cjaxpr.replace(jaxpr=new_jaxpr)
 
     return new_jaxpr
 
 
 @jc.weakref_lru_cache
-def preprocess_jaxpr(
-    cjaxpr: jcore.ClosedJaxpr,
-) -> tuple[jcore.ClosedJaxpr, Sequence[bool]]:
+def preprocess_jaxpr(cjaxpr: jc.ClosedJaxpr) -> tuple[jc.ClosedJaxpr, Sequence[bool]]:
     if env_vars.jaxpp_disable_prevent_cse.value:
         cjaxpr = disable_prevent_cse(cjaxpr)
+
+    # Like JAX when lowering `jit`, discharge Refs created by the function, e.g.
+    # accumulators that a pipelined loop reads and writes back.
+    if any(isinstance(e, jc.RefEffect) for e in cjaxpr.effects) or any(
+        isinstance(a, jc.AbstractRef) for a in cjaxpr.in_avals
+    ):
+        raise NotImplementedError("JaxPP functions cannot take or capture Refs")
+    if any(isinstance(e, jc.InternalMutableArrayEffect) for e in cjaxpr.effects):
+        cjaxpr = jc.discharge_state(cjaxpr)
 
     jaxpr_with_consts = jc.convert_constvars_jaxpr(cjaxpr.jaxpr)
     licm_jaxpr = loop_passes(jaxpr_with_consts)
@@ -3233,7 +3253,7 @@ class Strategy(abc.ABC):
     @abc.abstractmethod
     def __call__(
         self,
-        closed_jaxpr: jcore.ClosedJaxpr,
+        closed_jaxpr: jc.ClosedJaxpr,
         in_used: Sequence[bool],
         flat_in_shardings,
         out_tree,
@@ -3247,7 +3267,7 @@ class Strategy(abc.ABC):
 class FunctionWithLoop(Strategy):
     def __call__(
         self,
-        closed_jaxpr: jcore.ClosedJaxpr,
+        closed_jaxpr: jc.ClosedJaxpr,
         in_used: Sequence[bool],
         flat_in_shardings,
         out_tree,
@@ -3267,7 +3287,7 @@ class FunctionWithYield(Strategy):
 
     def __call__(
         self,
-        closed_jaxpr: jcore.ClosedJaxpr,
+        closed_jaxpr: jc.ClosedJaxpr,
         in_used: Sequence[bool],
         flat_in_shardings,
         out_tree,
@@ -3288,7 +3308,7 @@ class FunctionWithYield(Strategy):
         jaxpr, in_mpmd_refs, out_mpmd_defs = compute_loop_placement(
             jaxpr, n_consts=0, is_loop=False
         )
-        closed_jaxpr = jcore.ClosedJaxpr(jaxpr, closed_jaxpr.consts)
+        closed_jaxpr = jc.ClosedJaxpr(jaxpr, closed_jaxpr.consts)
         return closed_jaxpr, in_mpmd_refs, out_mpmd_defs
 
 
@@ -3296,9 +3316,14 @@ class FunctionWithYield(Strategy):
 class TraceableFunction:
     fun: Callable
     mpmd_mesh: MpmdMesh
-    pjit_info: Any
+    # `jax.jit(fun, ...)`: JaxPP traces through it and never executes it.
+    jitted: Any
     strategy: Strategy
     _compiled: Callable | None = None
+
+    @property
+    def pjit_info(self):
+        return self.jitted._jit_info
 
     def compile(self, *args, **kwargs):
         if self._compiled is None:
@@ -3317,24 +3342,40 @@ class TraceableFunction:
     def trace_and_place(self, *args, **kwargs):
         with (
             log_elapsed_time("jaxpr/tracing"),
-            self.mpmd_mesh.lowering_mesh(),
+            jax.set_mesh(self.mpmd_mesh.lowering_mesh()),
             yield_scope(isinstance(self.strategy, FunctionWithYield)),
         ):
+            # Like `jax.jit`, an unspecified input sharding is the sharding of a
+            # committed argument; otherwise sharding inference chooses it.
+            arg_shardings = []
 
-            def with_lowering_mesh(a):
-                # TODO: does this work for hijax?
+            def as_lowering_arg(a):
+                # Like `jax.jit`, which also accepts avals.
                 aval = jcore.shaped_abstractify(a)
-
-                if aval.sharding is None:
-                    return aval
-
-                if not isinstance(aval.sharding, jax.sharding.NamedSharding):
-                    return aval
-
-                return aval.update(
-                    sharding=update_named_sharding(
-                        aval.sharding, mesh=self.mpmd_mesh.lowering_mesh().abstract_mesh
+                sharding = getattr(a, "sharding", None)
+                if (
+                    not getattr(a, "_committed", True)
+                    or sharding is None
+                    or (
+                        isinstance(sharding, jax.sharding.NamedSharding)
+                        and sharding.mesh.empty
                     )
+                ):
+                    # Only types the argument on the lowering mesh, which sharding
+                    # inference reports shardings on; tracing doesn't constrain it.
+                    sharding = jax.sharding.PartitionSpec()
+                    arg_shardings.append(jc.UNSPECIFIED)
+                elif isinstance(sharding, jax.sharding.NamedSharding):
+                    sharding = sharding.update(mesh=self.mpmd_mesh.lowering_mesh())
+                    arg_shardings.append(sharding)
+                else:
+                    raise ValueError(
+                        f"Argument of type {aval.str_short()} is committed to "
+                        f"{sharding}, but JaxPP supports only committed arguments "
+                        "with a `NamedSharding`."
+                    )
+                return jax.ShapeDtypeStruct(
+                    aval.shape, aval.dtype, sharding=sharding, weak_type=aval.weak_type
                 )
 
             raised_args, raised_kwargs = jc.map_dynamic_args(
@@ -3342,19 +3383,17 @@ class TraceableFunction:
                 kwargs,
                 self.pjit_info.static_argnums,
                 self.pjit_info.static_argnames,
-                with_lowering_mesh,
+                as_lowering_arg,
             )
 
-            p, _ = jc._infer_params(
-                self.fun, self.pjit_info, raised_args, raised_kwargs
-            )
+            traced = self.jitted.trace(*raised_args, **raised_kwargs)
 
-        # JAX may also expose `p.consts`; those are pjit extra args prepended
-        # to execution. JaxPP converts this ClosedJaxpr's constvars into
-        # ordinary leading invars, so these const payloads are the ones tracked
-        # as `GlobalMpmdFunction.consts`.
-        jaxpr_consts = p.params["jaxpr"].consts
-        closed_jaxpr, in_used = preprocess_jaxpr(p.params["jaxpr"])
+        # JAX may also expose `Traced` consts; those are pjit extra args
+        # prepended to execution. JaxPP converts this ClosedJaxpr's constvars
+        # into ordinary leading invars, so these const payloads are the ones
+        # tracked as `GlobalMpmdFunction.consts`.
+        jaxpr_consts = traced.jaxpr.consts
+        closed_jaxpr, in_used = preprocess_jaxpr(traced.jaxpr)
         replicated_sharding = jax.sharding.NamedSharding(
             self.mpmd_mesh.lowering_mesh(), jax.sharding.PartitionSpec()
         )
@@ -3366,7 +3405,19 @@ class TraceableFunction:
             flat_in_layouts,
             flat_out_layouts,
         ) = extract_params(
-            p.params, len(jaxpr_consts), replicated_sharding=replicated_sharding
+            # Flat shardings, layouts and donation have no public `Traced` accessor.
+            traced._params,
+            len(jaxpr_consts),
+            replicated_sharding=replicated_sharding,
+        )
+
+        flat_in_shardings = tuple(
+            arg_sharding if isinstance(s, jc.UnspecifiedValue) else s
+            for s, arg_sharding in zip(
+                flat_in_shardings,
+                (jc.UNSPECIFIED,) * len(jaxpr_consts) + tuple(arg_shardings),
+                strict=True,
+            )
         )
 
         closed_jaxpr = closed_jaxpr.map_jaxpr(outvar_normalization)
@@ -3375,10 +3426,10 @@ class TraceableFunction:
             closed_jaxpr,
             in_used,
             flat_in_shardings,
-            p.out_tree,
+            traced.out_tree,
             flat_out_shardings,
             mpmd_dim=self.mpmd_mesh.mpmd_dim,
-            name=p.params["name"],
+            name=traced.fun_name,
         )
 
         return GlobalMpmdFunction(
@@ -3389,8 +3440,8 @@ class TraceableFunction:
             in_info=InInfo(
                 in_used=in_used,
                 in_donated=flat_in_donated,
-                in_tree=p.in_tree,
-                out_tree=p.out_tree,
+                in_tree=traced.in_tree,
+                out_tree=traced.out_tree,
                 in_avals=closed_jaxpr.in_avals,
                 out_avals=closed_jaxpr.out_avals,
                 in_shardings=flat_in_shardings,
@@ -3400,11 +3451,11 @@ class TraceableFunction:
                 in_mpmd_defs=in_mpmd_defs,
                 out_mpmd_defs=out_mpmd_defs,
             ),
-            name=p.params["name"],
+            name=traced.fun_name,
         )
 
 
-def bind_meshes(cjaxpr: jcore.ClosedJaxpr, mpmd_mesh: MpmdMesh) -> jcore.ClosedJaxpr:
+def bind_meshes(cjaxpr: jc.ClosedJaxpr, mpmd_mesh: MpmdMesh) -> jc.ClosedJaxpr:
     def bind_sharding_to_mesh(sharding, *, name: str):
         mpmd_idx = _require_single_mpmd_index(mpmd_mesh, sharding.mesh, name=name)
         (bound,) = updated_named_sharding_mesh((sharding,), mpmd_mesh.unstack[mpmd_idx])
@@ -3454,12 +3505,13 @@ def array_has_sharding(a: jax.Array, sharding: jax.sharding.Sharding) -> bool:
 
 @dataclasses.dataclass(eq=False, frozen=True, kw_only=True)
 class ScalarMpmdFunction:
-    global_jaxpr: jcore.ClosedJaxpr
-    local_jaxpr: jcore.ClosedJaxpr
+    global_jaxpr: jc.ClosedJaxpr
+    local_jaxpr: jc.ClosedJaxpr
     consts: Sequence[Any]
     mpmd_mesh: MpmdMesh
     in_info: InInfo
     name: str
+    executed: bool = dataclasses.field(default=False, init=False, repr=False)
 
     def __post_init__(self):
         # FIXME: self.global_jaxpr.out_avals is the "unpacked" one
@@ -3567,26 +3619,41 @@ class ScalarMpmdFunction:
         assert self.in_info.in_tree == in_tree
         local_args = self._maybe_shard_inputs(flat_args)
 
-        with self.mpmd_mesh:
+        first_call = not self.executed
+        # Lazy CUDA initialization can deadlock with outstanding P2P work.
+        # https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/lazy-loading.html#impact-on-concurrent-kernel-execution
+        with self.mpmd_mesh, synchronous_transfers.set(first_call):
             outs = jcore.eval_jaxpr(
                 self.local_jaxpr.jaxpr, self.local_jaxpr.consts, *local_args
             )
 
         results = self._check_and_build_outputs(outs)
+        if first_call:
+            object.__setattr__(self, "executed", True)
         return jax.tree.unflatten(self.in_info.out_tree, results)
 
-    def _check_and_build_outputs(self, outs: list[jax.Array]):
-        results = []
-        local_idx = 0
-        for global_idx, mpmd_idxs in enumerate(self.in_info.out_mpmd_defs):
-            sharding = self.in_info.out_shardings[global_idx]
-            mpmd_sharding = MpmdSharding(
+    @cached_property
+    def _out_mpmd_shardings(self) -> tuple[MpmdSharding, ...]:
+        # Output placement is fixed for this function. Retain the shardings so
+        # their cached JAX meshes are reused across calls, including for remote
+        # outputs that only need metadata on this process.
+        return tuple(
+            MpmdSharding(
                 self.mpmd_mesh,
                 mpmd_idxs,
                 sharding.spec,
                 memory_kind=sharding.memory_kind,
             )
-            if self.mpmd_mesh.my_mpmd_axis_index in mpmd_idxs:
+            for mpmd_idxs, sharding in zip(
+                self.in_info.out_mpmd_defs, self.in_info.out_shardings, strict=True
+            )
+        )
+
+    def _check_and_build_outputs(self, outs: list[jax.Array]):
+        results = []
+        local_idx = 0
+        for global_idx, mpmd_sharding in enumerate(self._out_mpmd_shardings):
+            if self.mpmd_mesh.my_mpmd_axis_index in mpmd_sharding.mesh_ids:
                 out = MpmdArray(
                     partially_addressable_arrays=[outs[local_idx]],
                     mpmd_sharding=mpmd_sharding,
@@ -3608,7 +3675,7 @@ class ScalarMpmdFunction:
         return results
 
 
-def print_jaxpr(cjaxpr: jcore.ClosedJaxpr | jcore.Jaxpr):
+def print_jaxpr(cjaxpr: jc.ClosedJaxpr | jcore.Jaxpr):
     jaxpr = cjaxpr if isinstance(cjaxpr, jcore.Jaxpr) else cjaxpr.jaxpr
     ctx = jcore.JaxprPpContext()
     settings = jcore.JaxprPpSettings()
@@ -3636,7 +3703,7 @@ def print_jaxpr(cjaxpr: jcore.ClosedJaxpr | jcore.Jaxpr):
 
 
 def dump_jaxpr(
-    cjaxpr: jcore.ClosedJaxpr | jcore.Jaxpr,
+    cjaxpr: jc.ClosedJaxpr | jcore.Jaxpr,
     *,
     name: str,
     ctx: jcore.JaxprPpContext | None = None,
@@ -3669,7 +3736,7 @@ def common_passes(
 
 @dataclasses.dataclass(eq=False, frozen=True, kw_only=True)
 class GlobalMpmdFunction:
-    closed_jaxpr: jcore.ClosedJaxpr
+    closed_jaxpr: jc.ClosedJaxpr
     consts: Sequence[Any]
     mpmd_mesh: MpmdMesh
     pjit_info: Any
@@ -3683,19 +3750,19 @@ class GlobalMpmdFunction:
 
     def infer_intermediate_shardings(self):
         if getattr(self.mpmd_mesh.jax_mesh, "are_all_axes_explicit", False):
-            closed_jaxpr = bind_explicit_shardings(
+            closed_jaxpr, boundary = bind_explicit_shardings(
                 self.closed_jaxpr,
                 self.mpmd_mesh,
                 self.in_info.in_shardings,
                 self.in_info.out_shardings,
             )
-            return dataclasses.replace(self, closed_jaxpr=closed_jaxpr)
+            return self._with_boundary_shardings(closed_jaxpr, boundary)
 
-        unknown_shardings = reconcile_shardings(
+        boundary = reconcile_shardings(
             self.closed_jaxpr, self.in_info.in_shardings, self.in_info.out_shardings
         )
-        if unknown_shardings:
-            closed_jaxpr = infer_shardings(
+        if boundary.has_unknown:
+            closed_jaxpr, boundary = infer_shardings(
                 self.mpmd_mesh.lowering_mesh(),
                 self.closed_jaxpr,
                 in_shardings=self.in_info.in_shardings,
@@ -3703,8 +3770,31 @@ class GlobalMpmdFunction:
                 in_layouts=self.in_info.in_layouts,
                 out_layouts=self.in_info.out_layouts,
             )
-            return dataclasses.replace(self, closed_jaxpr=closed_jaxpr)
-        return dataclasses.replace(self, closed_jaxpr=self.closed_jaxpr)
+            return self._with_boundary_shardings(closed_jaxpr, boundary)
+        return self._with_boundary_shardings(self.closed_jaxpr, boundary)
+
+    def _with_boundary_shardings(self, closed_jaxpr, boundary):
+        # What remains unspecified is unconstrained, e.g. an unused input, which
+        # XLA replicates for `jax.jit` too.
+        replicated = jax.sharding.NamedSharding(
+            self.mpmd_mesh.lowering_mesh(), jax.sharding.PartitionSpec()
+        )
+
+        def finalize(shardings):
+            return tuple(
+                replicated if isinstance(s, jc.UnspecifiedValue) else s
+                for s in shardings
+            )
+
+        return dataclasses.replace(
+            self,
+            closed_jaxpr=closed_jaxpr,
+            in_info=dataclasses.replace(
+                self.in_info,
+                in_shardings=finalize(boundary.in_shardings),
+                out_shardings=finalize(boundary.out_shardings),
+            ),
+        )
 
     @cached_property
     def in_shardings(self):
@@ -3904,23 +3994,19 @@ def _mpmd_jit(
     donate_argnames: str | Iterable[str] | None = None,
     compiler_options: dict[str, Any] | None = None,
 ) -> TraceableFunction:
-    pjit_info = jc._parse_jit_arguments(
-        fun=fun,
+    jitted = jax.jit(
+        fun,
         in_shardings=in_shardings,
         out_shardings=out_shardings,
         donate_argnums=donate_argnums,
         donate_argnames=donate_argnames,
         static_argnums=static_argnums,
         static_argnames=static_argnames,
-        device=None,
-        backend=None,
         keep_unused=True,
-        inline=False,
         compiler_options=compiler_options,
-        use_resource_env=True,  # FIXME
     )
     return TraceableFunction(
-        fun=fun, mpmd_mesh=mpmd_mesh, pjit_info=pjit_info, strategy=strategy
+        fun=fun, mpmd_mesh=mpmd_mesh, jitted=jitted, strategy=strategy
     )
 
 

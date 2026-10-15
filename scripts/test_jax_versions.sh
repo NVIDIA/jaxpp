@@ -16,36 +16,35 @@
 
 set -euo pipefail
 
-pip install -e ".[test]"
+# Keep test tools locked while allowing the compatibility matrix to replace JAX and Flax.
+uv sync --active --locked --group test --inexact
 
 if [ -n "${JAXPP_JAX_VERSIONS:-}" ]; then
   read -r -a JAX_VERSIONS <<< "$JAXPP_JAX_VERSIONS"
 else
   # Mirror released jax-cuda13-plugin versions supported by JaxPP.
   JAX_VERSIONS=(
-    "0.8.0"
-    "0.8.1"
-    "0.8.2"
-    "0.8.3"
-    # 0.9.0.1 has the same JAX Python sources as 0.9.0 plus XLA runtime fixes.
-    "0.9.0.1"
     "0.9.1"
     "0.9.2"
     "0.10.0"
     "0.10.1"
     "0.10.2"
     "0.11.0"
+    "0.11.1"
+    "0.11.2"
   )
 fi
 
 for version in "${JAX_VERSIONS[@]}"
 do
   echo "Installing JAX version: ${version}"
-  pip install "jax[cuda13]==${version}"
+  # Resolve Flax with JAX so older JAX releases get a compatible Flax version.
+  pip install --upgrade "jax[cuda13]==${version}" flax
   echo "Running tests with JAX version: ${version}"
   ./scripts/run_tests.sh
 done
 
 # Test nightly
 pip install -U --pre jax jaxlib "jax-cuda13-plugin[with-cuda]" jax-cuda13-pjrt -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/
+pip install --upgrade flax "jax==$(python -c 'from importlib.metadata import version; print(version("jax"))')"
 ./scripts/run_tests.sh

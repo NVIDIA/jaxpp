@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import unittest
+from unittest import mock
 
 import jax
 import jax.numpy as jnp
@@ -24,8 +25,14 @@ from jax.sharding import PartitionSpec as P
 from parameterized import parameterized
 
 import jaxpp.distributed_utils as jppdu
-from jaxpp.core import to_local_jaxprs
-from jaxpp.dime2 import cuda_device, get_distributed_client, start_transfer
+from jaxpp.core import InInfo, ScalarMpmdFunction, to_local_jaxprs
+from jaxpp.dime2 import (
+    cuda_device,
+    get_distributed_client,
+    pending_sends,
+    start_transfer,
+    synchronous_transfers,
+)
 from jaxpp.experimental import mpmd
 from jaxpp.jax_compat import core as jcore
 from jaxpp.jax_primitives import (
@@ -137,6 +144,83 @@ class SendRecvTest(jppdu.JaxDistributedTest):
             self.assertEqual(Device().device_id, preserved_device.device_id)
         finally:
             previous_device.set_current()
+
+    def test_synchronous_transfer_group(self):
+        if jax.process_count() != 2:
+            self.skipTest("Test requires exactly two processes.")
+        rank = jax.process_index()
+        devices = np.array(jax.devices()).reshape(2, jax.local_device_count())
+        shardings = [
+            jax.sharding.NamedSharding(jax.sharding.Mesh(row, ("x",)), P("x"))
+            for row in devices
+        ]
+        payload = jax.device_put(
+            np.arange(32, dtype=np.float32) + rank, shardings[rank]
+        )
+        buffer = jax.device_put(np.zeros(32, np.float32), shardings[rank])
+        jax.block_until_ready((payload, buffer))
+        preexisting_pending_sends = tuple(pending_sends)
+        with synchronous_transfers.set(True):
+            transfer = start_transfer(
+                [payload], [shardings[1 - rank]], [buffer], [shardings[1 - rank]]
+            )
+            new_pending_sends = [
+                pending
+                for pending in pending_sends
+                if not any(
+                    pending is preexisting for preexisting in preexisting_pending_sends
+                )
+            ]
+            self.assertFalse(new_pending_sends)
+            (received,) = transfer.done()
+        self.assertFalse(synchronous_transfers.value)
+        np.testing.assert_array_equal(
+            np.asarray(received), np.arange(32, dtype=np.float32) + 1 - rank
+        )
+
+    def test_scalar_mpmd_function_syncs_only_first_call(self):
+        devices = np.array(jax.devices()).reshape(
+            jax.process_count(), jax.local_device_count()
+        )
+        mpmd_mesh = MpmdMesh(
+            jax.sharding.Mesh(devices, axis_names=("mpmd", "x")), "mpmd"
+        )
+        empty_jaxpr = jax.make_jaxpr(lambda: ())()
+        in_info = InInfo(
+            in_used=(),
+            in_donated=(),
+            in_tree=jax.tree_util.tree_structure(((), {})),
+            out_tree=jax.tree_util.tree_structure(()),
+            in_avals=(),
+            out_avals=(),
+            in_shardings=(),
+            out_shardings=(),
+            in_layouts=(),
+            out_layouts=(),
+            in_mpmd_defs=(),
+            out_mpmd_defs=(),
+        )
+        scalar_mpmd_function = ScalarMpmdFunction(
+            global_jaxpr=empty_jaxpr,
+            local_jaxpr=empty_jaxpr,
+            consts=(),
+            mpmd_mesh=mpmd_mesh,
+            in_info=in_info,
+            name="sync_probe",
+        )
+        observed_modes = []
+
+        def eval_probe(*_):
+            observed_modes.append(synchronous_transfers.value)
+            return []
+
+        with mock.patch("jaxpp.core.jcore.eval_jaxpr", side_effect=eval_probe):
+            self.assertEqual(scalar_mpmd_function(), ())
+            self.assertEqual(scalar_mpmd_function(), ())
+
+        self.assertEqual(observed_modes, [True, False])
+        self.assertTrue(scalar_mpmd_function.executed)
+        self.assertFalse(synchronous_transfers.value)
 
     def test_start_transfer_groups_bidirectional_send_recv(self):
         if jax.process_count() != 2:
