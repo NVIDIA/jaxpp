@@ -115,7 +115,7 @@ print(mpmd_mesh.lowering_mesh().shape) # OrderedDict([('mpmd', 1), ('data', 1), 
 
 # Development environment
 
-Install uv 0.12.1, then run these commands from the repository root:
+Install uv 0.13.4, then run these commands from the repository root:
 
 ```bash
 uv sync --python 3.12 --locked --all-packages --group test --group examples

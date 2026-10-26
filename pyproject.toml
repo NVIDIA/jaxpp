@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,7 +14,7 @@
 # limitations under the License.
 
 [build-system]
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools >= 84.1.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-dir]
@@ -96,7 +96,7 @@ dependencies = [
 [dependency-groups]
 test = [
     "parameterized>=0.9.0,<0.10",
-    "pytest>=8.0.0,<9.0.0",
+    "pytest>=9.0.3,<10.0.0",
     "pytest-cov>=5.0.0,<6.0.0",
     "pytest-ordering>=0.6,<1.0.0",
 ]
@@ -107,7 +107,7 @@ dev = [
 docs = [
     "sphinx>=8.2.3,<9",
     "myst-nb>=1.4.0,<2",
-    "nbconvert>=7.17.1,<8",
+    "nbformat>=5.11.1,<6",
     "nvidia-sphinx-theme==0.0.7",
 ]
 examples = ["flax==0.12.9"]
@@ -121,14 +121,22 @@ container = [
     "nvidia-curand>=10.4,<11",
     # TE's JAX extension includes NVTX headers, which JAX does not depend on.
     "nvidia-nvtx>=13,<14",
-    "pip",
+    "pip>=26.2.2",
     "pybind11",
-    "setuptools",
+    "setuptools>=84.1.0",
     "wheel",
 ]
 
 [tool.uv]
-required-version = "==0.12.1"
+required-version = "==0.13.4"
+# Security floors for transitive dependencies in the shared environment.
+constraint-dependencies = [
+    "certifi>=2026.10.19",  # Remove the compromised emSign root CA.
+    "filelock>=4.2.1",  # CVE-2026-112940: SQLite lock symlink handling.
+    "msgpack>=1.2.3",  # CVE-2026-114613: memory leak on map-key rejection.
+    "tornado>=6.6",  # HTTP parsing DoS and RedirectHandler open redirects.
+    "virtualenv>=21.14.13",  # CVE-2026-115586: Bash prompt escaping.
+]
 # Build against the locked CUDA 13 JAX and tools, not upstream's CUDA 12 build deps.
 no-build-isolation-package = ["transformer-engine-jax"]
 # The shared development image targets Python 3.12 on Linux GPU hosts.

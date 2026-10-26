@@ -1,5 +1,22 @@
 # Change log
 
+<!-- jaxpp-release-begin: Update 26.11.10 -->
+## Update 26.11.10
+
+Security hotfix
+
+Updates include
+
+- Dependency security updates
+  - Updated development, test, and documentation dependencies, including urllib3, pytest, virtualenv, Tornado, msgpack, setuptools, filelock, certifi, and pip
+  - Added minimum-version constraints for patched dependencies and updated the pinned uv bootstrap to 0.13.4 with a verified installer digest
+- Documentation exports
+  - Removed Bleach and nbconvert from the documentation environment by replacing the notebook Markdown exporter with a lightweight text exporter
+  - Preserved Markdown, code cells, and plain-text outputs, with explicit build failures for unsupported rich outputs and attachments
+- Compatibility
+  - Kept published application runtime requirements and JAX versions unchanged
+<!-- jaxpp-release-end: Update 26.11.10 -->
+
 <!-- jaxpp-release-begin: Update 26.10.15 -->
 ## Update 26.10.15
 
